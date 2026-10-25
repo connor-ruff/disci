@@ -155,7 +155,7 @@ function ItemForm({
             checked={isChecklist}
             onChange={setIsChecklist}
             label="On the monthly checklist"
-            hint="Shows on the Checklist tab until a transaction marked as satisfying it is logged."
+            hint="Shows on the Checklist tab, and is done once what's logged here reaches the planned amount."
           />
           {isChecklist && (
             <Field label="Due on day" htmlFor="item-checklist-day">

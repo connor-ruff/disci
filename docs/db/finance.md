@@ -40,7 +40,7 @@ Expenses
 - ✱ **Split a transaction** across items (one Target run: $40 groceries + $25 household). This uses the same mechanism as the multi-budget case. (The API supports it; the UI doesn't yet.)
 - **Recurring transactions** (subscriptions, rent, bills, paychecks) are stored as rules and **auto-logged "on its date"**: one transaction per occurrence, created by an hourly job once the date arrives in the user's timezone. Built (§3 `recurring_transactions`).
 - **Optional approval**: a rule marked **"Requires approval"** creates its transactions as *pending*; the user approves them (adjusting the amount if, say, the electric bill came in different) or rejects them. Rules without it log confirmed transactions straight away.
-- **Monthly checklist** (the old bills sheet): items in a monthly budget can be flagged as checklist items with a due day. An item is **done** once a confirmed transaction marked "satisfies the checklist" is allocated to it, so paying the bill *is* ticking it off (inspiration doc principle #2). A recurring rule can tick items itself ("rules can tick"), e.g. for autopay bills.
+- **Monthly checklist** (the old bills sheet): items in a monthly budget can be flagged as checklist items with a due day. An item is **done** once its confirmed net actual reaches its planned amount (and is more than 0), so paying the bill *is* ticking it off (inspiration doc principle #2); there is no separate "done" flag. A recurring rule's payment (e.g. an autopay bill with `auto_apply`) completes the item the same way, by bringing its actual up to plan.
 - ✱ **Budget vs. actual** per item, per category and per budget.
 - ✱ **Inbox**: transactions awaiting approval, plus confirmed transactions that aren't allocated to any budget item yet ("Not in a budget"), with a way to assign them.
 - ✱ **Copy a budget** to start a new one. **Built** as an option on budget creation (`copy_from_budget_id` on `POST /finance/budgets`): the source must be the user's own budget of the same period type. Items carry over (kind, category, name, planned amount, sort order, notes, checklist flag and day; items whose category was deleted come across Uncategorized); transactions and allocations do not. No extra table.
@@ -148,7 +148,7 @@ Money that actually moved (or, while `pending`, is expected to).
 | `status` | `text` | no | `CHECK IN ('pending','confirmed')`, default `'confirmed'`. Only rules with `requires_approval` create `pending` ones; everything else is confirmed on creation. |
 | `recurring_transaction_id` | `uuid` | yes | → `recurring_transactions`. Set if generated from a rule. |
 | `scheduled_on` | `date` | yes | For generated rows: the occurrence date the rule produced. Set exactly when `recurring_transaction_id` is (`transactions_recurring_scheduled_check`). |
-| `satisfies_checklist` | `boolean` | no | Default `false`. Ticks off the checklist item(s) it's allocated to, once confirmed. Generated transactions copy the rule's flag. |
+| `satisfies_checklist` | `boolean` | no | **Deprecated, unused.** Default `false`. Formerly ticked off checklist items; the checklist now goes by actual vs. planned (§4), and the API no longer reads or writes it. To be dropped in a later release (§6 follow-ups). |
 
 - Unique `(id, user_id)`.
 - **Unique `(recurring_transaction_id, scheduled_on)` where `recurring_transaction_id IS NOT NULL`** (`transactions_recurring_occurrence_key`). Deliberately **not** limited to undeleted rows, so the generator is idempotent *and* a rejected or deleted occurrence is never generated again.
@@ -194,7 +194,7 @@ A rule for money that moves on a schedule: subscriptions, rent, utilities, paych
 | `ends_on` | `date` | yes | Optional, `>= starts_on`. For subscriptions that end, or loans paid off. |
 | `auto_apply` | `boolean` | no | Default `false`. **"Automatically apply to all budgets"** (§4). Off: the transaction is logged unassigned and shows in the inbox's "Not in a budget" list. |
 | `requires_approval` | `boolean` | no | Default `false`. Generated transactions start `pending` instead of `confirmed`. |
-| `satisfies_checklist` | `boolean` | no | Default `false`. Generated transactions get `satisfies_checklist`, so a rule can tick its checklist item itself. |
+| `satisfies_checklist` | `boolean` | no | **Deprecated, unused.** Default `false`. Formerly copied onto generated transactions; the API no longer reads or writes it. To be dropped in a later release (§6 follow-ups). |
 | `paused_at` | `timestamptz` | yes | Paused rules generate nothing. The API exposes it as a `paused` boolean. |
 
 - Unique `(id, user_id)`: target of `transactions`' composite FK.
@@ -241,7 +241,7 @@ Combined with RLS's `WITH CHECK (user_id = core.current_user_id())`, a row can o
 | **Auto-apply** | With `auto_apply`, each newly created transaction is allocated **in full** to every budget whose period covers its date, toward the item matched by kind + case-insensitive name. If a budget has no such item, one is created with the rule's category, planned at amount × the number of the rule's occurrences in that budget's period (at least 1). Without `auto_apply`, it is logged with no allocations. |
 | **Approvals** | `requires_approval` → `status = 'pending'`. Pending transactions don't count in actuals (each item's `pending_amount` shows them). Approve → `confirmed`, optionally with a corrected amount that its allocations follow; reject → soft-delete. |
 | **Inbox** | `GET /finance/inbox`: `pending` (status pending, oldest first) and `unassigned` (confirmed transactions with no allocation to an undeleted item, newest first). Assigning writes allocations with `PUT /finance/transactions/{id}/allocations`. |
-| **Monthly checklist** | `GET /finance/checklist`: items with `is_checklist_item` in the **monthly** budget(s) covering today (user's timezone), with `due_on = period_start + checklist_day - 1` and `done_on` = the earliest `occurred_on` of a **confirmed** transaction with `satisfies_checklist` allocated to the item. Budget detail exposes the same as each item's `checklist_done`. A rule with `satisfies_checklist` (plus `auto_apply`, so it lands on the item) ticks the item itself. |
+| **Monthly checklist** | `GET /finance/checklist`: items with `is_checklist_item` in the **monthly** budget(s) covering today (user's timezone), with `due_on = period_start + checklist_day - 1`, `actual_amount` (net over **confirmed** allocated transactions: same kind adds, opposite kind subtracts, so a refund can un-tick an item; pending ones don't count), `last_payment_on` (latest `occurred_on` among those confirmed transactions) and `done` = `actual_amount > 0 AND actual_amount >= planned_amount` (`queries/list_checklist.sql`). So a $0-planned item still needs something logged. Budget detail exposes the same rule as each item's `checklist_done` (`queries/list_budget_items.sql`). A rule with `auto_apply` completes the item when its payments bring the actual up to plan. |
 | **Reorder** | `budget_categories.sort_order` (per user and kind) and `budget_items.sort_order` (per budget), each set from an ordered id list. Budget detail sorts items by kind, category `sort_order` (Uncategorized last), then item `sort_order`. |
 | **Budget vs. actual (item)** | `budget_items.planned_amount` vs. the **net** of allocations over **confirmed** transactions: transactions of the item's own kind add, the opposite kind subtracts. `SUM(CASE WHEN t.kind = i.kind THEN a.amount ELSE -a.amount END)`. Groceries: $380 spent − $25 rebate = $355 actual. Can go negative (a net credit). `actual_amount` and `pending_amount` in `GET /finance/budgets/{id}` (`queries/list_budget_items.sql`). |
 | **Budget vs. actual (category)** | The same, grouped by `budget_items.kind` then `category_id` (NULL shown as "Uncategorized"). |
@@ -267,7 +267,7 @@ Combined with RLS's `WITH CHECK (user_id = core.current_user_id())`, a row can o
 | Where does a generated transaction go? | The user chooses per rule: **"Automatically apply to all budgets"** (allocated in full to every budget covering the date, item matched by name and created if missing) or **"Log it unassigned"** (shows in the inbox). |
 | Must the user verify generated transactions? | Only if the rule **"Requires approval"** (default off). Then it's pending until approved (amount editable) or rejected. |
 | How do rules find their budget item? | **By kind + case-insensitive name**, not a stored link, so `budget_items.recurring_transaction_id` was dropped. |
-| What counts as a checklist item, and when is it done? | A flagged item in a **monthly** budget with a due day (1–28). Done when a confirmed transaction with `satisfies_checklist` is allocated to it. **"Rules can tick"**: a rule's `satisfies_checklist` sets the flag on its transactions. |
+| What counts as a checklist item, and when is it done? | A flagged item in a **monthly** budget with a due day (1–28). The user chose **strict completion**: done once its confirmed net actual is **≥ its planned amount and > 0**. Pending transactions don't count, and opposite-kind credits net (a refund can un-tick it). No per-transaction "satisfies the checklist" flag (that earlier design was removed); a recurring rule's payment completes an item only by bringing its actual up to plan. |
 | Can a rejected or deleted occurrence come back? | **No.** The occurrence unique index includes deleted rows. |
 | Category and item order? | Category order is **per user** (one order for every budget); item order is **per budget** and is copied with it. Saved on each drop. |
 
@@ -275,3 +275,7 @@ Combined with RLS's `WITH CHECK (user_id = core.current_user_id())`, a row can o
 
 1. ~~**Pending generation window:** generate a month's recurring transactions at the start of the month, or on each due date?~~ Decided: **on its date** (see §5). The checklist still shows the whole month ahead, because it comes from budget items, not from generated transactions.
 2. **Historical import** of EveryDollar expenses: is it wanted, and how far back?
+
+### Follow-ups
+
+- **Drop the unused `satisfies_checklist` columns** on `finance.transactions` and `finance.recurring_transactions`. The checklist no longer uses a per-transaction flag (done = confirmed actual ≥ planned and > 0), and the API stopped reading and writing them. Because migrations run **before** the new API code is deployed (expand/contract, see [deployment.md](../ops/deployment.md)), the columns stay until the API version without them is live; a migration in a **later release** drops them.

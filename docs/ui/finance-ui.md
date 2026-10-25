@@ -78,7 +78,7 @@ Oct 1 – Oct 31, 2026  (● Active)
 - **Item rows** show the name, "**actual** of planned", and a progress bar of actual ÷ planned (capped at full; negative actuals show empty). For an **expense** item that is over plan, the actual amount and the bar turn **amber**. Income over plan is not flagged. Tapping a row opens the item sheet (§4.2).
   - The name gets the full row width (it truncates only if it would collide with the amount), so long item names aren't cut off by the checklist indicator.
   - A small muted line **under the progress bar** (`text-xs`) holds two optional notes side by side, wrapping if needed:
-    - **Checklist indicator** on checklist items: "Due 5th" (clock icon) until it's satisfied, then "Checklist done" (teal check).
+    - **Checklist indicator** on checklist items: "Due 5th" (clock icon) until its confirmed actual reaches the planned amount (`checklist_done`), then "Checklist done" (teal check).
     - **"$X awaiting approval"** (amber) when pending transactions are allocated to the item. They don't count in the actual yet.
 - **Transactions card:** this budget's transactions, newest first, **one row per allocation** (a transaction split over two items in this budget would appear twice). Each row shows the payee (or the item name when there's no payee), the item, date and notes, and the **allocated** amount with `+` for income (teal) or `−` for expense. Pending transactions get a **Pending** tag and a muted amount. A trash button deletes the transaction after a confirm (it's removed from every budget).
 - **Delete budget** (red, at the bottom): confirms, soft-deletes the budget and its items, and returns to the list. Its transactions are kept but become unassigned.
@@ -138,7 +138,7 @@ Opened by "Add income" / "Add expense" (new item of that kind) or by tapping an 
 | Name | Required. |
 | Planned amount | Blank counts as 0. |
 | Category | Select of **only that kind's** categories, plus **Uncategorized** (the default). |
-| On the monthly checklist | Checkbox, **monthly budgets only** (hidden otherwise; the API rejects it elsewhere). Hint: it shows on the Checklist tab until a transaction marked as satisfying it is logged. |
+| On the monthly checklist | Checkbox, **monthly budgets only** (hidden otherwise; the API rejects it elsewhere). It shows on the Checklist tab and is done once what's been paid reaches the planned amount (§6). |
 | Due on day | Shown when the checkbox is on: select of the 1st–28th. |
 
 Buttons: **Add** / **Save**; when editing, also **Log transaction** (closes this sheet and opens the transaction sheet with this item preselected) and **Delete item** (confirms: "Its transactions stay but won't count toward this budget"). An item's kind can't be changed.
@@ -148,16 +148,15 @@ Buttons: **Add** / **Save**; when editing, also **Log transaction** (closes this
 Takes a required `budget` prop (the budget being logged into) and an optional `title` (default "Log transaction").
 
 - **"Logging to" box** at the top: the budget's name and date range, so it's always clear which budget is affected.
-- When the selected item is a **checklist item**, the box also shows "Checklist item <name>, due the <Nth> (<date>)", with "· already done" if it's already satisfied.
+- When the selected item is a **checklist item**, the box also shows "Checklist item <name>, due the <Nth> (<date>).", followed by "Paid $X of $Y; done once it reaches the plan." while it's open, or "Already done." once its actual has reached the plan.
 - **From the Checklist page** (§6) the sheet is titled **"Check off <item>"**.
-- Opened on an **open** (not yet done) checklist item, from the Checklist page or an item's Log transaction button, the **amount is pre-filled** with the item's planned amount and **Satisfies the checklist** is pre-checked.
+- Opened on an **open** (not yet done) checklist item, from the Checklist page or an item's Log transaction button, the **amount is pre-filled** with what's left (planned − actual), when that's more than 0.
 
 | Field | Behaviour |
 |---|---|
 | Type | Segmented **Expense** / **Income**. Defaults to the preselected item's kind, else Expense. |
-| Amount | Autofocused, large text. Must be more than 0. Pre-filled with the planned amount when paying an open checklist item. |
+| Amount | Autofocused, large text. Must be more than 0. Pre-filled with what's left (planned − actual) when paying an open checklist item. |
 | Budget item | Optional select, grouped into Income and Expenses optgroups, listing this budget's items; "Don't assign yet" leaves it unassigned. When the type is **opposite** to the item's kind, a hint says it **counts as a credit** against that item (e.g. a refund or rebate). |
-| Satisfies the checklist | Checkbox, shown only when the chosen item is a **checklist item**. Hint: "Ticks off <item> on this month's checklist." Pre-checked when the sheet opens on an open (not yet done) checklist item, e.g. from the Checklist tab. |
 | Date | `type="date"`, defaults to **today in the user's timezone** (`todayIn(me.timezone)`). |
 | Payee (optional) | Free text, e.g. "Kroger" / "Employer". |
 | Notes (optional) | Multi-line text, up to 1,000 characters. Shown in the budget's transaction list and the Inbox. |
@@ -171,7 +170,7 @@ Opened by **New** on the Recurring page, or by tapping a rule (edit; title = the
 | Field | Behaviour |
 |---|---|
 | Type | Segmented **Expense** / **Income**. Changing it clears the category. |
-| Name | Required. Hint: counts toward the budget item with this name. |
+| Name | Required. Hint: counts toward the budget item with this name. Offers **suggestions** through a native `<datalist>`: the existing item names of the rule's type from the **monthly budget(s) covering today**, or, if there are none, the **most recent monthly budget** (`useItemNameSuggestions` in `api.ts`). Picking one makes the rule match that item exactly (matching is a case-insensitive exact name match); a name that matches nothing, with auto-apply on, creates a new item. Free text is still allowed. |
 | Amount / Category | Side by side. Category lists only that type's categories, plus Uncategorized. |
 | Repeats | Segmented **Monthly** (default) / Weekly / Quarterly / Yearly. |
 | On day | Monthly: select of "1st of each month" … "28th of each month". |
@@ -180,11 +179,12 @@ Opened by **New** on the Recurring page, or by tapping a rule (edit; title = the
 | Ends (optional) | `type="date"`, not before the start. |
 | Automatically apply to all budgets | Checkbox, **on by default**. Counts it in every budget whose dates include it, under the item with this name (added if missing). Off: it lands in the Inbox to assign. |
 | Requires approval | Checkbox, off by default. Waits in the Inbox until approved (amount adjustable); otherwise logged right away. |
-| Satisfies the checklist | Checkbox. Ticks off the matching checklist item when it's logged, e.g. for autopay bills. |
 | Paused | Checkbox, when editing only. Creates nothing while paused. |
 | Payee / Notes (optional) | Copied onto each transaction it creates. |
 
 Buttons: **Create** / **Save**; when editing, also **Delete recurring transaction** (confirms; transactions it already created are kept). Saving creates anything due today right away.
+
+There is no checklist option on a rule. A rule's payment (e.g. an autopay bill with auto-apply on) completes a checklist item the same way any payment does: by bringing the item's actual up to its planned amount.
 
 ---
 
@@ -207,11 +207,14 @@ Default expense categories are created when Finance is first turned on; there ar
 
 This month's bills and must-dos: the checklist items from the **monthly budget(s) covering today** (user's timezone), ordered by due day. The header says "N of M done this month".
 
-- **Done** items: teal check, struck-through name, "Done Oct 3" (the date of the satisfying transaction). Not tappable.
+An item is **done** once its confirmed net actual reaches its planned amount and is more than 0 (so a $0-planned item needs something logged). Pending transactions don't count, and opposite-kind credits net, so a refund can un-tick an item.
+
+- **Done** items: teal check, struck-through name, "Done Oct 3" (`last_payment_on`, the date of the latest confirmed payment). Not tappable.
 - **Overdue** items (not done, due date before today): **amber** icon and "Overdue · was due Oct 1".
 - **Upcoming** items: muted dashed circle and "Due Oct 15".
+- Open items with something paid add " · paid $X so far" (e.g. "Due Oct 15 · paid $800.00 so far").
 - Each row shows the item's planned amount. If more than one monthly budget covers this month, rows also show their budget's name.
-- **Tapping an open item** opens the transaction sheet (§4.3), titled "Check off <item>", logging to that item's budget, with the item preselected, the amount pre-filled with its planned amount and **Satisfies the checklist** pre-checked, so logging the payment ticks it off.
+- **Tapping an open item** opens the transaction sheet (§4.3), titled "Check off <item>", logging to that item's budget, with the item preselected, the amount pre-filled with what's left (planned − actual), so logging the payment ticks it off.
 - Empty state: explains how to add one (open an item in this month's budget and turn on "On the monthly checklist").
 
 ---
@@ -222,7 +225,7 @@ A **New** button in the header, then one card per rule (income first, then by na
 
 - The name and the amount (`+` teal for income, `−` for expense).
 - The schedule ("Monthly on the 12th", "Every Monday", "Quarterly from Feb 10", "Yearly on Feb 10"), then **Next Oct 30** (`next_occurrence`) or **Paused**.
-- Chips: the category, **Applies to budgets** or **Goes to Inbox**, **Needs approval**, **Ticks checklist**.
+- Chips: the category, **Applies to budgets** or **Goes to Inbox** and **Needs approval**.
 
 Tapping a card opens the recurring sheet (§4.4). Empty state: "Nothing recurring yet".
 
