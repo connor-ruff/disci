@@ -42,7 +42,7 @@ The **shell** is the frame around every page: the top bar, the module menu, and 
 └───────────────────────┘
 ```
 
-- **Module sub-nav**: each module lists its own tabs in its manifest (`subNav`). The row renders **only when a module has more than one tab**, so a single-page module gets no tab bar. It is a horizontally scrolling pill row on every screen size (works on phones without wrapping).
+- **Module sub-nav**: each module lists its own tabs in its manifest (`subNav`). The row renders **only when a module has more than one tab**, so a single-page module gets no tab bar. It is a horizontally scrolling pill row on every screen size (works on phones without wrapping). A tab is active when the URL starts with its path, so a detail page (e.g. `/finance/budgets/<id>`) keeps its list tab highlighted.
 - **[👤] account icon**: links straight to `/settings`. There is no account dropdown and no sign-out yet, since local dev uses dev auth; sign-out arrives with Cognito.
 
 ---
@@ -54,7 +54,7 @@ The **shell** is the frame around every page: the top bar, the module menu, and 
 | `/` | **Home.** With **no modules enabled**: a welcome card with a "Choose modules" button (→ `/modules`). Otherwise "Hi, <display name>" and one `HomeCard` per enabled module. | `GET /me`, `GET /me/modules` |
 | `/modules` | **Manage modules.** A card per available module (icon, name, description from the API) with an on/off switch. Turning one on for the first time runs its setup on the API side (e.g. seeding default budget categories). | `GET /me/modules`, `PUT /me/modules/{key}` (on), `DELETE /me/modules/{key}` (off) |
 | `/settings` | **Settings.** Email (read-only), display name, timezone (a native select of every IANA zone from `Intl.supportedValuesOf`, plus a "Use this device's timezone" shortcut when it differs), week start. | `GET /me`, `PUT /me` |
-| `/<module>/...` | Everything else belongs to a module, e.g. `/finance` (today a stub overview page). | Module endpoints |
+| `/<module>/...` | Everything else belongs to a module, e.g. `/finance` (redirects to `/finance/budgets`; see [finance-ui.md](finance-ui.md)). | Module endpoints |
 | anything else | **Not found** page with a "Go home" button. | |
 
 **Disabled-module gate.** The shell checks the first URL segment: if it matches a registered module that the user has turned **off**, it shows a "<Module> is turned off" card with a "Turn on <Module>" button instead of the page (and hides the sub-nav). No error, and the data is kept.
@@ -70,7 +70,7 @@ Each module folder (`web/src/modules/<key>/`) exports a **manifest** (`ModuleMan
 | `key` | `'finance'` | Matches the API module key (`core.user_modules.module_key`), the Postgres schema and the URL prefix `/<key>` |
 | `icon` | `Wallet` (lucide-react) | Module menu, manage-modules page, disabled-module gate |
 | `route` | `financeRoute`: the TanStack Router tree under `/finance` (`routes.tsx`) | Added to the router's route tree |
-| `subNav` | `[]` today; later Budgets, Transactions, Recurring, Categories | Module sub-nav (shown only when > 1 entry) |
+| `subNav` | Budgets (`/finance/budgets`), Categories (`/finance/categories`); Recurring etc. later | Module sub-nav (shown only when > 1 entry) |
 | `HomeCard` | `FinanceHomeCard` component | Home page |
 
 **Name and description are not in the web manifest.** They come from the API (`GET /me/modules`), so they are defined once, in the API's module registry (see [api-overview.md](../api/api-overview.md)).

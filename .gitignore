@@ -226,3 +226,5 @@ node_modules/
 
 # Deploy build output (scripts/build-api-zip.sh)
 /build/
+
+_LOCAL_SCRATCH/

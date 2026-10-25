@@ -1,6 +1,6 @@
 # Data Model Overview
 
-*Status: the **`core` schema is implemented** (first migration: `db/migrations/20261025134012_core__init.sql`). The `finance`, `tasks` and `nutrition` modules are still **planning drafts** that their migrations will be written from. For the exact current schema, read the auto-generated `db/schema.sql`.*
+*Status: the **`core` schema is implemented** (`db/migrations/20261025134012_core__init.sql`), and so is the **first slice of `finance`** (`db/migrations/20261025150312_finance__init.sql`; recurring transactions still planned). `tasks` and `nutrition` are still **planning drafts** that their migrations will be written from. For the exact current schema, read the auto-generated `db/schema.sql`.*
 
 This is the entry point for the Postgres data model. It covers how the model is split into modules, the conventions every table follows, and how the modules relate. Each module has its own doc with full table definitions.
 
@@ -19,12 +19,12 @@ docs/db/
 
 Each module is a self-contained slice of the app and gets its **own Postgres schema**. That keeps `\dt` readable, mirrors the module folders in `api/app/modules/` and `web/src/modules/`, and maps cleanly onto a future Snowflake layout (one schema per module).
 
-| Module | Postgres schema | Tables | Doc |
-|---|---|---|---|
-| Shared | `core` | `users`, `user_modules` | [shared.md](shared.md) |
-| Finance | `finance` | `budgets`, `budget_categories`, `budget_items`, `transactions`, `transaction_allocations`, `recurring_transactions` | [finance.md](finance.md) |
-| Tasks | `tasks` | `tasks`, `task_occurrences` | [tasks.md](tasks.md) |
-| Nutrition | `nutrition` | `food_items`, `food_item_logs`, `macro_goals` | [nutrition.md](nutrition.md) |
+| Module | Postgres schema | Tables | Status | Doc |
+|---|---|---|---|---|
+| Shared | `core` | `users`, `user_modules` | Implemented | [shared.md](shared.md) |
+| Finance | `finance` | `budgets`, `budget_categories`, `budget_items`, `transactions`, `transaction_allocations`, `recurring_transactions` | First slice implemented; `recurring_transactions` (and the recurring/status columns) planned | [finance.md](finance.md) |
+| Tasks | `tasks` | `tasks`, `task_occurrences` | Planning draft | [tasks.md](tasks.md) |
+| Nutrition | `nutrition` | `food_items`, `food_item_logs`, `macro_goals` | Planning draft | [nutrition.md](nutrition.md) |
 
 **Module boundary rule:** the only foreign key that crosses a module boundary is `user_id → core.users.id`. Modules never reference each other's tables. Cross-module features (the morning and night reports, the "everything" dashboard) **read** from several modules through the API and don't need tables of their own.
 
@@ -66,6 +66,8 @@ These come straight from the design principles in `docs/project_plans/project-in
 ### Integrity
 - **Unique constraints are partial indexes** with `WHERE deleted_at IS NULL`, so a soft-deleted row doesn't block re-creating something with the same name.
 - **Row-level security** on every user-owned table (see below).
+- **Tenant guard: composite foreign keys.** RLS limits what a user can see, but **FK checks bypass RLS**, so a plain `FOREIGN KEY (budget_id) REFERENCES budgets (id)` would let a user who guessed another user's id link to it. Every parent table a user-owned child points at gets a unique `(id, user_id)`, and **every child FK includes `user_id`**: `FOREIGN KEY (budget_id, user_id) REFERENCES finance.budgets (id, user_id)`. Together with RLS's `WITH CHECK`, a row can only reference parents owned by the same user. Extra columns can join the key when they must match too (finance's `(category_id, kind, user_id)` also forces an item's category to be of the item's kind). A nullable FK uses the default `MATCH SIMPLE`, so NULL skips the check. Applies to all modules; see [finance.md](finance.md) §3.1 for the first use.
+- **Soft deletes everywhere, with narrow exceptions.** Pure link rows that are replaced rather than edited and carry no history may be hard-deleted and skip `deleted_at` (currently only `finance.transaction_allocations`). Each exception is called out in its module doc.
 - **Derived numbers aren't stored as the only record.** Totals (budget actuals, daily macros, task completion counts) are computed by queries or views from the raw rows.
 
 ### Row-level security & privileges

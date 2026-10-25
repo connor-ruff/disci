@@ -1,6 +1,6 @@
 # Web App Overview
 
-*Status: **shell implemented and deployed** to S3 + CloudFront (https://d2j30iivfr2al9.cloudfront.net) with Cognito sign-in. The shell pages (Home, Manage modules, Settings) work; the finance module is a stub (one overview page and a home card). Deploying: [deployment.md](../ops/deployment.md).*
+*Status: **shell implemented and deployed** to S3 + CloudFront (https://d2j30iivfr2al9.cloudfront.net) with Cognito sign-in. The shell pages (Home, Manage modules, Settings) work; the finance module has its first slice (budgets list, new budget, budget page with items and transactions, categories; see [finance-ui.md](finance-ui.md)). Deploying: [deployment.md](../ops/deployment.md).*
 
 The engineering entry point for the web app (`web/`): stack, layout, conventions and local workflow. What the shell looks like and how modules plug into it is in [app-shell.md](app-shell.md); the brand palette is in [ui-overview.md](ui-overview.md).
 
@@ -16,7 +16,7 @@ The engineering entry point for the web app (`web/`): stack, layout, conventions
 | Routing | **TanStack Router**, code-based routes | Routes are built in code (`createRoute`), no file-based codegen. Typed links. |
 | Server state | **TanStack Query** | Defaults in `main.tsx`: `staleTime` 30 s, `retry` 1. |
 | Styling | **Tailwind CSS v4** via `@tailwindcss/vite` | No `tailwind.config`; tokens are declared in `src/index.css` with `@theme inline`. |
-| Components | **radix-ui** primitives + hand-written shadcn-style components in `src/shared/ui/` | Radix Dialog (drawer) and Switch so far. Not the shadcn CLI. `cn()` (`clsx` + `tailwind-merge`) merges classes. |
+| Components | **radix-ui** primitives + hand-written shadcn-style components in `src/shared/ui/` | Radix Dialog (drawer, sheet) and Switch so far. Not the shadcn CLI. `cn()` (`clsx` + `tailwind-merge`) merges classes. |
 | Icons | **lucide-react** | |
 | API client | **openapi-fetch**, types from **openapi-typescript** | See §3. |
 | Auth | **oidc-client-ts** + **react-oidc-context** | Cognito hosted login, code + PKCE. See §8. |
@@ -47,18 +47,21 @@ web/
     │   └── pages/                 # Home, ManageModules, Settings, NotFound
     ├── shared/                    # used by the shell and every module
     │   ├── api/
-    │   │   ├── client.ts          # typed `api` client, `unwrap`, `ApiError`, type aliases
+    │   │   ├── client.ts          # typed `api` client, `unwrap`, `ApiError`, `errorMessage`, type aliases
     │   │   ├── hooks.ts           # TanStack Query hooks for core endpoints + queryKeys
     │   │   └── schema.d.ts        # GENERATED from the API's OpenAPI spec (never edit)
     │   ├── auth/auth.ts           # authMode, UserManager, getIdToken, signOut, handleUnauthorized
-    │   ├── ui/                    # button, card, drawer, switch, page (header/loading/error)
-    │   └── lib/cn.ts
+    │   ├── ui/                    # button, card, drawer, switch, page (header/loading/error),
+    │   │                          # sheet (bottom-sheet form panel), field (Field + inputClasses), segmented
+    │   └── lib/                   # cn.ts, money.ts (formatMoney, parseMoneyInput),
+    │                              # dates.ts (todayIn, formatShortDate, formatDateRange)
     └── modules/
         └── finance/
-            ├── index.ts           # the module's ModuleManifest
+            ├── index.ts           # the module's ModuleManifest (sub-nav: Budgets, Categories)
             ├── routes.tsx         # route tree under /finance
-            ├── pages/
-            └── components/        # e.g. FinanceHomeCard
+            ├── api.ts             # TanStack Query hooks + financeKeys
+            ├── pages/             # BudgetsPage, NewBudgetPage, BudgetPage, CategoriesPage
+            └── components/        # FinanceHomeCard, ItemSheet, TransactionSheet
 ```
 
 **Rule of thumb:** `app/` is the shell, `shared/` is anything two or more places use, and `modules/<key>/` holds everything specific to one module. A module may import from `shared/` and `app/` (its manifest type, the root route); `shared/` never imports from a module.
@@ -70,6 +73,8 @@ web/
 - `src/shared/api/schema.d.ts` is **generated** by `openapi-typescript` from the running API's `/openapi.json`. Regenerate it with `make web-api-types` (needs `make api` running) whenever the API's endpoints or Pydantic models change, and commit the result. **Never edit it by hand.**
 - `src/shared/api/client.ts` exports `api`, an `openapi-fetch` client typed against that schema, so paths, params and request/response bodies are type-checked. It also exports friendly aliases for schema types (`User`, `UserUpdate`, `ModuleInfo`).
 - `unwrap(result)` turns openapi-fetch's `{ data, error }` into a value or a thrown `ApiError` (with `status` and `body`), which is what TanStack Query expects.
+- `errorMessage(error)` gives a human-readable message for a failed request: the API's `detail` string when there is one (e.g. "already exists"), "Please check the values entered." for other 422s, otherwise the error's message. Forms show it under the submit button.
+- **Money** comes from the API as a decimal string (`"283.55"`). Display it with `formatMoney` and parse user input with `parseMoneyInput` (`shared/lib/money.ts`), which returns a clean decimal string or `null`; send that string back rather than a float.
 
 **Base URL.** `import.meta.env.VITE_API_URL ?? '/api'`.
 
@@ -94,7 +99,7 @@ web/
 | `useSetModuleEnabled()` | `PUT` / `DELETE /me/modules/{key}` | invalidates `['me', 'modules']` |
 
 - **Query keys** are defined once, in the `queryKeys` object, never as inline arrays. Keys are hierarchical (`['me', 'modules']` sits under `['me']`) so a whole branch can be invalidated at once.
-- A module's hooks will live in that module's folder (e.g. `modules/finance/api.ts`), with keys starting with the module key (e.g. `['finance', ...]`).
+- A module's hooks live in that module's folder (e.g. `modules/finance/api.ts`, keys in `financeKeys`), with keys starting with the module key (e.g. `['finance', ...]`).
 - Pages handle `isPending` / `isError` with the shared `LoadingState` / `ErrorState` from `shared/ui/page.tsx`.
 
 ---
@@ -128,11 +133,13 @@ The brand palette from [ui-overview.md](ui-overview.md) (ink `#002421`, teal `#0
 The app will mostly be used on phones, so:
 
 - **Touch targets are at least 44 px** (`h-11` / `size-11` on buttons, icon buttons, inputs and the account icon; menu rows are 48 px).
-- **Native form controls** where possible, e.g. `<select>` for timezone and week start, so phones show their own pickers. Inputs use `text-base` (16 px) so iOS doesn't zoom on focus.
+- **Native form controls** where possible (`<select>`, `type="date"`, `inputMode="decimal"` for amounts), so phones show their own pickers. Avoid `type="month"`: desktop Safari doesn't support it and shows a free-text field, so use Month and Year selects instead. Shared `Field` (label + optional hint) and `inputClasses` in `shared/ui/field.tsx`; `Segmented` (`shared/ui/segmented.tsx`) for small either/or choices like Expense / Income.
+- **Forms open in a `Sheet`** (`shared/ui/sheet.tsx`, Radix Dialog): it slides up from the bottom on phones (max 90% of the screen height, safe-area padding) and is a centred dialog from `sm` up. Inputs use `text-base` (16 px) so iOS doesn't zoom on focus.
 - **Safe-area insets**: `viewport-fit=cover` in `index.html`, with `env(safe-area-inset-*)` padding on the top bar, drawer and page bottom for notched phones.
 - **Full-height drawer** for the module menu (`w-72`, at most 85% of the screen width).
-- **Sub-nav scrolls sideways** instead of wrapping.
+- **Sub-nav scrolls sideways** instead of wrapping. A tab is active when the URL **starts with** its path (prefix match, not exact), so Budgets stays highlighted on `/finance/budgets/<id>`.
 - `min-h-dvh` for the page frame (handles mobile browser chrome), and the tap highlight is turned off.
+- **Dates** a user picks or defaults to are calendar dates in the user's timezone: `todayIn(me.timezone)` (`shared/lib/dates.ts`), and API dates are formatted without timezone conversion (`formatShortDate`, `formatDateRange`).
 - Design at phone width first; wider screens get a centred `max-w-3xl` column and, on Home, a two-column card grid.
 
 ---

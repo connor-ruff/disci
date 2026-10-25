@@ -80,14 +80,416 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/finance/categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Categories */
+        get: operations["list_categories_finance_categories_get"];
+        put?: never;
+        /** Create Category */
+        post: operations["create_category_finance_categories_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/finance/categories/{category_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Category */
+        put: operations["update_category_finance_categories__category_id__put"];
+        post?: never;
+        /**
+         * Delete Category
+         * @description Items in the category become Uncategorized.
+         */
+        delete: operations["delete_category_finance_categories__category_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/finance/budgets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Budgets */
+        get: operations["list_budgets_finance_budgets_get"];
+        put?: never;
+        /** Create Budget */
+        post: operations["create_budget_finance_budgets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/finance/budgets/{budget_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Budget */
+        get: operations["get_budget_finance_budgets__budget_id__get"];
+        /** Update Budget */
+        put: operations["update_budget_finance_budgets__budget_id__put"];
+        post?: never;
+        /** Delete Budget */
+        delete: operations["delete_budget_finance_budgets__budget_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/finance/budgets/{budget_id}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Budget Item
+         * @description Returns the whole updated budget, since totals change too.
+         */
+        post: operations["create_budget_item_finance_budgets__budget_id__items_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/finance/items/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Budget Item */
+        put: operations["update_budget_item_finance_items__item_id__put"];
+        post?: never;
+        /**
+         * Delete Budget Item
+         * @description Its transactions stay, but no longer count toward this budget.
+         */
+        delete: operations["delete_budget_item_finance_items__item_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/finance/transactions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Transaction */
+        post: operations["create_transaction_finance_transactions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/finance/budgets/{budget_id}/transactions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Budget Transactions */
+        get: operations["list_budget_transactions_finance_budgets__budget_id__transactions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/finance/transactions/{transaction_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Transaction */
+        delete: operations["delete_transaction_finance_transactions__transaction_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AllocationIn */
+        AllocationIn: {
+            /**
+             * Budget Item Id
+             * Format: uuid
+             */
+            budget_item_id: string;
+            /** Amount */
+            amount: number | string;
+        };
+        /** BudgetCreate */
+        BudgetCreate: {
+            /**
+             * Period Type
+             * @enum {string}
+             */
+            period_type: "week" | "month" | "year";
+            /**
+             * Period Date
+             * Format: date
+             * @description Any date inside the period; the API snaps it to the period's start.
+             */
+            period_date: string;
+            /**
+             * Name
+             * @description Defaults to e.g. 'October 2026'.
+             */
+            name?: string | null;
+            /**
+             * Copy From Budget Id
+             * @description Start from this budget's items (same period type); transactions aren't copied.
+             */
+            copy_from_budget_id?: string | null;
+        };
+        /** BudgetDetail */
+        BudgetDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Period Type
+             * @enum {string}
+             */
+            period_type: "week" | "month" | "year";
+            /**
+             * Period Start
+             * Format: date
+             */
+            period_start: string;
+            /**
+             * Period End
+             * Format: date
+             */
+            period_end: string;
+            /** Notes */
+            notes: string | null;
+            /** Items */
+            items: components["schemas"]["BudgetItemOut"][];
+            income: components["schemas"]["KindTotals"];
+            expense: components["schemas"]["KindTotals"];
+        };
+        /** BudgetItemCreate */
+        BudgetItemCreate: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "expense" | "income";
+            /** Name */
+            name: string;
+            /** Category Id */
+            category_id?: string | null;
+            /** Planned Amount */
+            planned_amount: number | string;
+        };
+        /** BudgetItemOut */
+        BudgetItemOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "expense" | "income";
+            /** Name */
+            name: string;
+            /** Category Id */
+            category_id: string | null;
+            /** Category Name */
+            category_name: string | null;
+            /** Planned Amount */
+            planned_amount: string;
+            /**
+             * Actual Amount
+             * @description Net of allocated transactions: same kind adds, opposite kind subtracts.
+             */
+            actual_amount: string;
+            /** Sort Order */
+            sort_order: number;
+        };
+        /**
+         * BudgetItemUpdate
+         * @description All editable fields, sent in full. An item's kind can't change.
+         */
+        BudgetItemUpdate: {
+            /** Name */
+            name: string;
+            /** Category Id */
+            category_id?: string | null;
+            /** Planned Amount */
+            planned_amount: number | string;
+        };
+        /** BudgetOut */
+        BudgetOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Period Type
+             * @enum {string}
+             */
+            period_type: "week" | "month" | "year";
+            /**
+             * Period Start
+             * Format: date
+             */
+            period_start: string;
+            /**
+             * Period End
+             * Format: date
+             */
+            period_end: string;
+            /** Notes */
+            notes: string | null;
+        };
+        /**
+         * BudgetTransactionOut
+         * @description A transaction as it appears in one budget: the part allocated to one item.
+         */
+        BudgetTransactionOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "expense" | "income";
+            /** Amount */
+            amount: string;
+            /**
+             * Occurred On
+             * Format: date
+             */
+            occurred_on: string;
+            /** Payee */
+            payee: string | null;
+            /** Description */
+            description: string | null;
+            /**
+             * Budget Item Id
+             * Format: uuid
+             */
+            budget_item_id: string;
+            /** Budget Item Name */
+            budget_item_name: string;
+            /** Allocated Amount */
+            allocated_amount: string;
+        };
+        /** BudgetUpdate */
+        BudgetUpdate: {
+            /** Name */
+            name: string;
+            /** Notes */
+            notes?: string | null;
+        };
+        /** CategoryCreate */
+        CategoryCreate: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "expense" | "income";
+            /** Name */
+            name: string;
+        };
+        /** CategoryOut */
+        CategoryOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "expense" | "income";
+            /** Name */
+            name: string;
+            /** Color */
+            color: string | null;
+            /** Icon */
+            icon: string | null;
+            /** Sort Order */
+            sort_order: number;
+            /** Is Default */
+            is_default: boolean;
+        };
+        /** CategoryUpdate */
+        CategoryUpdate: {
+            /** Name */
+            name: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** KindTotals */
+        KindTotals: {
+            /** Planned */
+            planned: string;
+            /** Actual */
+            actual: string;
         };
         /** ModuleOut */
         ModuleOut: {
@@ -99,6 +501,54 @@ export interface components {
             description: string;
             /** Enabled */
             enabled: boolean;
+        };
+        /** TransactionCreate */
+        TransactionCreate: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "expense" | "income";
+            /** Amount */
+            amount: number | string;
+            /**
+             * Occurred On
+             * Format: date
+             */
+            occurred_on: string;
+            /** Payee */
+            payee?: string | null;
+            /** Description */
+            description?: string | null;
+            /**
+             * Allocations
+             * @description Budget items this counts toward. May be empty (shows as unassigned).
+             */
+            allocations?: components["schemas"]["AllocationIn"][];
+        };
+        /** TransactionOut */
+        TransactionOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "expense" | "income";
+            /** Amount */
+            amount: string;
+            /**
+             * Occurred On
+             * Format: date
+             */
+            occurred_on: string;
+            /** Payee */
+            payee: string | null;
+            /** Description */
+            description: string | null;
         };
         /** UserOut */
         UserOut: {
@@ -298,6 +748,465 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ModuleOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_categories_finance_categories_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoryOut"][];
+                };
+            };
+        };
+    };
+    create_category_finance_categories_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CategoryCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_category_finance_categories__category_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                category_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CategoryUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_category_finance_categories__category_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                category_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_budgets_finance_budgets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BudgetOut"][];
+                };
+            };
+        };
+    };
+    create_budget_finance_budgets_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BudgetCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BudgetOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_budget_finance_budgets__budget_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                budget_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BudgetDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_budget_finance_budgets__budget_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                budget_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BudgetUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BudgetOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_budget_finance_budgets__budget_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                budget_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_budget_item_finance_budgets__budget_id__items_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                budget_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BudgetItemCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BudgetDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_budget_item_finance_items__item_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BudgetItemUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BudgetDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_budget_item_finance_items__item_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BudgetDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_transaction_finance_transactions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TransactionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransactionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_budget_transactions_finance_budgets__budget_id__transactions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                budget_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BudgetTransactionOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_transaction_finance_transactions__transaction_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                transaction_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

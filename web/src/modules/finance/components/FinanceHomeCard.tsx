@@ -5,7 +5,7 @@ import { Card } from '@/shared/ui/card'
 
 export function FinanceHomeCard() {
   return (
-    <Link to="/finance" className="block rounded-2xl">
+    <Link to="/finance/budgets" className="block rounded-2xl">
       <Card className="flex items-center gap-4 transition hover:bg-highlight">
         <Wallet className="size-8 shrink-0 text-accent" />
         <div className="flex-1">

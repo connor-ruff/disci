@@ -6,6 +6,7 @@ import { useMe, useUpdateMe } from '@/shared/api/hooks'
 import { authMode, signOut } from '@/shared/auth/auth'
 import { Button } from '@/shared/ui/button'
 import { Card } from '@/shared/ui/card'
+import { Field, inputClasses } from '@/shared/ui/field'
 import { ErrorState, LoadingState, PageHeader } from '@/shared/ui/page'
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
@@ -113,28 +114,6 @@ function SettingsForm({ user }: { user: User }) {
         </div>
       </form>
     </Card>
-  )
-}
-
-const inputClasses =
-  'h-11 w-full rounded-lg border border-border bg-background px-3 text-base focus-visible:outline-2 focus-visible:outline-accent'
-
-function Field({
-  label,
-  htmlFor,
-  children,
-}: {
-  label: string
-  htmlFor?: string
-  children: React.ReactNode
-}) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <label htmlFor={htmlFor} className="text-sm font-medium">
-        {label}
-      </label>
-      {children}
-    </div>
   )
 }
 

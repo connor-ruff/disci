@@ -9,7 +9,9 @@ export const financeModule: ModuleManifest = {
   key: 'finance',
   icon: Wallet,
   route: financeRoute,
-  // Budgets, Transactions, Recurring and Categories tabs get added as those pages are built.
-  subNav: [],
+  subNav: [
+    { label: 'Budgets', to: '/finance/budgets' },
+    { label: 'Categories', to: '/finance/categories' },
+  ],
   HomeCard: FinanceHomeCard,
 }

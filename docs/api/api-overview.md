@@ -1,6 +1,6 @@
 # API Overview
 
-*Status: **skeleton implemented and deployed** to AWS Lambda behind API Gateway (https://molrqp0ch5.execute-api.us-east-2.amazonaws.com). Core endpoints (`/me`, `/me/modules`) work; the finance module is a stub with no endpoints yet. Cognito auth works in production. Deploying and operating it: [deployment.md](../ops/deployment.md).*
+*Status: **skeleton implemented and deployed** to AWS Lambda behind API Gateway (https://molrqp0ch5.execute-api.us-east-2.amazonaws.com). Core endpoints (`/me`, `/me/modules`) work, and so does the **first slice of the finance module** (categories, budgets, budget items, transactions; recurring transactions not yet). Cognito auth works in production. Deploying and operating it: [deployment.md](../ops/deployment.md).*
 
 The API is the only thing that talks to the database. The web app, the MCP server and the scheduled jobs all go through it (see [disci-infrastructure.md](../project_plans/disci-infrastructure.md)). It is **FastAPI** on Python 3.13, with plain SQL through **psycopg 3** (no ORM), managed with **uv**.
 
@@ -28,13 +28,19 @@ api/
 │   │   └── user_modules/          # GET /me/modules, PUT/DELETE /me/modules/{key}
 │   └── modules/
 │       ├── __init__.py            # MODULES registry
-│       └── finance/               # stub: `module` + empty router at /finance
+│       └── finance/               # mounted at /finance
+│           ├── __init__.py        # `module` + `setup` (seeds default expense categories on first enable)
+│           ├── router.py          # thin HTTP routes; maps constraint errors to 409/422
+│           ├── schemas.py         # Pydantic models (Money = Decimal, 2 places)
+│           ├── service.py         # period bounds, default budget names, allocation validation, totals
+│           └── queries/           # one .sql per query
 └── tests/                         # pytest, against the disci_test database
     ├── conftest.py
-    └── core/                      # test_users.py, test_user_modules.py, test_aws.py
+    ├── core/                      # test_users.py, test_user_modules.py, test_aws.py
+    └── modules/finance/           # test_finance.py
 ```
 
-A full module is expected to grow into `router.py` (thin HTTP routes), `schemas.py` (Pydantic models), `service.py` (business rules) and `queries/` (one `.sql` per query).
+A full module has `router.py` (thin HTTP routes), `schemas.py` (Pydantic models), `service.py` (business rules that don't belong in SQL) and `queries/` (one `.sql` per query); `finance/` is the reference example.
 
 ---
 
@@ -120,7 +126,36 @@ Interactive docs: http://localhost:8000/docs while `make api` is running.
 | GET | `/me/modules` | Every registered module (`key`, `name`, `description`, `enabled`). |
 | PUT | `/me/modules/{key}` | Enable a module. Idempotent. First enable runs the module's `setup`. Unknown key → 404. |
 | DELETE | `/me/modules/{key}` | Disable a module. Its data is kept and comes back on re-enable. Unknown key → 404. |
-| * | `/finance/...` | Finance module (no endpoints yet). |
+| * | `/finance/...` | Finance module, see §7.1. |
+
+### 7.1 Finance (`/finance`)
+
+Data model: [finance.md](../db/finance.md). **Money** is a `Decimal` with two places, serialized as a **string** (e.g. `"283.55"`); send it as a string or number.
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/finance/categories` | The user's categories (both kinds), ordered by kind, `sort_order`, name. |
+| POST | `/finance/categories` | Create `{kind, name}`. Duplicate name within a kind (case-insensitive) → **409**. |
+| PUT | `/finance/categories/{id}` | Rename `{name}`. Duplicate → 409. |
+| DELETE | `/finance/categories/{id}` | Soft-delete; its items become Uncategorized. 204. |
+| GET | `/finance/budgets` | Budget list (`BudgetOut`), newest period first. |
+| POST | `/finance/budgets` | Create `{period_type, period_date, name?}`. `period_date` is **any date in the period**; the API snaps it to the period start (weeks use the user's `week_starts_on`) and sets `period_end`. `name` defaults to "October 2026", "2026" or "Week of Oct 19, 2026". Optional `copy_from_budget_id` starts it from another budget's items (kind, category, name, planned amount, sort order, notes; items in a deleted category come across Uncategorized). Transactions and allocations are not copied. The source must be the user's own budget with the same `period_type`, else **422**. |
+| GET | `/finance/budgets/{id}` | `BudgetDetail`: the budget, its `items` (each with `planned_amount` and net `actual_amount`: same-kind allocated transactions add, opposite-kind subtract), and `income` / `expense` totals (`{planned, actual}`). |
+| PUT | `/finance/budgets/{id}` | Replace `{name, notes}`. The period can't change. |
+| DELETE | `/finance/budgets/{id}` | Soft-delete the budget and its items; their allocations are dropped (the transactions become unassigned). 204. |
+| POST | `/finance/budgets/{id}/items` | Add `{kind, name, category_id?, planned_amount}`. Returns the updated **`BudgetDetail`** (totals change too). |
+| PUT | `/finance/items/{id}` | Replace `{name, category_id, planned_amount}` (kind can't change). Returns `BudgetDetail`. |
+| DELETE | `/finance/items/{id}` | Soft-delete; its allocations are dropped. Returns `BudgetDetail`. |
+| POST | `/finance/transactions` | Log `{kind, amount, occurred_on, payee?, description?, allocations: [{budget_item_id, amount}]}`. An empty `allocations` list leaves it unassigned. Each item may appear once. |
+| GET | `/finance/budgets/{id}/transactions` | The budget's transactions, **one row per allocation** (`allocated_amount`, `budget_item_id`, `budget_item_name`), newest first. |
+| DELETE | `/finance/transactions/{id}` | Soft-delete; its allocations are dropped. 204. |
+
+**Errors:**
+- **404**: the budget, item, category or transaction doesn't exist, is deleted, or belongs to another user (RLS hides it, so it's indistinguishable from missing).
+- **409**: unique violation (duplicate category name within a kind).
+- **422**: request validation (Pydantic), plus: an item whose category doesn't exist or is of the other kind (the composite FK rejects it); a transaction allocated to an unknown or another user's item; a `copy_from_budget_id` that isn't the user's budget or has a different period type; allocations **within one budget** summing to more than the transaction's `amount` (across different budgets the same dollars may count again).
+
+Constraint violations are caught inside a savepoint (`_constraint_errors` in `router.py`), so the request's transaction stays usable and the client gets a 4xx instead of a 500.
 
 ---
 
@@ -135,7 +170,7 @@ Requires Docker (for Postgres) and **uv**.
 | `make api-test` | Rebuilds the `disci_test` database from the migrations, then runs `pytest`. |
 | `make api-lint` | `ruff check` and `ruff format --check`. |
 
-**Tests** run against `disci_test`, a separate database in the same local Postgres, so your dev data is untouched. Each test starts with empty tables (an autouse fixture truncates them as the owner). Use `as_user("<sub>")` from `tests/conftest.py` to send requests as a given dev user. Tests cover user creation, settings validation, per-user isolation, RLS (as `disci_api` with no `app.user_id`, no rows are visible), module enable/disable and the prod dev-auth guard.
+**Tests** run against `disci_test`, a separate database in the same local Postgres, so your dev data is untouched. Each test starts with empty tables (an autouse fixture truncates them as the owner). Use `as_user("<sub>")` from `tests/conftest.py` to send requests as a given dev user. **41 tests** in total. Core tests cover user creation, settings validation, per-user isolation, RLS (as `disci_api` with no `app.user_id`, no rows are visible), module enable/disable and the prod dev-auth guard. The **20 finance tests** (`tests/modules/finance/test_finance.py`) cover period bounds and default names, category seeding on enable, per-kind custom categories, uncategorizing on category delete, multiple budgets per period, Uncategorized items, the item/category kind check, opposite-kind netting, the per-budget allocation cap, counting the same dollars in two budgets, transaction delete, cross-user isolation, and copying a budget (items carried over without transactions, same period type required, no copying another user's budget).
 
 `tests/core/test_aws.py` exercises the production-only code paths locally:
 - **Cognito mode** builds requests the way Mangum does from an API Gateway event: verified ID-token claims → `Identity`; no claims, an access token (`token_use: access`) or a missing email → 401; the `X-Dev-User` header is ignored.

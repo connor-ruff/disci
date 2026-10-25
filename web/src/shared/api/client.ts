@@ -32,6 +32,16 @@ export class ApiError extends Error {
   }
 }
 
+/** A human-readable message for a failed request (the API's `detail` when it sent one). */
+export function errorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    const detail = (error.body as { detail?: unknown } | undefined)?.detail
+    if (typeof detail === 'string') return detail
+    if (error.status === 422) return 'Please check the values entered.'
+  }
+  return error instanceof Error ? error.message : 'Something went wrong.'
+}
+
 /** openapi-fetch returns { data, error }; TanStack Query wants a value or a thrown error. */
 export function unwrap<T>(result: { data?: T; error?: unknown; response: Response }): T {
   if (result.error !== undefined || result.data === undefined) {
