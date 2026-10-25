@@ -8,6 +8,8 @@ from uuid import UUID
 
 from app.modules.finance.schemas import AllocationIn, BudgetItemOut, KindTotals, PeriodType
 
+# Seeded when a user first enables Finance. (Also copied, frozen, into the one-time
+# backfill migration 20261025153025_finance__backfill_default_categories.sql.)
 DEFAULT_EXPENSE_CATEGORIES = [
     "Housing",
     "Insurance",

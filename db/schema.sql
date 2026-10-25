@@ -636,4 +636,5 @@ ALTER TABLE finance.transactions ENABLE ROW LEVEL SECURITY;
 
 INSERT INTO public.schema_migrations (version) VALUES
     ('20261025134012'),
-    ('20261025150312');
+    ('20261025150312'),
+    ('20261025153025');
