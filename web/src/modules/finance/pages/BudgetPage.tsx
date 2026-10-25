@@ -18,6 +18,7 @@ import {
   useDeleteBudget,
   useDeleteTransaction,
 } from '../api'
+import { ActiveBadge } from '../components/ActiveBadge'
 import { ItemSheet } from '../components/ItemSheet'
 import { TransactionSheet } from '../components/TransactionSheet'
 
@@ -36,7 +37,15 @@ export function BudgetPage() {
 
   return (
     <>
-      <PageHeader title={data.name} description={formatDateRange(data.period_start, data.period_end)} />
+      <PageHeader
+        title={data.name}
+        description={
+          <span className="flex items-center gap-2">
+            {formatDateRange(data.period_start, data.period_end)}
+            <ActiveBadge budget={data} />
+          </span>
+        }
+      />
 
       <div className="flex flex-col gap-4">
         <Summary budget={data} />

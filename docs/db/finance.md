@@ -87,6 +87,7 @@ A container for one period.
 
 - **No uniqueness on the period:** several budgets can cover the same month (e.g. a regular one and a vacation one).
 - `CHECK (period_end >= period_start)`.
+- **Effective date range:** `period_start`..`period_end`, inclusive. A budget is **active** when today, in the user's timezone (`core.users.timezone`), falls within it; computed in the web app (no column). Overlapping budgets (a monthly and a yearly one, or two for the same month) can all be active at once.
 - Unique `(id, user_id)`: target of `budget_items`' composite FK (§3.1).
 - The API derives `period_start` / `period_end` from `period_type` plus any date in the period (weeks use `core.users.week_starts_on`) and defaults `name` to "October 2026", "2026" or "Week of Oct 19, 2026".
 

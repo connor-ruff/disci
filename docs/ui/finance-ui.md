@@ -11,7 +11,7 @@ What the Finance screens look like and how they behave. The data model is in [fi
 | Route | Page | Notes |
 |---|---|---|
 | `/finance` | (redirect) | Goes straight to `/finance/budgets`. |
-| `/finance/budgets` | **Budgets** (`BudgetsPage`) | List of budgets, newest period first. Each card shows the name, "Monthly / Weekly / Yearly" and the date range, and opens the budget. A **New** button in the header. With no budgets: an empty-state card with "Create a budget". |
+| `/finance/budgets` | **Budgets** (`BudgetsPage`) | List of budgets, newest period first. Each card shows the name, an **Active** badge when today is in the budget's effective date range (§3.1), "Monthly / Weekly / Yearly" and the date range, and opens the budget. A **New** button in the header. With no budgets: an empty-state card with "Create a budget". |
 | `/finance/budgets/new` | **New budget** (`NewBudgetPage`) | See §4.1. On success, navigates to the new budget. |
 | `/finance/budgets/$budgetId` | **Budget** (`BudgetPage`) | See §2. |
 | `/finance/categories` | **Categories** (`CategoriesPage`) | See §5. |
@@ -28,7 +28,7 @@ Top to bottom, in the centred single column:
 
 ```
 October 2026
-Oct 1 – Oct 31, 2026
+Oct 1 – Oct 31, 2026  (● Active)
 ┌──────────────────────────────────────────────┐
 │  INCOME        SPENT          LEFT TO PLAN   │  ← summary card
 │  $4,320.00     $2,108.52      $1,470.00      │
@@ -55,7 +55,7 @@ Oct 1 – Oct 31, 2026
                                 [ + Log transaction ]  ← floating button
 ```
 
-- **Header:** the budget name and its date range.
+- **Header:** the budget name and its effective date range, followed by the **Active** badge when today falls inside it (§3.1).
 - **Summary card** (three columns): Income, Spent, Left to plan (§3).
 - **Income** and **Expenses** cards. Items are grouped under their **category** heading in the API's order (category sort order, then name); **Uncategorized** is always last. Each card ends with an "Add income" / "Add expense" button, and shows a short prompt when it has no items.
 - **Item rows** show the name, "**actual** of planned", and a progress bar of actual ÷ planned (capped at full; negative actuals show empty). For an **expense** item that is over plan, the actual amount and the bar turn **amber**. Income over plan is not flagged. Tapping a row opens the item sheet (§4.2).
@@ -76,6 +76,12 @@ Oct 1 – Oct 31, 2026
 | **Left to plan** | **Planned income − planned expenses.** How much income hasn't been given a job yet (zero-based budgeting). Uses planned amounts only, not actuals. Shown in amber when negative (more planned spending than planned income). |
 
 Transactions that aren't allocated to any item in this budget don't count toward any of these numbers.
+
+### 3.1 Effective date range and "Active"
+
+A budget's **effective date range** is `period_start`..`period_end`, **inclusive**: a month runs from the 1st to the last day, a week is 7 days from the user's week-start day (Settings), a year is Jan 1 to Dec 31. It's the date range shown under the budget's name.
+
+A budget is **active** when today, **in the user's timezone** (`core.users.timezone`, falling back to the browser's), falls inside that range. Active budgets get an **"Active" pill with a small teal dot** on the budgets list and in the budget page header; inactive ones show nothing. It's computed client-side (`useIsActive` in `components/ActiveBadge.tsx`, comparing ISO date strings); there's no API field for it. Overlapping budgets (a monthly and a yearly one, or two for the same month) can all be active at once.
 
 ---
 

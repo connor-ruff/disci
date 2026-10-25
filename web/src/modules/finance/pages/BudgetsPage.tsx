@@ -7,6 +7,7 @@ import { Card } from '@/shared/ui/card'
 import { ErrorState, LoadingState, PageHeader } from '@/shared/ui/page'
 
 import { useBudgets } from '../api'
+import { ActiveBadge } from '../components/ActiveBadge'
 
 const PERIOD_LABELS = { week: 'Weekly', month: 'Monthly', year: 'Yearly' } as const
 
@@ -48,8 +49,11 @@ export function BudgetsPage() {
             className="block rounded-2xl"
           >
             <Card className="flex items-center gap-3 transition hover:bg-highlight">
-              <div className="flex-1">
-                <h2 className="font-semibold">{budget.name}</h2>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <h2 className="truncate font-semibold">{budget.name}</h2>
+                  <ActiveBadge budget={budget} />
+                </div>
                 <p className="text-sm text-muted">
                   {PERIOD_LABELS[budget.period_type]} ·{' '}
                   {formatDateRange(budget.period_start, budget.period_end)}
