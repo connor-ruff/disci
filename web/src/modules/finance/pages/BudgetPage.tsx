@@ -291,25 +291,8 @@ function ItemRow({ item, onClick }: { item: BudgetItem; onClick: () => void }) {
       onClick={onClick}
       className="flex w-full flex-col gap-1.5 px-4 py-2.5 text-left transition hover:bg-highlight"
     >
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="flex min-w-0 items-center gap-2">
-          <span className="truncate font-medium">{item.name}</span>
-          {item.is_checklist_item && item.checklist_day && (
-            <span
-              className={cn(
-                'inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs',
-                item.checklist_done ? 'bg-highlight text-foreground' : 'bg-background text-muted',
-              )}
-            >
-              {item.checklist_done ? (
-                <CircleCheck className="size-3.5 text-accent" />
-              ) : (
-                <Clock className="size-3.5" />
-              )}
-              {item.checklist_done ? 'Done' : `Due ${ordinal(item.checklist_day)}`}
-            </span>
-          )}
-        </span>
+      <div className="flex w-full items-baseline justify-between gap-3">
+        <span className="min-w-0 truncate font-medium">{item.name}</span>
         <span className="shrink-0 text-sm text-muted">
           <span className={cn('font-semibold text-foreground', over && 'text-amber-700')}>
             {formatMoney(actual)}
@@ -317,14 +300,27 @@ function ItemRow({ item, onClick }: { item: BudgetItem; onClick: () => void }) {
           of {formatMoney(planned)}
         </span>
       </div>
-      <div className="h-1.5 overflow-hidden rounded-full bg-highlight">
+      {/* Explicit w-full: inside a <button>, Safari doesn't stretch an empty child. */}
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-border">
         <div
           className={cn('h-full rounded-full', over ? 'bg-amber-500' : 'bg-accent')}
           style={{ width: `${Math.min(ratio, 1) * 100}%` }}
         />
       </div>
-      {pending !== 0 && (
-        <span className="text-xs text-amber-700">{formatMoney(pending)} awaiting approval</span>
+      {(item.is_checklist_item || pending !== 0) && (
+        <span className="flex flex-wrap items-center gap-x-3 text-xs text-muted">
+          {item.is_checklist_item && item.checklist_day && (
+            <span className="inline-flex items-center gap-1">
+              {item.checklist_done ? (
+                <CircleCheck className="size-3 text-accent" />
+              ) : (
+                <Clock className="size-3" />
+              )}
+              {item.checklist_done ? 'Checklist done' : `Due ${ordinal(item.checklist_day)}`}
+            </span>
+          )}
+          {pending !== 0 && <span className="text-amber-700">{formatMoney(pending)} awaiting approval</span>}
+        </span>
       )}
     </button>
   )

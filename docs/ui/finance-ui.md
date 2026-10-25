@@ -51,11 +51,16 @@ Oct 1 – Oct 31, 2026  (● Active)
 └──────────────────────────────────────────────┘
 ┌ Expenses ────────────────────────────────────┐
 │ HOUSING                                      │
-│ Rent  (🕒 Due 1st)       $0.00 of $1,800     │  ← checklist chip
+│ Rent                     $0.00 of $1,800     │
+│ (empty bar)                                  │
+│ 🕒 Due 1st                                   │  ← checklist indicator (under the bar)
 │ UTILITIES                                    │
-│ Electric  (✓ Done)      $96.10 of $110       │
+│ Electric                $96.10 of $110       │
+│ █████████████████████████████████████        │
+│ ✓ Checklist done                             │
 │ Internet                 $0.00 of $70        │
-│ $70.00 awaiting approval                     │  ← pending amount
+│ (empty bar)                                  │
+│ 🕒 Due 15th   $70.00 awaiting approval       │  ← same line as pending amount
 │ [ + Add expense ]                            │
 └──────────────────────────────────────────────┘
 ┌ Transactions ────────────────────────────────┐
@@ -71,8 +76,10 @@ Oct 1 – Oct 31, 2026  (● Active)
 - **Summary card** (three columns): Income, Spent, Budget surplus / deficit (§3).
 - **Income** and **Expenses** cards. Items are grouped under their **category** heading in the API's order (the user's category order, then item order within each category); **Uncategorized** is always last. Each card ends with an "Add income" / "Add expense" button, and shows a short prompt when it has no items.
 - **Item rows** show the name, "**actual** of planned", and a progress bar of actual ÷ planned (capped at full; negative actuals show empty). For an **expense** item that is over plan, the actual amount and the bar turn **amber**. Income over plan is not flagged. Tapping a row opens the item sheet (§4.2).
-  - **Checklist chip** on checklist items: "Due 5th" (clock icon, muted) until it's satisfied, then "Done" (teal check).
-  - **"$X awaiting approval"** (amber, under the bar) when pending transactions are allocated to the item. They don't count in the actual yet.
+  - The name gets the full row width (it truncates only if it would collide with the amount), so long item names aren't cut off by the checklist indicator.
+  - A small muted line **under the progress bar** (`text-xs`) holds two optional notes side by side, wrapping if needed:
+    - **Checklist indicator** on checklist items: "Due 5th" (clock icon) until it's satisfied, then "Checklist done" (teal check).
+    - **"$X awaiting approval"** (amber) when pending transactions are allocated to the item. They don't count in the actual yet.
 - **Transactions card:** this budget's transactions, newest first, **one row per allocation** (a transaction split over two items in this budget would appear twice). Each row shows the payee (or the item name when there's no payee), the item, date and notes, and the **allocated** amount with `+` for income (teal) or `−` for expense. Pending transactions get a **Pending** tag and a muted amount. A trash button deletes the transaction after a confirm (it's removed from every budget).
 - **Delete budget** (red, at the bottom): confirms, soft-deletes the budget and its items, and returns to the list. Its transactions are kept but become unassigned.
 - **"Log transaction"** is a floating pill button fixed at the bottom-right (above the safe-area inset), within thumb reach on phones. It opens the transaction sheet with no item preselected.
