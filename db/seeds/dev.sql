@@ -4,7 +4,7 @@
 -- A stand-in user for working on the API before Cognito login is wired up.
 -- Signing in through Cognito creates your real user row separately.
 INSERT INTO core.users (cognito_sub, email, display_name, timezone)
-VALUES ('local-dev-user', 'dev@disci.local', 'Local Dev', 'America/Chicago')
+VALUES ('local-dev-user', 'local-dev-user@disci.local', 'Local Dev', 'America/Chicago')
 ON CONFLICT (cognito_sub) WHERE deleted_at IS NULL DO NOTHING;
 
 INSERT INTO core.user_modules (user_id, module_key)

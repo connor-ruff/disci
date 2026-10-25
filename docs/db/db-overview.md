@@ -69,7 +69,7 @@ These come straight from the design principles in `docs/project_plans/project-in
 - **Derived numbers aren't stored as the only record.** Totals (budget actuals, daily macros, task completion counts) are computed by queries or views from the raw rows.
 
 ### Row-level security & privileges
-- The API connects as (a login user that is a member of) the role **`disci_app`**. It is **not** the table owner, so RLS applies to it. Migrations run as the owner.
+- The API connects as (a login user that is a member of) the role **`disci_app`**; locally that login is `disci_api` (`db/local/roles.sql`). It is **not** the table owner, so RLS applies to it. Migrations run as the owner.
 - At the start of each transaction the API runs `SET LOCAL app.user_id = '<uuid>'`. **`core.current_user_id()`** reads that setting and returns NULL when it's unset, so a request that forgot to set it sees no rows.
 - Every user-owned table runs `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` and gets a policy of the form:
   ```sql

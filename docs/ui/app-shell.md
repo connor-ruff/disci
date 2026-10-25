@@ -51,8 +51,8 @@ The **shell** is the frame around every page: the top bar, the module menu, and 
 | Route | Page |
 |---|---|
 | `/` | **Home.** One summary card per enabled module (e.g. Finance: this month's budget vs. actual). With **no modules enabled**, it shows a welcome state with a button to turn one on. |
-| `/modules` | **Manage modules.** A card per available module with a short description and an on/off toggle. Turning one on for the first time runs its setup (e.g. seeding default budget categories). |
-| `/settings` | User settings (display name, timezone, week start). |
+| `/modules` | **Manage modules.** A card per available module with a short description and an on/off toggle. Turning one on for the first time runs its setup (e.g. seeding default budget categories). API: `GET /me/modules`, `PUT /me/modules/{key}` (on), `DELETE /me/modules/{key}` (off). |
+| `/settings` | User settings (display name, timezone, week start). API: `GET /me`, `PUT /me`. |
 | `/<module>/...` | Everything else belongs to a module, e.g. `/finance/budgets/:id`. |
 
 Visiting a disabled module's URL directly shows a "this module is off, turn it on?" prompt rather than an error.
@@ -71,7 +71,7 @@ Each module folder (`web/src/modules/<module>/`) exports a **manifest** that the
 | `subNav` | Budgets, Transactions, Recurring, Categories | Module sub-nav |
 | `homeCard` | Budget vs. actual summary | Home page |
 
-A **module registry** (`web/src/app/modules.ts`) lists all manifests. The shell shows the registry entries that the current user has enabled (fetched from the API). Adding a module means writing its folder and adding one line to the registry.
+A **module registry** (`web/src/app/modules.ts`) lists all manifests. The shell shows the registry entries that the current user has enabled (fetched from `GET /me/modules`; the API has a matching registry, see [api-overview.md](../api/api-overview.md)). Adding a module means writing its folder and adding one line to the registry.
 
 ---
 

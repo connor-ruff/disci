@@ -42,6 +42,7 @@ Which modules a user has turned on. Modules are opt-in so new users aren't overw
 - Unique `(user_id, module_key)`: one row per user per module, flipped on and off rather than re-inserted.
 - **First enable runs the module's setup** in the same transaction (e.g. finance copies the default budget categories into `finance.budget_categories`). Setup runs only when the row is first created, never on re-enable.
 - **Turning a module off hides it; it doesn't delete anything.** Its data is untouched and reappears when it's turned back on.
+- **API**: `GET /me/modules` lists modules with an `enabled` flag, `PUT /me/modules/{key}` enables (runs setup on first enable), `DELETE /me/modules/{key}` disables. The registry is `MODULES` in `api/app/modules/__init__.py`.
 - **v1 gating is UI-only**: disabled modules are hidden from navigation and the dashboard, but the API doesn't refuse their requests. This may be revisited so that MCP/Claude also respects it.
 
 ### Likely future additions
@@ -57,6 +58,6 @@ Which modules a user has turned on. Modules are opt-in so new users aren't overw
 | `core.current_user_id()` | `uuid` | The user the current request acts as, read from the `app.user_id` setting (which the API sets with `SET LOCAL` per transaction). NULL when unset, so RLS policies match nothing. Used by every RLS policy. |
 | `core.set_updated_at()` | `trigger` | Sets `updated_at = now()`. Attached to every table as a `BEFORE UPDATE` trigger. |
 
-Typical request flow: verify the JWT, call `core.ensure_user(sub, email)` to get the user id, then `SET LOCAL app.user_id = '<id>'` and run the request's queries.
+Request flow (implemented in `api/app/core/db.py`, see [api-overview.md](../api/api-overview.md)): verify the identity, call `core.ensure_user(sub, email)` to get the user id, then `set_config('app.user_id', '<id>', true)` (the bound-parameter form of `SET LOCAL`) and run the request's queries, all in one transaction.
 
-**Local dev seed:** `db/seeds/dev.sql` creates a stand-in user (`cognito_sub = 'local-dev-user'`, `dev@disci.local`, `America/Chicago`) with the finance module enabled, for working on the API before Cognito login is wired up.
+**Local dev seed:** `db/seeds/dev.sql` creates a stand-in user (`cognito_sub = 'local-dev-user'`, `local-dev-user@disci.local`, `America/Chicago`) with the finance module enabled, for working on the API before Cognito login is wired up. It is the user the API acts as in dev auth mode when no `X-Dev-User` header is sent.

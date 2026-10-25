@@ -8,6 +8,8 @@ docs/
 ├── project_plans/                 # Initial planning / architecture docs
 │   ├── disci-infrastructure.md
 │   └── project-inspiration.md
+├── api/                           # Back-end API docs (FastAPI, api/ folder)
+│   └── api-overview.md            # Start here: layout, settings, auth, request flow, modules, endpoints
 ├── db/                            # Postgres data model docs (one file per module)
 │   ├── db-overview.md             # Start here: modules, conventions, open questions
 │   ├── shared.md                  # core schema: users, user_modules, helper functions
@@ -22,6 +24,10 @@ docs/
 ## project_plans 
 
 Contains initial planning / architecture docs.
+
+## api
+
+Contains documentation about the back-end API (`api/`). Start with `api/api-overview.md`, which covers the code layout, settings and auth modes, the per-request transaction, SQL conventions, how to add a module, the current endpoints and how to run and test it locally.
 
 ## db
 
