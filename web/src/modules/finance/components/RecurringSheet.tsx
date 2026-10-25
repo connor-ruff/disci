@@ -16,6 +16,7 @@ import {
   type RecurringIn,
   useCategories,
   useDeleteRecurring,
+  useItemNameSuggestions,
   useSaveRecurring,
 } from '../api'
 import { ordinal } from './ItemSheet'
@@ -57,12 +58,12 @@ function RecurringForm({ rule, onDone }: { rule?: Recurring; onDone: () => void 
   const [endsOn, setEndsOn] = useState(rule?.ends_on ?? '')
   const [autoApply, setAutoApply] = useState(rule?.auto_apply ?? true)
   const [requiresApproval, setRequiresApproval] = useState(rule?.requires_approval ?? false)
-  const [satisfiesChecklist, setSatisfiesChecklist] = useState(rule?.satisfies_checklist ?? false)
   const [payee, setPayee] = useState(rule?.payee ?? '')
   const [notes, setNotes] = useState(rule?.notes ?? '')
   const [paused, setPaused] = useState(rule?.paused ?? false)
   const [invalid, setInvalid] = useState<string | null>(null)
 
+  const suggestions = useItemNameSuggestions(kind, today)
   const repeatsFromStart = frequency === 'quarterly' || frequency === 'yearly'
 
   function onSubmit(event: FormEvent) {
@@ -87,7 +88,6 @@ function RecurringForm({ rule, onDone }: { rule?: Recurring; onDone: () => void 
         ends_on: endsOn || null,
         auto_apply: autoApply,
         requires_approval: requiresApproval,
-        satisfies_checklist: satisfiesChecklist,
         payee: payee.trim() || null,
         notes: notes.trim() || null,
         paused,
@@ -121,6 +121,8 @@ function RecurringForm({ rule, onDone }: { rule?: Recurring; onDone: () => void 
       <Field label="Name" htmlFor="rec-name" hint="Counts toward the budget item with this name.">
         <input
           id="rec-name"
+          list="rec-name-suggestions"
+          autoComplete="off"
           required
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -128,6 +130,12 @@ function RecurringForm({ rule, onDone }: { rule?: Recurring; onDone: () => void 
           placeholder={kind === 'income' ? 'e.g. Paycheck' : 'e.g. Netflix'}
           className={inputClasses}
         />
+        {/* Suggests existing item names so the rule matches them exactly. */}
+        <datalist id="rec-name-suggestions">
+          {suggestions.map((n) => (
+            <option key={n} value={n} />
+          ))}
+        </datalist>
       </Field>
 
       <div className="grid grid-cols-2 gap-3">
@@ -249,13 +257,6 @@ function RecurringForm({ rule, onDone }: { rule?: Recurring; onDone: () => void 
           onChange={setRequiresApproval}
           label="Requires approval"
           hint="Waits in the Inbox until you approve it (and can adjust the amount). Otherwise it's logged right away."
-        />
-        <Checkbox
-          id="rec-checklist"
-          checked={satisfiesChecklist}
-          onChange={setSatisfiesChecklist}
-          label="Satisfies the checklist"
-          hint="Ticks off the matching checklist item when it's logged, e.g. for autopay bills."
         />
         {rule && (
           <Checkbox id="rec-paused" checked={paused} onChange={setPaused} label="Paused" hint="Creates nothing while paused." />

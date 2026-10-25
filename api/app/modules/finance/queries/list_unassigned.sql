@@ -1,6 +1,6 @@
 -- Confirmed transactions that don't count toward any budget item yet.
 SELECT t.id, t.kind, t.amount, t.occurred_on, t.payee, t.description, t.notes, t.status,
-       t.satisfies_checklist, t.recurring_transaction_id, r.name AS recurring_name
+       t.recurring_transaction_id, r.name AS recurring_name
 FROM finance.transactions t
 LEFT JOIN finance.recurring_transactions r ON r.id = t.recurring_transaction_id
 WHERE t.status = 'confirmed' AND t.deleted_at IS NULL

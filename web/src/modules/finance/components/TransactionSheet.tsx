@@ -4,9 +4,8 @@ import { type FormEvent, useState } from 'react'
 import { errorMessage } from '@/shared/api/client'
 import { useMe } from '@/shared/api/hooks'
 import { formatDateRange, formatShortDate, todayIn } from '@/shared/lib/dates'
-import { parseMoneyInput } from '@/shared/lib/money'
+import { formatMoney, parseMoneyInput } from '@/shared/lib/money'
 import { Button } from '@/shared/ui/button'
-import { Checkbox } from '@/shared/ui/checkbox'
 import { Field, inputClasses } from '@/shared/ui/field'
 import { Segmented } from '@/shared/ui/segmented'
 import { Sheet } from '@/shared/ui/sheet'
@@ -64,14 +63,15 @@ function TransactionForm({
   const today = todayIn(me.data?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone)
 
   const [kind, setKind] = useState<Kind>(defaultItem?.kind ?? 'expense')
-  const paysChecklist = !!defaultItem?.is_checklist_item && !defaultItem.checklist_done
-  const [amount, setAmount] = useState(paysChecklist ? String(Number(defaultItem.planned_amount)) : '')
+  // Paying an open checklist item: start from what's left to reach its plan.
+  const remaining = defaultItem?.is_checklist_item && !defaultItem.checklist_done
+    ? Number(defaultItem.planned_amount) - Number(defaultItem.actual_amount)
+    : 0
+  const [amount, setAmount] = useState(remaining > 0 ? remaining.toFixed(2) : '')
   const [occurredOn, setOccurredOn] = useState(today)
   const [itemId, setItemId] = useState(defaultItem?.id ?? '')
   const [payee, setPayee] = useState('')
   const [notes, setNotes] = useState('')
-  // Logging against an open checklist item usually means paying it.
-  const [satisfies, setSatisfies] = useState(paysChecklist)
   const [invalid, setInvalid] = useState<string | null>(null)
 
   const item = items.find((i) => i.id === itemId)
@@ -90,7 +90,6 @@ function TransactionForm({
         occurred_on: occurredOn,
         payee: payee.trim() || null,
         notes: notes.trim() || null,
-        satisfies_checklist: !!item?.is_checklist_item && satisfies,
         allocations: itemId ? [{ budget_item_id: itemId, amount: value }] : [],
       },
       { onSuccess: onDone },
@@ -116,8 +115,10 @@ function TransactionForm({
             <ListChecks className="size-5 shrink-0 text-accent" />
             <span>
               Checklist item <span className="font-semibold">{item.name}</span>, due the{' '}
-              {ordinal(item.checklist_day)} ({formatShortDate(dueOn(budget, item.checklist_day))})
-              {item.checklist_done && ' · already done'}
+              {ordinal(item.checklist_day)} ({formatShortDate(dueOn(budget, item.checklist_day))}).{' '}
+              {item.checklist_done
+                ? 'Already done.'
+                : `Paid ${formatMoney(item.actual_amount)} of ${formatMoney(item.planned_amount)}; done once it reaches the plan.`}
             </span>
           </div>
         )}
@@ -206,16 +207,6 @@ function TransactionForm({
           className={inputClasses + ' h-auto py-2'}
         />
       </Field>
-
-      {item?.is_checklist_item && (
-        <Checkbox
-          id="txn-satisfies"
-          checked={satisfies}
-          onChange={setSatisfies}
-          label="Satisfies the checklist"
-          hint={`Ticks off ${item.name} on this month's checklist.`}
-        />
-      )}
 
       {(invalid || create.isError) && (
         <p className="text-sm text-red-700">{invalid ?? errorMessage(create.error)}</p>

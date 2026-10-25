@@ -100,7 +100,6 @@ def generate_for_user(
                     "notes": rule["notes"],
                     "status": "pending" if rule["requires_approval"] else "confirmed",
                     "recurring_id": rule["id"],
-                    "satisfies_checklist": rule["satisfies_checklist"],
                 },
             ).fetchone()
             if row is None:

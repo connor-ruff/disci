@@ -90,7 +90,9 @@ class BudgetItemOut(BaseModel):
     pending_amount: Money = Field(description="The same, for transactions awaiting approval.")
     is_checklist_item: bool
     checklist_day: int | None
-    checklist_done: bool
+    checklist_done: bool = Field(
+        description="Checklist items only: confirmed actual has reached the planned amount."
+    )
     sort_order: int
 
 
@@ -153,9 +155,6 @@ class TransactionCreate(BaseModel):
     payee: str | None = Field(default=None, max_length=200)
     description: str | None = Field(default=None, max_length=500)
     notes: LongText | None = None
-    satisfies_checklist: bool = Field(
-        default=False, description="Ticks off the checklist item(s) it's allocated to."
-    )
     allocations: list[AllocationIn] = Field(
         default_factory=list,
         description="Budget items this counts toward. May be empty (shows as unassigned).",
@@ -185,7 +184,6 @@ class TransactionOut(BaseModel):
     description: str | None
     notes: str | None
     status: TransactionStatus
-    satisfies_checklist: bool
     recurring_transaction_id: UUID | None
 
 
@@ -228,7 +226,6 @@ class RecurringIn(BaseModel):
         default=False, description="Count it in every budget whose period includes the date."
     )
     requires_approval: bool = False
-    satisfies_checklist: bool = False
     paused: bool = False
 
     @model_validator(mode="after")
@@ -261,5 +258,7 @@ class ChecklistItemOut(BaseModel):
     kind: Kind
     checklist_day: int
     planned_amount: Money
+    actual_amount: Money = Field(description="Confirmed net actual so far this month.")
     due_on: date
-    done_on: date | None
+    done: bool = Field(description="The actual has reached the planned amount.")
+    last_payment_on: date | None

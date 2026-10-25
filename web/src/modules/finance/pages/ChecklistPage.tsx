@@ -18,7 +18,7 @@ export function ChecklistPage() {
   const [paying, setPaying] = useState<ChecklistItem | null>(null)
 
   const items = checklist.data ?? []
-  const done = items.filter((i) => i.done_on).length
+  const done = items.filter((i) => i.done).length
   // Usually one monthly budget; if several cover this month, label rows with theirs.
   const multipleBudgets = new Set(items.map((i) => i.budget_id)).size > 1
 
@@ -49,28 +49,30 @@ export function ChecklistPage() {
         <Card className="p-0">
           <ul className="divide-y divide-border">
             {items.map((item) => {
-              const overdue = !item.done_on && item.due_on < today
+              const overdue = !item.done && item.due_on < today
               return (
                 <li key={item.item_id}>
                   <button
                     type="button"
-                    disabled={!!item.done_on}
+                    disabled={item.done}
                     onClick={() => setPaying(item)}
                     className="flex w-full items-center gap-3 px-4 py-3 text-left transition enabled:hover:bg-highlight"
                   >
-                    {item.done_on ? (
+                    {item.done ? (
                       <CircleCheck className="size-6 shrink-0 text-accent" />
                     ) : (
                       <CircleDashed className={cn('size-6 shrink-0 text-muted', overdue && 'text-amber-600')} />
                     )}
                     <div className="min-w-0 flex-1">
-                      <p className={cn('truncate font-medium', item.done_on && 'text-muted line-through')}>
+                      <p className={cn('truncate font-medium', item.done && 'text-muted line-through')}>
                         {item.item_name}
                       </p>
                       <p className={cn('text-sm text-muted', overdue && 'text-amber-700')}>
-                        {item.done_on
-                          ? `Done ${formatShortDate(item.done_on)}`
+                        {item.done
+                          ? `Done${item.last_payment_on ? ` ${formatShortDate(item.last_payment_on)}` : ''}`
                           : `${overdue ? 'Overdue · was due' : 'Due'} ${formatShortDate(item.due_on)}`}
+                        {!item.done && Number(item.actual_amount) !== 0 &&
+                          ` · paid ${formatMoney(item.actual_amount)} so far`}
                         {multipleBudgets && ` · ${item.budget_name}`}
                       </p>
                     </div>

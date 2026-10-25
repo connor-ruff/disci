@@ -558,7 +558,10 @@ export interface components {
             is_checklist_item: boolean;
             /** Checklist Day */
             checklist_day: number | null;
-            /** Checklist Done */
+            /**
+             * Checklist Done
+             * @description Checklist items only: confirmed actual has reached the planned amount.
+             */
             checklist_done: boolean;
             /** Sort Order */
             sort_order: number;
@@ -642,8 +645,6 @@ export interface components {
              * @enum {string}
              */
             status: "pending" | "confirmed";
-            /** Satisfies Checklist */
-            satisfies_checklist: boolean;
             /** Recurring Transaction Id */
             recurring_transaction_id: string | null;
             /**
@@ -749,12 +750,22 @@ export interface components {
             /** Planned Amount */
             planned_amount: string;
             /**
+             * Actual Amount
+             * @description Confirmed net actual so far this month.
+             */
+            actual_amount: string;
+            /**
              * Due On
              * Format: date
              */
             due_on: string;
-            /** Done On */
-            done_on: string | null;
+            /**
+             * Done
+             * @description The actual has reached the planned amount.
+             */
+            done: boolean;
+            /** Last Payment On */
+            last_payment_on: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -804,8 +815,6 @@ export interface components {
              * @enum {string}
              */
             status: "pending" | "confirmed";
-            /** Satisfies Checklist */
-            satisfies_checklist: boolean;
             /** Recurring Transaction Id */
             recurring_transaction_id: string | null;
             /** Recurring Name */
@@ -892,11 +901,6 @@ export interface components {
              */
             requires_approval: boolean;
             /**
-             * Satisfies Checklist
-             * @default false
-             */
-            satisfies_checklist: boolean;
-            /**
              * Paused
              * @default false
              */
@@ -957,11 +961,6 @@ export interface components {
              */
             requires_approval: boolean;
             /**
-             * Satisfies Checklist
-             * @default false
-             */
-            satisfies_checklist: boolean;
-            /**
              * Paused
              * @default false
              */
@@ -996,12 +995,6 @@ export interface components {
             description?: string | null;
             /** Notes */
             notes?: string | null;
-            /**
-             * Satisfies Checklist
-             * @description Ticks off the checklist item(s) it's allocated to.
-             * @default false
-             */
-            satisfies_checklist: boolean;
             /**
              * Allocations
              * @description Budget items this counts toward. May be empty (shows as unassigned).
@@ -1038,8 +1031,6 @@ export interface components {
              * @enum {string}
              */
             status: "pending" | "confirmed";
-            /** Satisfies Checklist */
-            satisfies_checklist: boolean;
             /** Recurring Transaction Id */
             recurring_transaction_id: string | null;
         };

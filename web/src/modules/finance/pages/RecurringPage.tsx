@@ -59,7 +59,6 @@ export function RecurringPage() {
                 {rule.category_name && <Chip>{rule.category_name}</Chip>}
                 <Chip>{rule.auto_apply ? 'Applies to budgets' : 'Goes to Inbox'}</Chip>
                 {rule.requires_approval && <Chip>Needs approval</Chip>}
-                {rule.satisfies_checklist && <Chip>Ticks checklist</Chip>}
               </div>
             </Card>
           </button>

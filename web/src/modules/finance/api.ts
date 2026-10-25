@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api, unwrap } from '@/shared/api/client'
 import type { components } from '@/shared/api/schema'
@@ -345,4 +345,29 @@ export function useChecklist() {
     queryKey: financeKeys.checklist,
     queryFn: async () => unwrap(await api.GET('/finance/checklist')),
   })
+}
+
+// --- Name suggestions ----------------------------------------------------------------------
+
+/**
+ * Item names of one kind from the monthly budget(s) covering `today`, or, if none does,
+ * from the most recent monthly budget. Used to suggest names for recurring rules so they
+ * match existing items exactly.
+ */
+export function useItemNameSuggestions(kind: Kind, today: string): string[] {
+  const budgets = useBudgets()
+  const monthly = (budgets.data ?? []).filter((b) => b.period_type === 'month')
+  const active = monthly.filter((b) => b.period_start <= today && today <= b.period_end)
+  // The list is newest first, so monthly[0] is the most recent.
+  const sources = active.length > 0 ? active : monthly.slice(0, 1)
+
+  const details = useQueries({
+    queries: sources.map((b) => ({
+      queryKey: financeKeys.budget(b.id),
+      queryFn: async () =>
+        unwrap(await api.GET('/finance/budgets/{budget_id}', { params: { path: { budget_id: b.id } } })),
+    })),
+  })
+  const names = details.flatMap((d) => (d.data?.items ?? []).filter((i) => i.kind === kind).map((i) => i.name))
+  return [...new Set(names)].sort((a, b) => a.localeCompare(b))
 }

@@ -281,7 +281,51 @@ def test_job_runs_for_every_user(client: TestClient, finance_on) -> None:
 # --- Checklist ---------------------------------------------------------------------------
 
 
-def test_checklist(client: TestClient, finance_on) -> None:
+def pay(client: TestClient, item_id: str, amount: str, kind: str = "expense") -> None:
+    resp = client.post(
+        "/finance/transactions",
+        json={
+            "kind": kind,
+            "amount": amount,
+            "occurred_on": date.today().isoformat(),
+            "allocations": [{"budget_item_id": item_id, "amount": amount}],
+        },
+        headers=ALICE,
+    )
+    assert resp.status_code == 201, resp.text
+
+
+def test_checklist_is_done_when_actual_reaches_plan(client: TestClient, finance_on) -> None:
+    current = new_budget(client, period_date=date.today().isoformat())
+    rent = add_item(
+        client,
+        current["id"],
+        kind="expense",
+        name="Rent",
+        planned_amount="1650",
+        is_checklist_item=True,
+        checklist_day=1,
+    )
+    add_item(client, current["id"], kind="expense", name="Fun", planned_amount="100")
+
+    def rent_entry() -> dict:
+        (entry,) = client.get("/finance/checklist", headers=ALICE).json()
+        return entry
+
+    entry = rent_entry()
+    assert (entry["item_name"], entry["done"], entry["actual_amount"]) == ("Rent", False, "0.00")
+    assert entry["due_on"] == current["period_start"]  # due on the 1st
+
+    pay(client, rent["id"], "800.00")  # partial: strict, so not done yet
+    assert (rent_entry()["done"], rent_entry()["actual_amount"]) == (False, "800.00")
+
+    pay(client, rent["id"], "850.00")  # reaches the plan
+    entry = rent_entry()
+    assert (entry["done"], entry["last_payment_on"]) == (True, date.today().isoformat())
+    assert item_named(budget(client, current["id"]), "Rent")["checklist_done"] is True
+
+
+def test_checklist_ignores_pending_and_nets_credits(client: TestClient, finance_on) -> None:
     current = new_budget(client, period_date=date.today().isoformat())
     bill = add_item(
         client,
@@ -292,30 +336,25 @@ def test_checklist(client: TestClient, finance_on) -> None:
         is_checklist_item=True,
         checklist_day=5,
     )
-    add_item(client, current["id"], kind="expense", name="Fun", planned_amount="100")
+    pay(client, bill["id"], "60.00")
+    pay(client, bill["id"], "10.00", kind="income")  # a refund drops it below plan
+    assert client.get("/finance/checklist", headers=ALICE).json()[0]["done"] is False
 
-    checklist = client.get("/finance/checklist", headers=ALICE).json()
-    assert [(c["item_name"], c["checklist_day"], c["done_on"]) for c in checklist] == [
-        ("Phone", 5, None)
-    ]
-    assert checklist[0]["due_on"] == current["period_start"][:8] + "05"
 
-    client.post(
-        "/finance/transactions",
-        json={
-            "kind": "expense",
-            "amount": "60",
-            "occurred_on": date.today().isoformat(),
-            "satisfies_checklist": True,
-            "allocations": [{"budget_item_id": bill["id"], "amount": "60"}],
-        },
-        headers=ALICE,
+def test_zero_planned_checklist_item_needs_something_logged(client: TestClient, finance_on) -> None:
+    current = new_budget(client, period_date=date.today().isoformat())
+    item = add_item(
+        client,
+        current["id"],
+        kind="expense",
+        name="Check mail",
+        planned_amount="0",
+        is_checklist_item=True,
+        checklist_day=2,
     )
-    assert (
-        client.get("/finance/checklist", headers=ALICE).json()[0]["done_on"]
-        == date.today().isoformat()
-    )
-    assert item_named(budget(client, current["id"]), "Phone")["checklist_done"] is True
+    assert client.get("/finance/checklist", headers=ALICE).json()[0]["done"] is False
+    pay(client, item["id"], "1.00")
+    assert client.get("/finance/checklist", headers=ALICE).json()[0]["done"] is True
 
 
 def test_checklist_items_only_in_monthly_budgets(client: TestClient, finance_on) -> None:
@@ -334,7 +373,7 @@ def test_checklist_items_only_in_monthly_budgets(client: TestClient, finance_on)
     assert resp.status_code == 422
 
 
-def test_rule_can_tick_the_checklist(client: TestClient, finance_on) -> None:
+def test_recurring_payment_meeting_plan_ticks_checklist(client: TestClient, finance_on) -> None:
     october = new_budget(client)
     add_item(
         client,
@@ -351,7 +390,6 @@ def test_rule_can_tick_the_checklist(client: TestClient, finance_on) -> None:
         amount="70.00",
         day_of_month=8,
         auto_apply=True,
-        satisfies_checklist=True,
     )
     backdate(rule, starts_on="2026-10-01", created_on="2026-10-01")
     generate(client, "2026-10-09")
