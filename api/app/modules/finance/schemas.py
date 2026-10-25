@@ -163,6 +163,13 @@ class TransactionCreate(BaseModel):
     _check_allocations = field_validator("allocations")(_one_allocation_per_item)
 
 
+class TransactionUpdate(TransactionCreate):
+    """All editable fields, sent in full; `allocations` replace the existing ones.
+
+    Status and the recurring rule it came from don't change.
+    """
+
+
 class AllocationsReplace(BaseModel):
     allocations: list[AllocationIn]
 
@@ -185,6 +192,19 @@ class TransactionOut(BaseModel):
     notes: str | None
     status: TransactionStatus
     recurring_transaction_id: UUID | None
+
+
+class AllocationOut(BaseModel):
+    budget_item_id: UUID
+    budget_item_name: str
+    budget_item_kind: Kind
+    budget_id: UUID
+    budget_name: str
+    amount: Money
+
+
+class TransactionDetail(TransactionOut):
+    allocations: list[AllocationOut] = Field(description="Every budget item it counts toward.")
 
 
 class InboxTransactionOut(TransactionOut):

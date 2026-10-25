@@ -1,6 +1,6 @@
 # Finance UI
 
-*Status: **implemented** (`web/src/modules/finance/`): budgets list, new budget, the budget page (items, transactions, logging, reorder mode), categories (with descriptions and reordering), and the second slice: the monthly **Checklist**, **Recurring** transactions and the **Inbox** (approvals and unassigned transactions). What's still missing is in §9.*
+*Status: **implemented** (`web/src/modules/finance/`): budgets list, new budget, the budget page (items, transactions, logging, reorder mode), categories (with descriptions and reordering), and the second slice: the monthly **Checklist**, **Recurring** transactions and the **Inbox** (approvals and unassigned transactions). Transactions open in a view with **Edit** and **Delete**. What's still missing is in §10.*
 
 What the Finance screens look like and how they behave. The data model is in [finance.md](../db/finance.md), the endpoints in [api-overview.md](../api/api-overview.md) §7.1, and the shell around these pages in [app-shell.md](app-shell.md). Engineering conventions (hooks, query keys, `Sheet`, `Field`, `Checkbox`, `SortableList`, money and date helpers) are in [web-overview.md](web-overview.md).
 
@@ -36,25 +36,27 @@ Oct 1 – Oct 31, 2026  (● Active)
 │ 📥 2 recurring transactions need your approval  Review │  ← only when approvals are pending
 └──────────────────────────────────────────────┘
 ┌──────────────────────────────────────────────┐
-│  INCOME        SPENT          BUDGET SURPLUS / DEFICIT │  ← summary card
-│  $4,320.00     $2,108.52      $1,470.00      │
-│  of $4,500.00  of $3,030.00   planned income − expenses │
+│ [Spent vs budget|Budget surplus|True surplus]│  ← KPI card: small segmented toggle
+│  ╭─────────╮ SPENT VS BUDGET                 │
+│  │   70%   │ $2,108.52                       │  ← ring meter + hero number
+│  │of budget│ of $3,030.00 budgeted expenses  │
+│  ╰─────────╯ $921.48 left to spend           │  ← footnote
 └──────────────────────────────────────────────┘
-┌ Income ──────────────────────────────────────┐
-│ SALARY                                       │  ← category group
+┌ Income ────────────── $4,320.00 of $4,500.00 ┐  ← side total
+│ SALARY                $4,200.00 of $4,200.00 │  ← category group + its total
 │ Paycheck                $4,200.00 of $4,200  │
 │ ████████████████████████████████████████     │  ← progress bar
-│ UNCATEGORIZED                                │
+│ UNCATEGORIZED             $120.00 of $300.00 │
 │ Side gig                  $120.00 of $300    │
 │ ███████████████                              │
 │ [ + Add income ]                             │
 └──────────────────────────────────────────────┘
-┌ Expenses ────────────────────────────────────┐
-│ HOUSING                                      │
+┌ Expenses ──────────── $2,108.52 of $3,030.00 ┐
+│ HOUSING                   $0.00 of $1,800.00 │
 │ Rent                     $0.00 of $1,800     │
 │ (empty bar)                                  │
 │ 🕒 Due 1st                                   │  ← checklist indicator (under the bar)
-│ UTILITIES                                    │
+│ UTILITIES                  $96.10 of $180.00 │
 │ Electric                $96.10 of $110       │
 │ █████████████████████████████████████        │
 │ ✓ Checklist done                             │
@@ -64,8 +66,8 @@ Oct 1 – Oct 31, 2026  (● Active)
 │ [ + Add expense ]                            │
 └──────────────────────────────────────────────┘
 ┌ Transactions ────────────────────────────────┐
-│ Kroger                              −$212.40 │
-│ Groceries · Oct 8 · weekly shop         [🗑] │
+│ Kroger                            −$212.40 › │  ← row opens the transaction view
+│ Groceries · Oct 8 · weekly shop              │
 └──────────────────────────────────────────────┘
             Delete budget
                                 [ + Log transaction ]  ← floating button
@@ -73,20 +75,25 @@ Oct 1 – Oct 31, 2026  (● Active)
 
 - **Header:** the budget name and its effective date range, followed by the **Active** badge when today falls inside it (§3.1). On the right, the **Reorder** button (§2.1).
 - **Pending banner** (amber): shown when any transactions in the user's inbox await approval ("N recurring transactions need your approval"). Tapping it opens the Inbox. It counts all pending transactions, not just this budget's.
-- **Summary card** (three columns): Income, Spent, Budget surplus / deficit (§3).
+- **KPI card** (`BudgetKpis`): a small segmented toggle (`Segmented` with `size="sm"`) with, in order, **Spent vs budget**, **Budget surplus** and **True surplus** (definitions in §3). One KPI is shown at a time: a **donut ring meter** on the left with the percentage and a short caption ("of budget" / "of income") in the middle, and on the right the KPI's title, a **hero number**, a detail line (how it's worked out) and a footnote.
+  - The title switches to "Budget deficit" / "True deficit" when the number is negative.
+  - Negative or over-budget results show **amber** (ring, number and footnote), always alongside words ("deficit", "over budget"), never color alone.
+  - The ring fills with its ratio, **capped at full**; it shows "—" when there's nothing to compare against (the denominator is 0).
+  - The chosen KPI is **remembered per device** in `localStorage` (`disci.finance.kpi`), falling back to Spent vs budget when nothing is stored or storage is unavailable.
 - **Income** and **Expenses** cards. Items are grouped under their **category** heading in the API's order (the user's category order, then item order within each category); **Uncategorized** is always last. Each card ends with an "Add income" / "Add expense" button, and shows a short prompt when it has no items.
+  - **Totals**: each card title shows that side's total on the right ("$actual of $planned", `text-sm`, muted), and each category heading shows its group's total the same way in small `text-xs`. On the expense side, a total over plan shows its actual in **amber**. Totals are hidden in reorder mode.
 - **Item rows** show the name, "**actual** of planned", and a progress bar of actual ÷ planned (capped at full; negative actuals show empty). For an **expense** item that is over plan, the actual amount and the bar turn **amber**. Income over plan is not flagged. Tapping a row opens the item sheet (§4.2).
   - The name gets the full row width (it truncates only if it would collide with the amount), so long item names aren't cut off by the checklist indicator.
   - A small muted line **under the progress bar** (`text-xs`) holds two optional notes side by side, wrapping if needed:
     - **Checklist indicator** on checklist items: "Due 5th" (clock icon) until its confirmed actual reaches the planned amount (`checklist_done`), then "Checklist done" (teal check).
     - **"$X awaiting approval"** (amber) when pending transactions are allocated to the item. They don't count in the actual yet.
-- **Transactions card:** this budget's transactions, newest first, **one row per allocation** (a transaction split over two items in this budget would appear twice). Each row shows the payee (or the item name when there's no payee), the item, date and notes, and the **allocated** amount with `+` for income (teal) or `−` for expense. Pending transactions get a **Pending** tag and a muted amount. A trash button deletes the transaction after a confirm (it's removed from every budget).
+- **Transactions card:** this budget's transactions, newest first, **one row per allocation** (a transaction split over two items in this budget would appear twice). Each row shows the payee (or the item name when there's no payee), the item, date and notes, and the **allocated** amount with `+` for income (teal) or `−` for expense. Pending transactions get a **Pending** tag and a muted amount. Each row is a button with a chevron that opens the **transaction view** (§4.5), where it can be edited or deleted. The list is the shared `TransactionList` component (also used for an item's transactions, §4.2).
 - **Delete budget** (red, at the bottom): confirms, soft-deletes the budget and its items, and returns to the list. Its transactions are kept but become unassigned.
-- **"Log transaction"** is a floating pill button fixed at the bottom-right (above the safe-area inset), within thumb reach on phones. It opens the transaction sheet with no item preselected.
+- **"Log transaction"** is a floating pill button (`h-12`, `px-4`) fixed at the bottom-right (above the safe-area inset), within thumb reach on phones. It opens the transaction sheet with no item preselected.
 
 ### 2.1 Reorder mode
 
-**Reorder** (outline button, `ReorderToggle`) switches the page into drag-to-reorder mode; it becomes a filled **Done** button that switches back. While reordering, the summary, transactions, delete button, add buttons and floating button are hidden, and rows show just the name and planned amount.
+**Reorder** (outline button, `ReorderToggle`) switches the page into drag-to-reorder mode; it becomes a filled **Done** button that switches back. While reordering, the KPI card, the category and side totals, transactions, delete button, add buttons and floating button are hidden, and rows show just the name and planned amount.
 
 - Each **category group** has a grip handle: dragging groups reorders the user's **global** category order for that kind (it applies to every budget and the Categories page). The new order sent is the categories shown in this budget in their new order, followed by the user's other categories of that kind in their existing order. Uncategorized has no handle and stays last.
 - Each **item** has a grip handle and can be dragged **within its category group**. Item order is **per budget** (copied when the budget is copied).
@@ -100,9 +107,10 @@ Oct 1 – Oct 31, 2026  (● Active)
 |---|---|
 | Item **actual** | Net of the **confirmed** transactions allocated to the item: transactions of the item's kind **add**, the opposite kind **subtracts** (a $25 grocery rebate logged as income on Groceries lowers its actual). Can be negative. Comes from the API (`actual_amount`). Pending transactions are excluded and shown separately as "awaiting approval" (`pending_amount`). |
 | Item **planned** | The item's `planned_amount`. |
-| **Income** (summary) | Sum of income items' actuals, "of" the sum of their planned amounts. |
-| **Spent** (summary) | Sum of expense items' actuals, "of" the sum of their planned amounts. |
-| **Budget surplus / deficit** | **Planned income − planned expenses.** (Previously labelled "Left to plan".) Positive: income not yet given a job (zero-based budgeting). Negative: more planned spending than planned income, shown in **amber**. Uses planned amounts only, not actuals. |
+| **Spent vs budget** (KPI) | Sum of expense items' actuals ("spent"), "of" the sum of their planned amounts (planned expenses). Ring: spent ÷ planned expenses, "of budget". Footnote: "$X left to spend", or "$X over budget" in **amber** once spent passes the plan. |
+| **Budget surplus / deficit** (KPI) | **Planned income − planned expenses.** (Previously labelled "Left to plan".) Positive: income not yet given a job (zero-based budgeting). Negative: more planned spending than planned income, shown in **amber** as "Budget deficit". Uses planned amounts only, not actuals. Ring: planned expenses ÷ planned income, "of income". |
+| **True surplus / deficit** (KPI) | **Planned income − actual spent** (expense actuals). Positive: planned income not spent yet. Negative: spending is past planned income, shown in **amber** as "True deficit". Ring: spent ÷ planned income, "of income". |
+| **Category / side totals** | Sum of the group's (or side's) item actuals, "of" the sum of their planned amounts. An expense total whose actual is over its planned shows the actual in **amber**. |
 
 Transactions that aren't allocated to any item in this budget don't count toward any of these numbers.
 
@@ -131,7 +139,19 @@ All add/edit forms open in a **`Sheet`**: a bottom sheet on phones, a centred di
 
 ### 4.2 Item sheet (`ItemSheet`)
 
-Opened by "Add income" / "Add expense" (new item of that kind) or by tapping an item row (edit). Title: "Add income" / "Add expense", or the item's name.
+Opened by "Add income" / "Add expense" (new item of that kind, straight to the form below) or by tapping an item row, which opens the item's **view**. The page looks the open item up by id in the budget data, so the sheet always shows fresh numbers (e.g. after logging a transaction).
+
+**View** (title: the item's name):
+
+- **Progress**: the actual, large, then "spent" (expense) or "received" (income) "of $planned", a progress bar (amber with an amber actual when an expense is over plan), and "$X awaiting approval" (amber) when pending transactions are allocated to it.
+- **Facts list**: Name, Planned amount, Category (or Uncategorized) and, in **monthly budgets only**, Monthly checklist: "Due the Nth" with a teal check (plus "· done") or a clock icon, or "Not on the checklist".
+- Three buttons side by side, icon over label, in order: **Edit**, **View transactions**, **Log transaction** (primary). Below them, **Delete item** (red; confirms: "Its transactions stay but won't count toward this budget").
+  - **Edit** switches to the form (title "Edit <name>") with **Save** and **Cancel**; both return to the view.
+  - **View transactions** (title "<name> transactions") shows a "Back to <name>" link and the item's rows from the budget's transactions (`TransactionList`, filtered client-side by `budget_item_id`, item name hidden), or "Nothing logged to <name> yet." Tapping a row opens the transaction view (§4.5) **on top** of the item sheet.
+  - **Log transaction** opens the transaction sheet (§4.3) with this item preselected, **on top** of the item sheet (it no longer closes it); closing it returns to the item.
+- Closing the sheet resets it to the view for next time.
+
+**Form** (new item, or Edit):
 
 | Field | Behaviour |
 |---|---|
@@ -141,11 +161,11 @@ Opened by "Add income" / "Add expense" (new item of that kind) or by tapping an 
 | On the monthly checklist | Checkbox, **monthly budgets only** (hidden otherwise; the API rejects it elsewhere). It shows on the Checklist tab and is done once what's been paid reaches the planned amount (§6). |
 | Due on day | Shown when the checkbox is on: select of the 1st–28th. |
 
-Buttons: **Add** / **Save**; when editing, also **Log transaction** (closes this sheet and opens the transaction sheet with this item preselected) and **Delete item** (confirms: "Its transactions stay but won't count toward this budget"). An item's kind can't be changed.
+Buttons: **Add** (closes the sheet) / **Save** (returns to the view); when editing, also **Cancel**. An item's kind can't be changed.
 
 ### 4.3 Transaction sheet (`TransactionSheet`)
 
-Takes a required `budget` prop (the budget being logged into) and an optional `title` (default "Log transaction").
+Takes a required `budget` prop (the budget being logged into: `id`, `name`, `period_start`, `period_end`) and an optional `title` (default "Log transaction"). The form inside (`TransactionForm`) is also used to **edit** a transaction from the transaction view (§4.5); differences when editing are noted there.
 
 - **"Logging to" box** at the top: the budget's name and date range, so it's always clear which budget is affected.
 - When the selected item is a **checklist item**, the box also shows "Checklist item <name>, due the <Nth> (<date>).", followed by "Paid $X of $Y; done once it reaches the plan." while it's open, or "Already done." once its actual has reached the plan.
@@ -162,6 +182,23 @@ Takes a required `budget` prop (the budget being logged into) and an optional `t
 | Notes (optional) | Multi-line text, up to 1,000 characters. Shown in the budget's transaction list and the Inbox. |
 
 On save it creates one confirmed allocation for the **full amount** to the chosen item (or none), and refreshes everything under Finance (budgets, inbox, checklist).
+
+### 4.5 Transaction view (`TransactionDetailSheet`)
+
+Opened by tapping a transaction row, on the budget page or in an item's transactions (§4.2). It loads the transaction with `GET /finance/transactions/{id}` (title "Transaction").
+
+- The **signed amount**, large (`+` teal for income, `−` for expense), then the kind and a **Pending approval** tag when pending.
+- **Facts list**: **Date**; **Payee** (or "None"); **Counts toward**: each allocation as "<item> · <budget>", with its amount when it's only part of the transaction, or "No budget item (it's in the Inbox)" when there are none; **Source** ("Created by a recurring transaction") when a rule created it.
+- **Notes**, when it has any.
+- Buttons: **Edit** and **Delete transaction** (red; confirms "It is removed from every budget", then closes).
+
+**Edit** (title "Edit transaction") reuses the transaction form (§4.3), pre-filled from the transaction, with **Save** and **Cancel**; both return to the view.
+
+- The box at the top reads **"In budget"** (the budget it was opened from) instead of "Logging to". If the transaction also counts in **other budgets**, a note lists them ("Also counts in 2026 (Gas). A new amount applies there too.").
+- The Budget item select lists this budget's items, pre-selected with the item it counts toward here.
+- On save (`PUT /finance/transactions/{id}`, the whole transaction): its allocation(s) **in this budget** are replaced by one full-amount allocation to the chosen item (or none). Allocations in **other budgets** are kept: set to the new amount when they were the full old amount or would exceed the new amount, otherwise left as they were. The `description` is preserved.
+- Caveat: a transaction **split** over several items in this budget collapses to the one chosen item when edited.
+- A **pending** transaction stays pending when edited (status doesn't change); approve it in the Inbox.
 
 ### 4.4 Recurring sheet (`RecurringSheet`)
 
@@ -247,14 +284,14 @@ Transactions that need a decision. Empty state: "All caught up".
 
 ## 9. Data and caching
 
-Hooks live in `web/src/modules/finance/api.ts`; query keys are in `financeKeys` (`['finance', 'categories']`, `['finance', 'budgets']`, `['finance', 'budget', id]`, `['finance', 'budget', id, 'transactions']`, `['finance', 'inbox']`, `['finance', 'recurring']`, `['finance', 'checklist']`).
+Hooks live in `web/src/modules/finance/api.ts`; query keys are in `financeKeys` (`['finance', 'categories']`, `['finance', 'budgets']`, `['finance', 'budget', id]`, `['finance', 'budget', id, 'transactions']`, `['finance', 'transaction', id]` (one transaction with its allocations, for the transaction view), `['finance', 'inbox']`, `['finance', 'recurring']`, `['finance', 'checklist']`).
 
 | Mutation | Cache update |
 |---|---|
 | Create / update / delete **item** | The API returns the updated `BudgetDetail`, which is **written straight into** `['finance', 'budget', id]` (no refetch). Create/update also invalidate the checklist; delete invalidates that budget's transactions. |
 | Reorder **items** | **Optimistic**: the budget's items are re-sorted in the cache immediately; the returned `BudgetDetail` then replaces it. |
 | Reorder **categories** | **Optimistic**: `sort_order` is updated in the categories cache immediately; the returned list replaces it, and every `['finance', 'budget', ...]` query is invalidated (budgets group by category order). |
-| Create / delete **transaction**, approve, reject, assign, save / delete **recurring rule** | Invalidate everything under `['finance']`: a transaction can count toward several budgets and affects the inbox and checklist, and saving a rule can create transactions. |
+| Create / update / delete **transaction**, approve, reject, assign, save / delete **recurring rule** | Invalidate everything under `['finance']`: a transaction can count toward several budgets and affects the inbox and checklist, and saving a rule can create transactions. |
 | Create / delete **budget** | Invalidates the budgets list. |
 | Create category | Invalidates categories. |
 | Edit / delete category | Invalidates everything under `['finance']` (budgets show category names). |
@@ -265,7 +302,6 @@ Hooks live in `web/src/modules/finance/api.ts`; query keys are in `financeKeys` 
 
 The API or data model already supports some of these; the UI doesn't yet.
 
-- **Editing a transaction** (only create and delete exist; no API endpoint for edit yet).
-- **Splitting** a transaction across several items, and **allocating one transaction to more than one budget** from the UI (the API accepts several allocations, e.g. a monthly and a yearly budget). Inbox Assign and the transaction form write one allocation.
+- **Splitting** a transaction across several items, and **allocating one transaction to more than one budget** from the UI (the API accepts several allocations, e.g. a monthly and a yearly budget). Inbox Assign and the transaction form write one allocation in the budget at hand (editing keeps allocations in other budgets, §4.5).
 - **Renaming a budget / editing notes** in the UI (the API has `PUT /finance/budgets/{id}`).
 - A budget-vs-actual summary on the Finance **Home card**.

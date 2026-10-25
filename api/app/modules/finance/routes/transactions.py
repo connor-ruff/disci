@@ -13,7 +13,9 @@ from app.modules.finance.schemas import (
     Inbox,
     InboxTransactionOut,
     TransactionCreate,
+    TransactionDetail,
     TransactionOut,
+    TransactionUpdate,
 )
 from app.modules.finance.sql import queries
 
@@ -47,6 +49,37 @@ def create_transaction(body: TransactionCreate, db: DbDep) -> TransactionOut:
         raise RuntimeError("INSERT ... RETURNING returned no row")
     _write_allocations(db, txn["id"], body.amount, body.allocations)
     return TransactionOut.model_validate(txn)
+
+
+def _detail(db: Db, txn) -> TransactionDetail:
+    rows = db.conn.execute(
+        queries["list_transaction_allocations"], {"transaction_id": txn["id"]}
+    ).fetchall()
+    return TransactionDetail.model_validate({**txn, "allocations": rows})
+
+
+@router.get("/transactions/{transaction_id}")
+def get_transaction(transaction_id: UUID, db: DbDep) -> TransactionDetail:
+    txn = db.conn.execute(queries["get_transaction"], {"transaction_id": transaction_id}).fetchone()
+    if txn is None:
+        raise not_found("transaction")
+    return _detail(db, txn)
+
+
+@router.put("/transactions/{transaction_id}")
+def update_transaction(
+    transaction_id: UUID, body: TransactionUpdate, db: DbDep
+) -> TransactionDetail:
+    """Edits a transaction and replaces where it counts (its allocations)."""
+    txn = db.conn.execute(
+        queries["update_transaction"],
+        {"transaction_id": transaction_id, **body.model_dump(exclude={"allocations"})},
+    ).fetchone()
+    if txn is None:
+        raise not_found("transaction")
+    db.conn.execute(queries["delete_transaction_allocations"], {"transaction_id": transaction_id})
+    _write_allocations(db, transaction_id, body.amount, body.allocations)
+    return _detail(db, txn)
 
 
 @router.put("/transactions/{transaction_id}/allocations")

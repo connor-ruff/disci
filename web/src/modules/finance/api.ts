@@ -14,6 +14,8 @@ export type BudgetCreate = Schemas['BudgetCreate']
 export type BudgetItemCreate = Schemas['BudgetItemCreate']
 export type BudgetItemUpdate = Schemas['BudgetItemUpdate']
 export type TransactionCreate = Schemas['TransactionCreate']
+export type TransactionUpdate = Schemas['TransactionUpdate']
+export type TransactionDetail = Schemas['TransactionDetail']
 
 export const financeKeys = {
   all: ['finance'] as const,
@@ -21,6 +23,7 @@ export const financeKeys = {
   budgets: ['finance', 'budgets'] as const,
   budget: (id: string) => ['finance', 'budget', id] as const,
   budgetTransactions: (id: string) => ['finance', 'budget', id, 'transactions'] as const,
+  transaction: (id: string) => ['finance', 'transaction', id] as const,
   inbox: ['finance', 'inbox'] as const,
   recurring: ['finance', 'recurring'] as const,
   checklist: ['finance', 'checklist'] as const,
@@ -175,6 +178,34 @@ export function useCreateTransaction() {
   return useMutation({
     mutationFn: async (body: TransactionCreate) =>
       unwrap(await api.POST('/finance/transactions', { body })),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: financeKeys.all }),
+  })
+}
+
+/** One transaction with every budget item it counts toward. */
+export function useTransaction(id: string | undefined) {
+  return useQuery({
+    queryKey: financeKeys.transaction(id ?? ''),
+    queryFn: async () =>
+      unwrap(
+        await api.GET('/finance/transactions/{transaction_id}', {
+          params: { path: { transaction_id: id! } },
+        }),
+      ),
+    enabled: id !== undefined,
+  })
+}
+
+export function useUpdateTransaction() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, ...body }: TransactionUpdate & { id: string }) =>
+      unwrap(
+        await api.PUT('/finance/transactions/{transaction_id}', {
+          params: { path: { transaction_id: id } },
+          body,
+        }),
+      ),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: financeKeys.all }),
   })
 }

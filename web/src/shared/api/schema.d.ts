@@ -248,6 +248,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/finance/transactions/{transaction_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Transaction */
+        get: operations["get_transaction_finance_transactions__transaction_id__get"];
+        /**
+         * Update Transaction
+         * @description Edits a transaction and replaces where it counts (its allocations).
+         */
+        put: operations["update_transaction_finance_transactions__transaction_id__put"];
+        post?: never;
+        /** Delete Transaction */
+        delete: operations["delete_transaction_finance_transactions__transaction_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/finance/transactions/{transaction_id}/allocations": {
         parameters: {
             query?: never;
@@ -300,23 +322,6 @@ export interface paths {
          */
         post: operations["reject_transaction_finance_transactions__transaction_id__reject_post"];
         delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/finance/transactions/{transaction_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Delete Transaction */
-        delete: operations["delete_transaction_finance_transactions__transaction_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -434,6 +439,30 @@ export interface components {
             budget_item_id: string;
             /** Amount */
             amount: number | string;
+        };
+        /** AllocationOut */
+        AllocationOut: {
+            /**
+             * Budget Item Id
+             * Format: uuid
+             */
+            budget_item_id: string;
+            /** Budget Item Name */
+            budget_item_name: string;
+            /**
+             * Budget Item Kind
+             * @enum {string}
+             */
+            budget_item_kind: "expense" | "income";
+            /**
+             * Budget Id
+             * Format: uuid
+             */
+            budget_id: string;
+            /** Budget Name */
+            budget_name: string;
+            /** Amount */
+            amount: string;
         };
         /** AllocationsReplace */
         AllocationsReplace: {
@@ -1001,6 +1030,44 @@ export interface components {
              */
             allocations?: components["schemas"]["AllocationIn"][];
         };
+        /** TransactionDetail */
+        TransactionDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "expense" | "income";
+            /** Amount */
+            amount: string;
+            /**
+             * Occurred On
+             * Format: date
+             */
+            occurred_on: string;
+            /** Payee */
+            payee: string | null;
+            /** Description */
+            description: string | null;
+            /** Notes */
+            notes: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "confirmed";
+            /** Recurring Transaction Id */
+            recurring_transaction_id: string | null;
+            /**
+             * Allocations
+             * @description Every budget item it counts toward.
+             */
+            allocations: components["schemas"]["AllocationOut"][];
+        };
         /** TransactionOut */
         TransactionOut: {
             /**
@@ -1033,6 +1100,37 @@ export interface components {
             status: "pending" | "confirmed";
             /** Recurring Transaction Id */
             recurring_transaction_id: string | null;
+        };
+        /**
+         * TransactionUpdate
+         * @description All editable fields, sent in full; `allocations` replace the existing ones.
+         *
+         *     Status and the recurring rule it came from don't change.
+         */
+        TransactionUpdate: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "expense" | "income";
+            /** Amount */
+            amount: number | string;
+            /**
+             * Occurred On
+             * Format: date
+             */
+            occurred_on: string;
+            /** Payee */
+            payee?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Allocations
+             * @description Budget items this counts toward. May be empty (shows as unassigned).
+             */
+            allocations?: components["schemas"]["AllocationIn"][];
         };
         /** UserOut */
         UserOut: {
@@ -1711,6 +1809,101 @@ export interface operations {
             };
         };
     };
+    get_transaction_finance_transactions__transaction_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                transaction_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransactionDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_transaction_finance_transactions__transaction_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                transaction_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TransactionUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransactionDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_transaction_finance_transactions__transaction_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                transaction_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     replace_allocations_finance_transactions__transaction_id__allocations_put: {
         parameters: {
             query?: never;
@@ -1782,35 +1975,6 @@ export interface operations {
         };
     };
     reject_transaction_finance_transactions__transaction_id__reject_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                transaction_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_transaction_finance_transactions__transaction_id__delete: {
         parameters: {
             query?: never;
             header?: never;

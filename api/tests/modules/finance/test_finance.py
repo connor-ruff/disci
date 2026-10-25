@@ -233,6 +233,64 @@ def test_deleting_transaction_removes_it_from_actuals(client: TestClient, financ
     assert detail["items"][0]["actual_amount"] == "0.00"
 
 
+def test_editing_transaction_updates_fields_and_allocations(client: TestClient, finance_on) -> None:
+    month = new_budget(client)
+    year = new_budget(client, period_type="year")
+    gas = add_item(client, month["id"], kind="expense", name="Gas", planned_amount="120")
+    food = add_item(client, month["id"], kind="expense", name="Food", planned_amount="400")
+    yearly = add_item(client, year["id"], kind="expense", name="Gas", planned_amount="1400")
+    txn = log(client, gas["id"], "expense", "45.00").json()
+
+    detail = client.get(f"/finance/transactions/{txn['id']}", headers=ALICE).json()
+    assert [a["budget_item_name"] for a in detail["allocations"]] == ["Gas"]
+    assert detail["allocations"][0]["budget_name"] == "October 2026"
+
+    # Move it to Food, change the amount and add the yearly budget.
+    resp = client.put(
+        f"/finance/transactions/{txn['id']}",
+        json={
+            "kind": "expense",
+            "amount": "50.00",
+            "occurred_on": "2026-10-20",
+            "payee": "Kroger",
+            "notes": "weekly shop",
+            "allocations": [
+                {"budget_item_id": food["id"], "amount": "50.00"},
+                {"budget_item_id": yearly["id"], "amount": "50.00"},
+            ],
+        },
+        headers=ALICE,
+    )
+    assert resp.status_code == 200, resp.text
+    edited = resp.json()
+    assert (edited["amount"], edited["payee"], edited["occurred_on"]) == (
+        "50.00",
+        "Kroger",
+        "2026-10-20",
+    )
+    assert edited["status"] == "confirmed"
+    assert sorted(a["budget_name"] for a in edited["allocations"]) == ["2026", "October 2026"]
+
+    items = {
+        i["name"]: i["actual_amount"]
+        for i in client.get(f"/finance/budgets/{month['id']}", headers=ALICE).json()["items"]
+    }
+    assert items == {"Gas": "0.00", "Food": "50.00"}
+
+    # Same validation as on create; a failed edit changes nothing.
+    too_much = {
+        "kind": "expense",
+        "amount": "10.00",
+        "occurred_on": "2026-10-20",
+        "allocations": [{"budget_item_id": food["id"], "amount": "50.00"}],
+    }
+    resp = client.put(f"/finance/transactions/{txn['id']}", json=too_much, headers=ALICE)
+    assert resp.status_code == 422
+    assert client.get(f"/finance/transactions/{txn['id']}", headers=BOB).status_code == 404
+    resp = client.put(f"/finance/transactions/{txn['id']}", json=too_much, headers=BOB)
+    assert resp.status_code == 404
+
+
 # --- Isolation ---------------------------------------------------------------------
 
 

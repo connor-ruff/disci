@@ -10,10 +10,17 @@ import { Field, inputClasses } from '@/shared/ui/field'
 import { Segmented } from '@/shared/ui/segmented'
 import { Sheet } from '@/shared/ui/sheet'
 
-import { type Budget, type BudgetItem, type Kind, useCreateTransaction } from '../api'
+import {
+  type Budget,
+  type BudgetItem,
+  type Kind,
+  type TransactionDetail,
+  useCreateTransaction,
+  useUpdateTransaction,
+} from '../api'
 import { ordinal } from './ItemSheet'
 
-type BudgetContext = Pick<Budget, 'name' | 'period_start' | 'period_end'>
+export type BudgetContext = Pick<Budget, 'id' | 'name' | 'period_start' | 'period_end'>
 
 type TransactionSheetProps = {
   /** The budget being logged into, shown prominently so it's clear what's affected. */
@@ -47,31 +54,42 @@ export function TransactionSheet({
   )
 }
 
-function TransactionForm({
+/** Logs a new transaction, or edits `transaction` when given. */
+export function TransactionForm({
   budget,
   items,
   defaultItem,
+  transaction,
   onDone,
 }: {
   budget: BudgetContext
   items: BudgetItem[]
   defaultItem?: BudgetItem
+  transaction?: TransactionDetail
   onDone: () => void
 }) {
   const me = useMe()
   const create = useCreateTransaction()
+  const update = useUpdateTransaction()
+  const mutation = transaction ? update : create
   const today = todayIn(me.data?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone)
 
-  const [kind, setKind] = useState<Kind>(defaultItem?.kind ?? 'expense')
+  // Editing: where it counts in this budget, and in any others (kept as they are).
+  const here = transaction?.allocations.filter((a) => a.budget_id === budget.id) ?? []
+  const elsewhere = transaction?.allocations.filter((a) => a.budget_id !== budget.id) ?? []
+
+  const [kind, setKind] = useState<Kind>(transaction?.kind ?? defaultItem?.kind ?? 'expense')
   // Paying an open checklist item: start from what's left to reach its plan.
   const remaining = defaultItem?.is_checklist_item && !defaultItem.checklist_done
     ? Number(defaultItem.planned_amount) - Number(defaultItem.actual_amount)
     : 0
-  const [amount, setAmount] = useState(remaining > 0 ? remaining.toFixed(2) : '')
-  const [occurredOn, setOccurredOn] = useState(today)
-  const [itemId, setItemId] = useState(defaultItem?.id ?? '')
-  const [payee, setPayee] = useState('')
-  const [notes, setNotes] = useState('')
+  const [amount, setAmount] = useState(
+    transaction ? String(Number(transaction.amount)) : remaining > 0 ? remaining.toFixed(2) : '',
+  )
+  const [occurredOn, setOccurredOn] = useState(transaction?.occurred_on ?? today)
+  const [itemId, setItemId] = useState(here[0]?.budget_item_id ?? defaultItem?.id ?? '')
+  const [payee, setPayee] = useState(transaction?.payee ?? '')
+  const [notes, setNotes] = useState(transaction?.notes ?? '')
   const [invalid, setInvalid] = useState<string | null>(null)
 
   const item = items.find((i) => i.id === itemId)
@@ -83,14 +101,25 @@ function TransactionForm({
     const value = parseMoneyInput(amount)
     if (value === null || Number(value) === 0) return setInvalid('Enter an amount like 12.50')
     setInvalid(null)
-    create.mutate(
+    const fields = {
+      kind,
+      amount: value,
+      occurred_on: occurredOn,
+      payee: payee.trim() || null,
+      notes: notes.trim() || null,
+    }
+    const allocations = itemId ? [{ budget_item_id: itemId, amount: value }] : []
+    if (!transaction) return create.mutate({ ...fields, allocations }, { onSuccess: onDone })
+    // Other budgets keep counting it: in full if they did, else capped at the new amount.
+    const inFull = (a: { amount: string }) =>
+      Number(a.amount) === Number(transaction.amount) || Number(a.amount) > Number(value)
+    const kept = elsewhere.map((a) => ({ budget_item_id: a.budget_item_id, amount: inFull(a) ? value : a.amount }))
+    update.mutate(
       {
-        kind,
-        amount: value,
-        occurred_on: occurredOn,
-        payee: payee.trim() || null,
-        notes: notes.trim() || null,
-        allocations: itemId ? [{ budget_item_id: itemId, amount: value }] : [],
+        id: transaction.id,
+        ...fields,
+        description: transaction.description,
+        allocations: [...allocations, ...kept],
       },
       { onSuccess: onDone },
     )
@@ -105,11 +134,19 @@ function TransactionForm({
         <div className="flex items-start gap-3">
           <Wallet className="mt-0.5 size-5 shrink-0 text-accent" />
           <div className="min-w-0">
-            <p className="text-xs font-medium tracking-wide text-muted uppercase">Logging to</p>
+            <p className="text-xs font-medium tracking-wide text-muted uppercase">
+              {transaction ? 'In budget' : 'Logging to'}
+            </p>
             <p className="truncate font-semibold">{budget.name}</p>
             <p className="text-sm text-muted">{formatDateRange(budget.period_start, budget.period_end)}</p>
           </div>
         </div>
+        {elsewhere.length > 0 && (
+          <p className="border-t border-border pt-2 text-sm text-muted">
+            Also counts in {elsewhere.map((a) => `${a.budget_name} (${a.budget_item_name})`).join(', ')}.
+            A new amount applies there too.
+          </p>
+        )}
         {item?.is_checklist_item && item.checklist_day && (
           <div className="flex items-center gap-3 border-t border-border pt-2 text-sm">
             <ListChecks className="size-5 shrink-0 text-accent" />
@@ -208,12 +245,12 @@ function TransactionForm({
         />
       </Field>
 
-      {(invalid || create.isError) && (
-        <p className="text-sm text-red-700">{invalid ?? errorMessage(create.error)}</p>
+      {(invalid || mutation.isError) && (
+        <p className="text-sm text-red-700">{invalid ?? errorMessage(mutation.error)}</p>
       )}
 
-      <Button type="submit" disabled={create.isPending}>
-        {create.isPending ? 'Saving…' : 'Log transaction'}
+      <Button type="submit" disabled={mutation.isPending}>
+        {mutation.isPending ? 'Saving…' : transaction ? 'Save' : 'Log transaction'}
       </Button>
     </form>
   )

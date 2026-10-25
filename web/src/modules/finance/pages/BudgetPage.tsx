@@ -1,9 +1,9 @@
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
-import { CircleCheck, Clock, Inbox, Plus, Trash2 } from 'lucide-react'
+import { CircleCheck, Clock, Inbox, Plus } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 
 import { cn } from '@/shared/lib/cn'
-import { formatDateRange, formatShortDate } from '@/shared/lib/dates'
+import { formatDateRange } from '@/shared/lib/dates'
 import { formatMoney } from '@/shared/lib/money'
 import { Button } from '@/shared/ui/button'
 import { Card } from '@/shared/ui/card'
@@ -13,22 +13,25 @@ import { SortableList } from '@/shared/ui/sortable'
 import {
   type BudgetDetail,
   type BudgetItem,
+  type BudgetTransaction,
   type Kind,
   useBudget,
   useBudgetTransactions,
   useCategories,
   useDeleteBudget,
-  useDeleteTransaction,
   useInbox,
   useReorderCategories,
   useReorderItems,
 } from '../api'
 import { ActiveBadge } from '../components/ActiveBadge'
+import { BudgetKpis } from '../components/BudgetKpis'
 import { ItemSheet, ordinal } from '../components/ItemSheet'
 import { ReorderToggle } from '../components/ReorderToggle'
+import { TransactionDetailSheet } from '../components/TransactionDetailSheet'
+import { TransactionList } from '../components/TransactionList'
 import { TransactionSheet } from '../components/TransactionSheet'
 
-type ItemSheetState = { kind: Kind; item?: BudgetItem } | null
+type ItemSheetState = { kind: Kind; itemId?: string } | null
 
 export function BudgetPage() {
   const { budgetId } = useParams({ from: '/finance/budgets/$budgetId' })
@@ -37,10 +40,13 @@ export function BudgetPage() {
   const [reordering, setReordering] = useState(false)
   const [itemSheet, setItemSheet] = useState<ItemSheetState>(null)
   const [txnSheet, setTxnSheet] = useState<{ item?: BudgetItem } | null>(null)
+  const [txnView, setTxnView] = useState<string | null>(null)
 
   if (budget.isPending) return <LoadingState />
   if (budget.isError) return <ErrorState error={budget.error} />
   const data = budget.data
+  // Looked up by id so the sheet shows fresh numbers after an edit or a new transaction.
+  const openItem = data.items.find((i) => i.id === itemSheet?.itemId)
 
   return (
     <>
@@ -59,18 +65,18 @@ export function BudgetPage() {
 
       <div className="flex flex-col gap-4">
         <PendingBanner />
-        {!reordering && <Summary budget={data} />}
+        {!reordering && <BudgetKpis budget={data} />}
         {(['income', 'expense'] as const).map((kind) => (
           <ItemSection
             key={kind}
             budget={data}
             kind={kind}
             reordering={reordering}
-            onOpenItem={(item) => setItemSheet({ kind, item })}
+            onOpenItem={(item) => setItemSheet({ kind, itemId: item.id })}
             onAdd={() => setItemSheet({ kind })}
           />
         ))}
-        {!reordering && <Transactions budgetId={budgetId} />}
+        {!reordering && <Transactions budgetId={budgetId} onOpen={(t) => setTxnView(t.id)} />}
         {!reordering && <DeleteBudget budgetId={budgetId} name={data.name} />}
       </div>
 
@@ -78,7 +84,7 @@ export function BudgetPage() {
       {!reordering && (
         <Button
           onClick={() => setTxnSheet({})}
-          className="fixed right-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-20 h-14 rounded-full px-5 shadow-lg"
+          className="fixed right-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-20 h-12 rounded-full px-4 shadow-lg"
         >
           <Plus className="size-5" />
           Log transaction
@@ -89,13 +95,12 @@ export function BudgetPage() {
         budgetId={budgetId}
         isMonthly={data.period_type === 'month'}
         kind={itemSheet?.kind ?? 'expense'}
-        item={itemSheet?.item}
+        item={openItem}
         open={itemSheet !== null}
         onOpenChange={(open) => !open && setItemSheet(null)}
-        onLogTransaction={(item) => {
-          setItemSheet(null)
-          setTxnSheet({ item })
-        }}
+        // These open on top of the item sheet; closing them returns to it.
+        onLogTransaction={(item) => setTxnSheet({ item })}
+        onOpenTransaction={(t) => setTxnView(t.id)}
       />
       <TransactionSheet
         budget={data}
@@ -103,6 +108,13 @@ export function BudgetPage() {
         defaultItem={txnSheet?.item}
         open={txnSheet !== null}
         onOpenChange={(open) => !open && setTxnSheet(null)}
+      />
+      <TransactionDetailSheet
+        budget={data}
+        items={data.items}
+        transactionId={txnView ?? undefined}
+        open={txnView !== null}
+        onOpenChange={(open) => !open && setTxnView(null)}
       />
     </>
   )
@@ -126,34 +138,19 @@ function PendingBanner() {
   )
 }
 
-function Summary({ budget }: { budget: BudgetDetail }) {
-  const surplus = Number(budget.income.planned) - Number(budget.expense.planned)
-  return (
-    <Card className="grid grid-cols-3 gap-2 text-center">
-      <Stat label="Income" value={budget.income.actual} of={budget.income.planned} />
-      <Stat label="Spent" value={budget.expense.actual} of={budget.expense.planned} />
-      <div>
-        <p className="text-xs font-medium tracking-wide text-muted uppercase">Budget surplus / deficit</p>
-        <p className={cn('mt-1 text-lg font-semibold', surplus < 0 && 'text-amber-700')}>
-          {formatMoney(surplus)}
-        </p>
-        <p className="text-xs text-muted">planned income − expenses</p>
-      </div>
-    </Card>
-  )
-}
-
-function Stat({ label, value, of }: { label: string; value: string; of: string }) {
-  return (
-    <div>
-      <p className="text-xs font-medium tracking-wide text-muted uppercase">{label}</p>
-      <p className="mt-1 text-lg font-semibold">{formatMoney(value)}</p>
-      <p className="text-xs text-muted">of {formatMoney(of)}</p>
-    </div>
-  )
-}
-
 type Group = { categoryId: string | null; name: string; items: BudgetItem[] }
+
+/** "$actual of $planned" for a set of items: a quiet total for a category or a side. */
+function Totals({ items, className }: { items: BudgetItem[]; className?: string }) {
+  const actual = items.reduce((sum, i) => sum + Number(i.actual_amount), 0)
+  const planned = items.reduce((sum, i) => sum + Number(i.planned_amount), 0)
+  const over = items.length > 0 && items[0].kind === 'expense' && actual > planned
+  return (
+    <span className={cn('shrink-0 text-muted tabular-nums', className)}>
+      <span className={cn(over && 'text-amber-700')}>{formatMoney(actual)}</span> of {formatMoney(planned)}
+    </span>
+  )
+}
 
 /** One side's items grouped by category, in display order (Uncategorized last). */
 function groupItems(items: BudgetItem[]): Group[] {
@@ -213,7 +210,10 @@ function ItemSection({
     <div className="pb-1">
       <div className="flex items-center gap-1 pt-2 pr-4 pl-1">
         {handle ?? <span className="w-3" />}
-        <h3 className="py-1 text-xs font-semibold tracking-wide text-muted uppercase">{group.name}</h3>
+        <h3 className="flex-1 truncate py-1 text-xs font-semibold tracking-wide text-muted uppercase">
+          {group.name}
+        </h3>
+        {!reordering && <Totals items={group.items} className="text-xs" />}
       </div>
       {reordering ? (
         <SortableList
@@ -243,7 +243,10 @@ function ItemSection({
 
   return (
     <Card className="p-0">
-      <h2 className="px-4 pt-4 pb-1 text-lg font-semibold">{title}</h2>
+      <div className="flex items-baseline justify-between gap-3 px-4 pt-4 pb-1">
+        <h2 className="text-lg font-semibold">{title}</h2>
+        {!reordering && items.length > 0 && <Totals items={items} className="text-sm" />}
+      </div>
       {reordering ? (
         <>
           {categorized.length > 1 && (
@@ -326,9 +329,8 @@ function ItemRow({ item, onClick }: { item: BudgetItem; onClick: () => void }) {
   )
 }
 
-function Transactions({ budgetId }: { budgetId: string }) {
+function Transactions({ budgetId, onOpen }: { budgetId: string; onOpen: (t: BudgetTransaction) => void }) {
   const transactions = useBudgetTransactions(budgetId)
-  const remove = useDeleteTransaction()
 
   return (
     <Card className="p-0">
@@ -337,45 +339,7 @@ function Transactions({ budgetId }: { budgetId: string }) {
       {transactions.data?.length === 0 && (
         <p className="px-4 pb-4 text-muted">Nothing logged in this budget yet.</p>
       )}
-      <ul className="divide-y divide-border">
-        {transactions.data?.map((t) => (
-          <li key={`${t.id}-${t.budget_item_id}`} className="flex items-center gap-3 py-2 pr-2 pl-4">
-            <div className="min-w-0 flex-1">
-              <p className="flex items-center gap-2">
-                <span className="truncate font-medium">{t.payee ?? t.budget_item_name}</span>
-                {t.status === 'pending' && (
-                  <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-800">
-                    Pending
-                  </span>
-                )}
-              </p>
-              <p className="truncate text-sm text-muted">
-                {t.budget_item_name} · {formatShortDate(t.occurred_on)}
-                {t.notes && ` · ${t.notes}`}
-              </p>
-            </div>
-            <span
-              className={cn(
-                'shrink-0 font-semibold',
-                t.kind === 'income' && 'text-primary',
-                t.status === 'pending' && 'text-muted',
-              )}
-            >
-              {t.kind === 'income' ? '+' : '−'}
-              {formatMoney(t.allocated_amount)}
-            </span>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="Delete transaction"
-              disabled={remove.isPending}
-              onClick={() => window.confirm('Delete this transaction?') && remove.mutate(t.id)}
-            >
-              <Trash2 className="size-4 text-muted" />
-            </Button>
-          </li>
-        ))}
-      </ul>
+      {transactions.data && <TransactionList transactions={transactions.data} onOpen={onOpen} />}
     </Card>
   )
 }
