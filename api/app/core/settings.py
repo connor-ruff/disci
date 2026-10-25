@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     database_url: str
     auth_mode: Literal["dev", "cognito"]
     cors_origins: list[str] = ["http://localhost:5173"]
+    # Log in to RDS with IAM auth tokens instead of a password (production).
+    db_iam_auth: bool = False
 
     @model_validator(mode="after")
     def _dev_auth_only_outside_prod(self) -> Self:

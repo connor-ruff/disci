@@ -14,10 +14,12 @@
     "@tanstack/react-router": "^1.170.42",
     "clsx": "^2.1.1",
     "lucide-react": "^1.55.0",
+    "oidc-client-ts": "^3.5.0",
     "openapi-fetch": "^0.17.0",
     "radix-ui": "^1.7.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "react-oidc-context": "^3.3.1",
     "tailwind-merge": "^3.7.0"
   },
   "devDependencies": {

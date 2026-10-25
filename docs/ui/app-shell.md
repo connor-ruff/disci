@@ -90,4 +90,4 @@ The shell shows registry entries the current user has enabled (from `GET /me/mod
 
 1. **Module order** in the menu: fixed, or user-arrangeable? (Today: the order the API returns.)
 2. **Home cards**: is one summary card per module the right home page, or should Home be something else?
-3. ~~**Visual style**~~ **Resolved:** the brand palette in [ui-overview.md](ui-overview.md) (ink `#002421`, teal `#00998E`, mist `#CCFFFC`), with light and dark mode. How it maps to UI tokens is in [web-overview.md](web-overview.md).
+3. ~~**Visual style**~~ **Resolved:** the brand palette in [ui-overview.md](ui-overview.md) (ink `#002421`, teal `#00998E`, mist `#CCFFFC`), in a mostly white, calm, light-only theme. How it maps to UI tokens is in [web-overview.md](web-overview.md).

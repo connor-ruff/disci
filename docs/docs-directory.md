@@ -6,8 +6,10 @@ All documentation is organized into sub-folders under the `docs/` directory.
 docs/
 ├── docs-directory.md              # You are here: entry point for all docs
 ├── project_plans/                 # Initial planning / architecture docs
-│   ├── disci-infrastructure.md
+│   ├── disci-infrastructure.md    # original infra & cost plan (as-built: ops/deployment.md)
 │   └── project-inspiration.md
+├── ops/                           # Running the app in production (AWS)
+│   └── deployment.md              # Start here: architecture as built, resources, deploys, DB access, security, cost
 ├── api/                           # Back-end API docs (FastAPI, api/ folder)
 │   └── api-overview.md            # Start here: layout, settings, auth, request flow, modules, endpoints
 ├── db/                            # Postgres data model docs (one file per module)
@@ -25,6 +27,10 @@ docs/
 ## project_plans 
 
 Contains initial planning / architecture docs.
+
+## ops
+
+Contains documentation about running Disci in production on AWS. Start with `ops/deployment.md`, the ops entry point and source of truth for what was built: the architecture and resources (OpenTofu in the `aws_iac_mngr` repo), how a deploy works from a laptop or CI, infrastructure changes and Cognito users, database access through the EC2 Instance Connect tunnel, the security model, cost and the budget, and known follow-ups.
 
 ## api
 

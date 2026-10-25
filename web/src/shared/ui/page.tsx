@@ -14,5 +14,5 @@ export function LoadingState() {
 }
 
 export function ErrorState({ error }: { error: Error }) {
-  return <p className="text-red-700 dark:text-red-300">Something went wrong: {error.message}</p>
+  return <p className="text-red-700">Something went wrong: {error.message}</p>
 }

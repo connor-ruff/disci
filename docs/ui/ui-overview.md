@@ -9,6 +9,8 @@ Color palette:
 
 **The web app is going to mostly be used by mobile devices.**
 
+Look: mostly white and calming (white and off-white backgrounds, greens used as accents). Light theme only. Exact tokens are in web-overview.md.
+
 ## Shared / General Naviation and UI
 
 - app-shell.md: the shell (top bar, module menu, sub-nav) and how modules plug into it.

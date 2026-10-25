@@ -5,9 +5,10 @@ import { RouterProvider } from '@tanstack/react-router'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
-import { router } from './app/router'
+import { AuthGate } from './app/AuthGate'
 import { ModuleRegistryProvider } from './app/module-registry'
 import { MODULES } from './app/modules'
+import { router } from './app/router'
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
@@ -15,10 +16,12 @@ const queryClient = new QueryClient({
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <ModuleRegistryProvider value={MODULES}>
-        <RouterProvider router={router} />
-      </ModuleRegistryProvider>
-    </QueryClientProvider>
+    <AuthGate>
+      <QueryClientProvider client={queryClient}>
+        <ModuleRegistryProvider value={MODULES}>
+          <RouterProvider router={router} />
+        </ModuleRegistryProvider>
+      </QueryClientProvider>
+    </AuthGate>
   </StrictMode>,
 )

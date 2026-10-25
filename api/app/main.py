@@ -13,7 +13,8 @@ from app.modules import MODULES
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    open_pool(get_settings().database_url)
+    settings = get_settings()
+    open_pool(settings.database_url, iam_auth=settings.db_iam_auth)
     yield
     close_pool()
 

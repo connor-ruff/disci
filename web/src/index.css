@@ -2,38 +2,26 @@
 
 /*
  * Brand palette (docs/ui/ui-overview.md): ink #002421, teal #00998E, mist #CCFFFC.
+ * Look: mostly white and calm. Soft off-white page, white cards, quiet borders; the
+ * greens are for accents, buttons and highlights. Light theme only (by choice).
  * Components use the semantic tokens below (bg-background, text-muted, bg-primary...),
- * never raw hex values, so light and dark mode come for free.
+ * never raw hex values.
  *
- * Contrast note: teal on white is ~3.4:1, too low for body text, so teal is used for
- * accents (toggles, active states, icons). Text-bearing buttons use ink/mist instead.
+ * Contrast: brand teal on white is ~3.4:1, too low for text, so it's used for icons,
+ * toggles and active states. Buttons use a slightly deeper teal (#00857C, 4.6:1 with
+ * white text, passes WCAG AA).
  */
 :root {
-  --background: #f6fbfb;
+  --background: #f8faf9;
   --surface: #ffffff;
   --foreground: #002421;
-  --muted: #4d6b68;
-  --border: #d3e5e3;
-  --primary: #002421;
-  --primary-foreground: #ccfffc;
+  --muted: #5a6f6c;
+  --border: #e4ecea;
+  --primary: #00857c;
+  --primary-foreground: #ffffff;
   --accent: #00998e;
-  --highlight: #e3fbf9;
+  --highlight: #ecfaf8;
   color-scheme: light;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #002421;
-    --surface: #00302c;
-    --foreground: #ccfffc;
-    --muted: #8fbfbb;
-    --border: #0b4a45;
-    --primary: #00998e;
-    --primary-foreground: #002421;
-    --accent: #00998e;
-    --highlight: #003e39;
-    color-scheme: dark;
-  }
 }
 
 @theme inline {

@@ -1,7 +1,7 @@
 // root-route must be imported before anything that pulls in the module registry.
 import { rootRoute } from './root-route'
 
-import { createRoute, createRouter } from '@tanstack/react-router'
+import { createRoute, createRouter, redirect } from '@tanstack/react-router'
 
 import { MODULES } from './modules'
 import { HomePage } from './pages/HomePage'
@@ -22,10 +22,21 @@ const settingsRoute = createRoute({
   component: SettingsPage,
 })
 
+// Cognito redirects here after sign-in; AuthGate has already handled the code by the
+// time the router renders, so just continue home.
+const authCallbackRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/auth/callback',
+  beforeLoad: () => {
+    throw redirect({ to: '/' })
+  },
+})
+
 const routeTree = rootRoute.addChildren([
   homeRoute,
   manageModulesRoute,
   settingsRoute,
+  authCallbackRoute,
   ...MODULES.map((module) => module.route),
 ])
 

@@ -9,6 +9,7 @@ from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
 from app.core.auth import Identity, get_identity
+from app.core.rds_iam import IamAuthConnection
 from app.core.sql import Queries
 
 queries = Queries(__file__)
@@ -16,10 +17,17 @@ queries = Queries(__file__)
 _pool: ConnectionPool | None = None
 
 
-def open_pool(database_url: str) -> None:
+def open_pool(database_url: str, iam_auth: bool = False) -> None:
     global _pool
     _pool = ConnectionPool(
-        database_url, min_size=1, max_size=5, kwargs={"row_factory": dict_row}, open=True
+        database_url,
+        connection_class=IamAuthConnection if iam_auth else Connection,
+        min_size=1,
+        max_size=5,
+        kwargs={"row_factory": dict_row},
+        # Lambda freezes between invocations; verify a connection is alive before use.
+        check=ConnectionPool.check_connection,
+        open=True,
     )
 
 

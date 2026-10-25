@@ -1,7 +1,9 @@
+import { LogOut } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
 
 import type { User } from '@/shared/api/client'
 import { useMe, useUpdateMe } from '@/shared/api/hooks'
+import { authMode, signOut } from '@/shared/auth/auth'
 import { Button } from '@/shared/ui/button'
 import { Card } from '@/shared/ui/card'
 import { ErrorState, LoadingState, PageHeader } from '@/shared/ui/page'
@@ -18,6 +20,12 @@ export function SettingsPage() {
       {me.isError && <ErrorState error={me.error} />}
       {/* Keyed so the form's fields reset if the user changes. */}
       {me.data && <SettingsForm key={me.data.id} user={me.data} />}
+      {authMode === 'cognito' && (
+        <Button variant="outline" onClick={() => signOut()} className="mt-4 w-full sm:w-auto">
+          <LogOut className="size-5" />
+          Sign out
+        </Button>
+      )}
     </>
   )
 }

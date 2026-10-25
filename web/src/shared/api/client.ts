@@ -1,9 +1,23 @@
 import createClient from 'openapi-fetch'
 
+import { getIdToken, handleUnauthorized } from '@/shared/auth/auth'
+
 import type { components, paths } from './schema'
 
 /** Typed API client. Paths, params and bodies are checked against schema.d.ts. */
 export const api = createClient<paths>({ baseUrl: import.meta.env.VITE_API_URL ?? '/api' })
+
+api.use({
+  async onRequest({ request }) {
+    const token = await getIdToken()
+    if (token) request.headers.set('Authorization', `Bearer ${token}`)
+    return request
+  },
+  async onResponse({ response }) {
+    if (response.status === 401) await handleUnauthorized()
+    return response
+  },
+})
 
 export type User = components['schemas']['UserOut']
 export type UserUpdate = components['schemas']['UserUpdate']
