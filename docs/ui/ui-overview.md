@@ -11,6 +11,8 @@ Color palette:
 
 Look: mostly white and calming (white and off-white backgrounds, greens used as accents). Light theme only. Exact tokens are in web-overview.md.
 
+- App icon: teal tile, white "D", mint check (see web-overview.md, Home-screen app).
+
 ## Shared / General Naviation and UI
 
 - app-shell.md: the shell (top bar, module menu, sub-nav) and how modules plug into it.

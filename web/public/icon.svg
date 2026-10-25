@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Disci app icon: teal tile, white "D", mint check (discipline = checking things off). -->
+  <rect width="512" height="512" rx="112" fill="#00857C"/>
+  <path d="M150 112 H254 C350 112 410 172 410 256 C410 340 350 400 254 400 H150 Z"
+        fill="none" stroke="#FFFFFF" stroke-width="44" stroke-linejoin="round"/>
+  <path d="M214 262 L256 304 L334 214"
+        fill="none" stroke="#CCFFFC" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

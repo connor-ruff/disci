@@ -10,6 +10,7 @@ import { Card } from '@/shared/ui/card'
 import type { ModuleManifest } from './module'
 import { useModuleRegistry } from './module-registry'
 import { ModuleMenu } from './ModuleMenu'
+import { PullToRefresh } from './PullToRefresh'
 
 /** The frame around every page: top bar, module menu, and the module sub-nav. */
 export function Shell() {
@@ -57,6 +58,7 @@ export function Shell() {
       </main>
 
       <ModuleMenu open={menuOpen} onOpenChange={setMenuOpen} />
+      <PullToRefresh />
     </div>
   )
 }

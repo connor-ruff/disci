@@ -20,7 +20,7 @@ The engineering entry point for the web app (`web/`): stack, layout, conventions
 | Icons | **lucide-react** | |
 | Drag and drop | **@dnd-kit** (`core`, `sortable`, `utilities`) | Only used through the shared `SortableList` (§6). Touch, mouse and keyboard sensors. |
 | API client | **openapi-fetch**, types from **openapi-typescript** | See §3. |
-| Auth | **oidc-client-ts** + **react-oidc-context** | Cognito hosted login, code + PKCE. See §8. |
+| Auth | **oidc-client-ts** + **react-oidc-context** | Cognito hosted login, code + PKCE. See §9. |
 
 ---
 
@@ -28,13 +28,17 @@ The engineering entry point for the web app (`web/`): stack, layout, conventions
 
 ```
 web/
-├── index.html                     # viewport-fit=cover, single theme-color (#f8faf9)
+├── index.html                     # viewport-fit=cover, single theme-color (#f8faf9), manifest + icons (§7)
+├── public/                        # copied as-is to the build root (§7)
+│   ├── manifest.json              # web app manifest (name, standalone display, icons)
+│   ├── icon.svg                   # app icon, rounded; the browser favicon
+│   └── apple-touch-icon.png, icon-192.png, icon-512.png   # full-bleed PNGs for home screens
 ├── package.json / package-lock.json
 ├── tsconfig.json                  # strict; `@/*` → `src/*`
 ├── vite.config.ts                 # React + Tailwind plugins, /api proxy to :8000
 └── src/
     ├── main.tsx                   # AuthGate, QueryClient, ModuleRegistryProvider, RouterProvider
-    ├── vite-env.d.ts              # types for the VITE_* build-time env vars (§8)
+    ├── vite-env.d.ts              # types for the VITE_* build-time env vars (§9)
     ├── index.css                  # Tailwind import + theme tokens (§5)
     ├── app/                       # the shell (see app-shell.md)
     │   ├── module.ts              # ModuleManifest type
@@ -44,6 +48,7 @@ web/
     │   ├── router.tsx             # route tree: shell pages, /auth/callback, each module's route
     │   ├── AuthGate.tsx           # renders the app only when signed in (cognito mode)
     │   ├── Shell.tsx              # top bar, sub-nav, disabled-module gate
+    │   ├── PullToRefresh.tsx      # pull-down-to-reload in the home-screen app (§7)
     │   ├── ModuleMenu.tsx         # ☰ drawer
     │   └── pages/                 # Home, ManageModules, Settings, NotFound
     ├── shared/                    # used by the shell and every module
@@ -87,7 +92,7 @@ web/
 | Local | `/api/...` on the Vite dev server (:5173), which proxies to `http://localhost:8000` and strips the `/api` prefix. Same origin, so no CORS. |
 | Production | `VITE_API_URL` (set at build time) points at API Gateway. |
 
-**Auth header.** A middleware on `api` attaches `Authorization: Bearer <ID token>` when signed in (nothing in dev mode), and a **401** response starts a fresh sign-in (see §8).
+**Auth header.** A middleware on `api` attaches `Authorization: Bearer <ID token>` when signed in (nothing in dev mode), and a **401** response starts a fresh sign-in (see §9).
 
 ---
 
@@ -149,7 +154,30 @@ The app will mostly be used on phones, so:
 
 ---
 
-## 7. Adding a module (web side)
+## 7. Home-screen app (PWA-lite)
+
+Disci can be saved to a phone's home screen (Share → Add to Home Screen on iOS) and then launches full-screen with its own icon, like an app. There is **no service worker and no offline support**; that is intentional for now, so every launch loads the latest deploy from the network.
+
+**Files.**
+- `web/public/manifest.json`: `name`/`short_name` "Disci", `display: standalone`, `start_url` `/`, background and theme color `#f8faf9`, and the 192 and 512 px PNG icons with `purpose: "any maskable"`.
+- `index.html` links the manifest, the SVG favicon (`icon.svg`) and the `apple-touch-icon`, and sets `apple-mobile-web-app-title` ("Disci"), `apple-mobile-web-app-capable` and `apple-mobile-web-app-status-bar-style` (`default`).
+- Vite copies `web/public/` to the root of `dist/`, so `scripts/deploy.sh` uploads these files with the same `no-cache` rule as `index.html` (see [deployment.md](../ops/deployment.md)).
+
+**The icon.** A teal (`#00857C`) tile with a white "D" outline and a mint (`#CCFFFC`) check: discipline, checking things off.
+- `icon.svg` has rounded corners (`rx`) and is the browser favicon.
+- The PNGs (`apple-touch-icon.png`, `icon-192.png`, `icon-512.png`) are **full-bleed squares**: iOS and Android apply their own rounding and masks, and rendering the rounded SVG left white corners (the PNG renderer fills transparent corners with white).
+- To change the icon, edit `icon.svg`, then re-render the PNGs on macOS from a copy of the SVG without `rx` (the full-bleed variant) with `qlmanage -t -s <size> -o <dir> <file>.svg` at each size (180 for the apple-touch-icon, 192, 512).
+
+**Pull-to-refresh** (`app/PullToRefresh.tsx`, rendered by `Shell`). The home-screen app has no reload button, so:
+- It is only active in standalone mode (`display-mode: standalone`, or `navigator.standalone` on iOS). Browser tabs have a reload button and their own pull gesture, so it does nothing there.
+- Pulling down from the very top of a page, with no dialog or sheet open, shows a "Pull to refresh" pill; past a 70 px (dampened) pull it reads "Release to refresh". Releasing does a full `window.location.reload()`, which reloads data and code and so picks up new deploys.
+- `index.css` sets `overscroll-behavior-y: none` in standalone mode so iOS's rubber-band bounce doesn't fight the gesture.
+
+**Existing shortcuts.** A home-screen shortcut saved before this support was added keeps its old icon and opens as a browser tab. To get the new icon and full-screen launch, delete it and add it again with Share → Add to Home Screen.
+
+---
+
+## 8. Adding a module (web side)
 
 The API side comes first (registry entry, migration, endpoints; see [api-overview.md](../api/api-overview.md)), then:
 
@@ -165,7 +193,7 @@ The shell then picks it up automatically: menu entry, manage-modules icon, sub-n
 
 ---
 
-## 8. Auth
+## 9. Auth
 
 | Mode | `VITE_AUTH_MODE` | Behaviour |
 |---|---|---|
@@ -196,7 +224,7 @@ Cognito login doesn't work from `localhost` (the client's callback URLs are only
 
 ---
 
-## 9. Local development
+## 10. Local development
 
 **One-time setup:** install Node.js (with npm), then `make web-install`.
 
@@ -212,11 +240,11 @@ make web     # terminal 2: web app on http://localhost:5173
 | `make web-install` | `npm ci`: install the exact versions in `package-lock.json`. |
 | `make web` | Vite dev server with hot reload at http://localhost:5173. Needs `make api` running. |
 | `make web-api-types` | Regenerate `src/shared/api/schema.d.ts` from the running API. |
-| `make web-check` | Type-check (`tsc --noEmit`) and production-build (`vite build` → `web/dist/`). CI runs it on every push and PR. This build uses dev auth; the real production build is done by `scripts/deploy.sh` (§8). |
+| `make web-check` | Type-check (`tsc --noEmit`) and production-build (`vite build` → `web/dist/`). CI runs it on every push and PR. This build uses dev auth; the real production build is done by `scripts/deploy.sh` (§9). |
 
 ---
 
-## 10. Adding dependencies (supply-chain caution)
+## 11. Adding dependencies (supply-chain caution)
 
 New packages are installed **only at versions published at least two weeks ago**, so a freshly compromised release has time to be caught before it reaches this repo:
 

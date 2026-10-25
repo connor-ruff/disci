@@ -63,3 +63,11 @@ body {
   color: var(--foreground);
   -webkit-tap-highlight-color: transparent;
 }
+
+/* Home-screen app: no rubber-band bounce at the top, so our pull-to-refresh owns the gesture. */
+@media (display-mode: standalone) {
+  html,
+  body {
+    overscroll-behavior-y: none;
+  }
+}

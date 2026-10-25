@@ -1,6 +1,6 @@
 # App Shell & Navigation
 
-*Status: **implemented** in `web/src/app/`. Home, Manage modules, Settings and the finance stub page work; the finance module has no real pages yet. Engineering details (stack, conventions, dev workflow) are in [web-overview.md](web-overview.md).*
+*Status: **implemented** in `web/src/app/`. Home, Manage modules and Settings work, and the finance module renders its pages inside the shell (see [finance-ui.md](finance-ui.md)). Engineering details (stack, conventions, dev workflow) are in [web-overview.md](web-overview.md).*
 
 The **shell** is the frame around every page: the top bar, the module menu, and how a user moves between modules. Individual modules (finance, tasks, nutrition) render their own pages *inside* the shell.
 
@@ -43,7 +43,8 @@ The **shell** is the frame around every page: the top bar, the module menu, and 
 ```
 
 - **Module sub-nav**: each module lists its own tabs in its manifest (`subNav`). The row renders **only when a module has more than one tab**, so a single-page module gets no tab bar. It is a horizontally scrolling pill row on every screen size (works on phones without wrapping). A tab is active when the URL starts with its path, so a detail page (e.g. `/finance/budgets/<id>`) keeps its list tab highlighted.
-- **[👤] account icon**: links straight to `/settings`. There is no account dropdown and no sign-out yet, since local dev uses dev auth; sign-out arrives with Cognito.
+- **Pull-to-refresh** (`PullToRefresh.tsx`, rendered by the shell): in the home-screen app only, pulling down from the top of any page reloads the app. Details in [web-overview.md](web-overview.md) §7.
+- **[👤] account icon**: links straight to `/settings`. There's no account dropdown; **Sign out** is a button on the Settings page (production/Cognito only; local dev auth has no sign-in).
 
 ---
 
