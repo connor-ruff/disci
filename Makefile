@@ -13,7 +13,8 @@ API_ENV := DISCI_ENV=local DISCI_AUTH_MODE=dev \
 
 .DEFAULT_GOAL := help
 .PHONY: help db-up db-down db-roles db-migrate db-rollback db-status db-new db-seed db-reset \
-	db-psql db-test-prepare api-install api api-test api-lint
+	db-psql db-test-prepare api-install api api-test api-lint \
+	web-install web web-api-types web-check
 
 help: ## List available commands
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -69,3 +70,17 @@ api-test: db-test-prepare ## Run API tests against a fresh test database
 
 api-lint: ## Lint and format-check the API
 	cd api && uv run ruff check . && uv run ruff format --check .
+
+# --- Web -----------------------------------------------------------------------
+
+web-install: ## Install web dependencies
+	cd web && npm ci
+
+web: ## Run the web app locally (http://localhost:5173); needs `make api` running
+	cd web && npm run dev
+
+web-api-types: ## Regenerate web/src/shared/api/schema.d.ts from the running API
+	cd web && npm run gen:api
+
+web-check: ## Type-check and production-build the web app
+	cd web && npm run build

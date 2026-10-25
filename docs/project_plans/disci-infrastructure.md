@@ -108,16 +108,25 @@ disci/
 │   │           └── queries/       #   one .sql file per query, loaded by name
 │   └── tests/                     # pytest against the disci_test database
 │       └── core/
-├── web/                           # React + Vite + TS SPA (static build → S3)
+├── web/                           # React + Vite + TS SPA, static build → S3 (see docs/ui/web-overview.md)
+│   ├── package.json / package-lock.json
+│   ├── vite.config.ts             # dev server :5173, proxies /api → localhost:8000
 │   └── src/
-│       ├── app/                   # shell: layout, module nav, auth, router root
-│       ├── shared/                # UI components, generated API client, utils
+│       ├── main.tsx               # QueryClient, module registry provider, router
+│       ├── index.css              # Tailwind v4 + brand theme tokens (light/dark)
+│       ├── app/                   # shell: top bar, module menu, router, MODULES registry, shell pages
+│       ├── shared/
+│       │   ├── api/               # typed openapi-fetch client, core query hooks,
+│       │   │                      #   schema.d.ts (generated from the API, never edit)
+│       │   ├── ui/                # shadcn-style components on radix-ui
+│       │   └── lib/
 │       └── modules/
-│           └── finance/
-│               ├── routes.tsx     # the module's pages, registered with the shell
+│           └── finance/           # stub today; a full module grows into:
+│               ├── index.ts       #   the module's manifest, added to MODULES
+│               ├── routes.tsx     #   the module's route tree under /finance
 │               ├── pages/
-│               ├── components/
-│               └── api.ts         # TanStack Query hooks for this module
+│               ├── components/    #   incl. its Home card
+│               └── api.ts         #   TanStack Query hooks for this module
 ├── mcp/                           # (later) MCP server; calls the API
 ├── jobs/                          # (later) scheduled jobs: reports, recurring generation
 └── .github/workflows/
@@ -142,11 +151,11 @@ There are **two environments: local (your laptop) and production (AWS).** No sta
 | | Local | Production |
 |---|---|---|
 | Postgres | Docker container with a **named volume**, so data survives restarts | RDS |
-| API / web | Run on your machine (`make api` on :8000, Vite dev server) | Lambda / S3 + CloudFront |
+| API / web | Run on your machine (`make api` on :8000, `make web` on :5173; the web dev server proxies `/api` to the API) | Lambda / S3 + CloudFront |
 | Login | **Dev auth** for now (`DISCI_AUTH_MODE=dev`: acts as the seeded user or the `X-Dev-User` header). Later, the same Cognito user pool with `localhost` as a callback URL | Cognito |
 | Data | Fake data from `db/seeds/dev.sql` plus whatever you create while testing | Your real data |
 
-**One-time setup:** install **Docker Desktop** and have it running, and install **uv** (for the API), then run `make api-install`. Postgres and dbmate both run in containers (defined in `compose.yaml`), so there's nothing else to install for the database.
+**One-time setup:** install **Docker Desktop** and have it running, install **uv** (for the API) and **Node.js/npm** (for the web app), then run `make api-install` and `make web-install`. Postgres and dbmate both run in containers (defined in `compose.yaml`), so there's nothing else to install for the database.
 
 **Local database lifecycle.** Stopping and starting the container keeps everything (data lives in the `disci-pgdata` Docker volume). The database is only wiped when you explicitly reset it:
 
@@ -173,6 +182,17 @@ Commands that need the database start it first, so `make db-migrate` works from 
 | `make api` | Apply pending migrations, then run the API with auto-reload at http://localhost:8000 (interactive docs at `/docs`). |
 | `make api-test` | Rebuild the separate `disci_test` database from the migrations, then run `pytest`. Your dev data is untouched. |
 | `make api-lint` | Run ruff (lint + format check, including the `S608` SQL-injection rule). |
+
+**Web commands** (details in `docs/ui/web-overview.md`):
+
+| Command | What it does |
+|---|---|
+| `make web-install` | Install the web app's dependencies (`npm ci`, exact versions from `package-lock.json`). |
+| `make web` | Run the web app with hot reload at http://localhost:5173. Needs `make api` running. |
+| `make web-api-types` | Regenerate `web/src/shared/api/schema.d.ts` from the running API. |
+| `make web-check` | Type-check and production-build the web app. |
+
+**Running the app locally** takes two terminals: `make api` in one (starts Postgres, applies migrations, serves :8000), then `make web` in the other, and open http://localhost:5173. The browser calls `/api/...` on the Vite dev server, which forwards to the API, so there's no CORS setup.
 
 `db-roles` and `db-test-prepare` are internal targets, run by `db-migrate` and `api-test`.
 

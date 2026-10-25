@@ -1,6 +1,6 @@
 # App Shell & Navigation
 
-*Status: planning draft. Nothing is built yet.*
+*Status: **implemented** in `web/src/app/`. Home, Manage modules, Settings and the finance stub page work; the finance module has no real pages yet. Engineering details (stack, conventions, dev workflow) are in [web-overview.md](web-overview.md).*
 
 The **shell** is the frame around every page: the top bar, the module menu, and how a user moves between modules. Individual modules (finance, tasks, nutrition) render their own pages *inside* the shell.
 
@@ -10,7 +10,7 @@ The **shell** is the frame around every page: the top bar, the module menu, and 
 
 - **Modules are opt-in.** A new user starts with nothing enabled and turns on only the modules they want. The app should never feel like a wall of features.
 - **Navigation is built from the enabled modules.** The shell never hard-codes "Finance". It renders whatever modules are registered *and* turned on for the user.
-- **Phone-friendly from day one.** The same layout works in a phone browser (mobile app comes later).
+- **Phone-first.** The app will mostly be used on phones (see [ui-overview.md](ui-overview.md)), so the layout is designed for a phone browser first and widens gracefully (mobile app comes later).
 
 ---
 
@@ -18,9 +18,9 @@ The **shell** is the frame around every page: the top bar, the module menu, and 
 
 ```
 ┌──────────────────────────────────────────────────┐
-│ ☰  Disci            Finance ▸ Budgets       [👤] │  ← top bar
+│ ☰  Disci / Finance                          [👤] │  ← top bar (sticky)
 ├──────────────────────────────────────────────────┤
-│ Budgets · Transactions · Recurring · Categories  │  ← module sub-nav
+│ Budgets · Transactions · Recurring · Categories  │  ← module sub-nav (only if > 1 tab)
 ├──────────────────────────────────────────────────┤
 │                                                  │
 │               (module page content)              │
@@ -28,55 +28,66 @@ The **shell** is the frame around every page: the top bar, the module menu, and 
 └──────────────────────────────────────────────────┘
 ```
 
-- **☰ opens the module menu**, a pop-out drawer from the left (a full-height sheet on phones):
+- **Top bar** (`Shell.tsx`): ☰ button, "Disci" (links to Home), and, inside a module, " / <module name>". Content is capped at a readable width (`max-w-3xl`) on wide screens.
+- **☰ opens the module menu** (`ModuleMenu.tsx`), a full-height drawer that slides in from the left (`shared/ui/drawer.tsx`, built on the Radix Dialog). It closes on any navigation.
 
 ```
 ┌───────────────────────┐
 │  🏠  Home             │
 │  ───────────────────  │
-│  💵  Finance          │   ← enabled modules only
+│  💵  Finance          │   ← enabled modules only (hidden if none)
 │  ───────────────────  │
-│  ⊕  Manage modules    │   ← turn modules on/off
+│  ⊞  Manage modules    │   ← turn modules on/off
 │  ⚙  Settings          │
 └───────────────────────┘
 ```
 
-- **Module sub-nav**: each module defines its own sections (e.g. Finance: Budgets, Transactions, Recurring, Categories). It appears as tabs under the top bar on desktop and a horizontally scrollable tab row on phones.
-- **[👤] account menu**: profile, settings, sign out.
+- **Module sub-nav**: each module lists its own tabs in its manifest (`subNav`). The row renders **only when a module has more than one tab**, so a single-page module gets no tab bar. It is a horizontally scrolling pill row on every screen size (works on phones without wrapping).
+- **[👤] account icon**: links straight to `/settings`. There is no account dropdown and no sign-out yet, since local dev uses dev auth; sign-out arrives with Cognito.
 
 ---
 
 ## 3. Pages owned by the shell
 
-| Route | Page |
-|---|---|
-| `/` | **Home.** One summary card per enabled module (e.g. Finance: this month's budget vs. actual). With **no modules enabled**, it shows a welcome state with a button to turn one on. |
-| `/modules` | **Manage modules.** A card per available module with a short description and an on/off toggle. Turning one on for the first time runs its setup (e.g. seeding default budget categories). API: `GET /me/modules`, `PUT /me/modules/{key}` (on), `DELETE /me/modules/{key}` (off). |
-| `/settings` | User settings (display name, timezone, week start). API: `GET /me`, `PUT /me`. |
-| `/<module>/...` | Everything else belongs to a module, e.g. `/finance/budgets/:id`. |
+| Route | Page | API |
+|---|---|---|
+| `/` | **Home.** With **no modules enabled**: a welcome card with a "Choose modules" button (→ `/modules`). Otherwise "Hi, <display name>" and one `HomeCard` per enabled module. | `GET /me`, `GET /me/modules` |
+| `/modules` | **Manage modules.** A card per available module (icon, name, description from the API) with an on/off switch. Turning one on for the first time runs its setup on the API side (e.g. seeding default budget categories). | `GET /me/modules`, `PUT /me/modules/{key}` (on), `DELETE /me/modules/{key}` (off) |
+| `/settings` | **Settings.** Email (read-only), display name, timezone (a native select of every IANA zone from `Intl.supportedValuesOf`, plus a "Use this device's timezone" shortcut when it differs), week start. | `GET /me`, `PUT /me` |
+| `/<module>/...` | Everything else belongs to a module, e.g. `/finance` (today a stub overview page). | Module endpoints |
+| anything else | **Not found** page with a "Go home" button. | |
 
-Visiting a disabled module's URL directly shows a "this module is off, turn it on?" prompt rather than an error.
+**Disabled-module gate.** The shell checks the first URL segment: if it matches a registered module that the user has turned **off**, it shows a "<Module> is turned off" card with a "Turn on <Module>" button instead of the page (and hides the sub-nav). No error, and the data is kept.
 
 ---
 
 ## 4. How modules plug in (web)
 
-Each module folder (`web/src/modules/<module>/`) exports a **manifest** that the shell reads:
+Each module folder (`web/src/modules/<key>/`) exports a **manifest** (`ModuleManifest`, defined in `web/src/app/module.ts`) from its `index.ts`:
 
 | Field | Example (finance) | Used for |
 |---|---|---|
-| `key` | `'finance'` | Matches `core.user_modules.module_key`, the API folder and the Postgres schema |
-| `name`, `icon`, `description` | "Finance", 💵, "Budgets, transactions and bills" | Module menu, manage-modules page |
-| `routes` | `/finance/...` route tree | Mounted under `/<key>` by the shell |
-| `subNav` | Budgets, Transactions, Recurring, Categories | Module sub-nav |
-| `homeCard` | Budget vs. actual summary | Home page |
+| `key` | `'finance'` | Matches the API module key (`core.user_modules.module_key`), the Postgres schema and the URL prefix `/<key>` |
+| `icon` | `Wallet` (lucide-react) | Module menu, manage-modules page, disabled-module gate |
+| `route` | `financeRoute`: the TanStack Router tree under `/finance` (`routes.tsx`) | Added to the router's route tree |
+| `subNav` | `[]` today; later Budgets, Transactions, Recurring, Categories | Module sub-nav (shown only when > 1 entry) |
+| `HomeCard` | `FinanceHomeCard` component | Home page |
 
-A **module registry** (`web/src/app/modules.ts`) lists all manifests. The shell shows the registry entries that the current user has enabled (fetched from `GET /me/modules`; the API has a matching registry, see [api-overview.md](../api/api-overview.md)). Adding a module means writing its folder and adding one line to the registry.
+**Name and description are not in the web manifest.** They come from the API (`GET /me/modules`), so they are defined once, in the API's module registry (see [api-overview.md](../api/api-overview.md)).
+
+| Piece | File | Role |
+|---|---|---|
+| Registry | `web/src/app/modules.ts` | `MODULES`: every manifest the web app can render. |
+| Registry context | `web/src/app/module-registry.tsx` | `ModuleRegistryProvider` (wraps the app in `main.tsx`) and `useModuleRegistry()`. The shell reads the registry through context because importing `modules.ts` directly would be a cycle: modules import the root route, which imports the shell. |
+| Root route | `web/src/app/root-route.tsx` | Root route rendering `Shell`; modules attach their routes to it. |
+| Router | `web/src/app/router.tsx` | Builds the route tree (shell pages + each `module.route`). Imports `root-route` first, for the same cycle reason. |
+
+The shell shows registry entries the current user has enabled (from `GET /me/modules`). A module the API knows about but the web registry doesn't still appears on `/modules` (with a generic icon) but has no pages. Adding a module means writing its folder and adding one line to `MODULES`; see [web-overview.md](web-overview.md) for the steps.
 
 ---
 
 ## 5. Open questions
 
-1. **Module order** in the menu: fixed, or user-arrangeable?
+1. **Module order** in the menu: fixed, or user-arrangeable? (Today: the order the API returns.)
 2. **Home cards**: is one summary card per module the right home page, or should Home be something else?
-3. **Visual style**: any apps whose look you like? Until then: clean and neutral (shadcn/ui defaults), with light and dark mode.
+3. ~~**Visual style**~~ **Resolved:** the brand palette in [ui-overview.md](ui-overview.md) (ink `#002421`, teal `#00998E`, mist `#CCFFFC`), with light and dark mode. How it maps to UI tokens is in [web-overview.md](web-overview.md).

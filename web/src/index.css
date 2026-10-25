@@ -1,0 +1,70 @@
+@import 'tailwindcss';
+
+/*
+ * Brand palette (docs/ui/ui-overview.md): ink #002421, teal #00998E, mist #CCFFFC.
+ * Components use the semantic tokens below (bg-background, text-muted, bg-primary...),
+ * never raw hex values, so light and dark mode come for free.
+ *
+ * Contrast note: teal on white is ~3.4:1, too low for body text, so teal is used for
+ * accents (toggles, active states, icons). Text-bearing buttons use ink/mist instead.
+ */
+:root {
+  --background: #f6fbfb;
+  --surface: #ffffff;
+  --foreground: #002421;
+  --muted: #4d6b68;
+  --border: #d3e5e3;
+  --primary: #002421;
+  --primary-foreground: #ccfffc;
+  --accent: #00998e;
+  --highlight: #e3fbf9;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #002421;
+    --surface: #00302c;
+    --foreground: #ccfffc;
+    --muted: #8fbfbb;
+    --border: #0b4a45;
+    --primary: #00998e;
+    --primary-foreground: #002421;
+    --accent: #00998e;
+    --highlight: #003e39;
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-highlight: var(--highlight);
+
+  --animate-slide-in: slide-in 200ms ease-out;
+  --animate-fade-in: fade-in 200ms ease-out;
+}
+
+@keyframes slide-in {
+  from {
+    transform: translateX(-100%);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  -webkit-tap-highlight-color: transparent;
+}
