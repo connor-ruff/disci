@@ -230,7 +230,6 @@ CREATE TABLE finance.recurring_transactions (
     ends_on date,
     auto_apply boolean DEFAULT false NOT NULL,
     requires_approval boolean DEFAULT false NOT NULL,
-    satisfies_checklist boolean DEFAULT false NOT NULL,
     paused_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
@@ -283,7 +282,6 @@ CREATE TABLE finance.transactions (
     status text DEFAULT 'confirmed'::text NOT NULL,
     recurring_transaction_id uuid,
     scheduled_on date,
-    satisfies_checklist boolean DEFAULT false NOT NULL,
     CONSTRAINT transactions_amount_check CHECK ((amount > (0)::numeric)),
     CONSTRAINT transactions_kind_check CHECK ((kind = ANY (ARRAY['expense'::text, 'income'::text]))),
     CONSTRAINT transactions_recurring_scheduled_check CHECK (((recurring_transaction_id IS NULL) = (scheduled_on IS NULL))),
@@ -776,4 +774,5 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('20261025134012'),
     ('20261025150312'),
     ('20261025153025'),
-    ('20261025155734');
+    ('20261025155734'),
+    ('20261025170608');

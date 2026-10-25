@@ -1,6 +1,6 @@
 # Finance Module (`finance` schema)
 
-*Status: **first slice implemented** in `db/migrations/20261025150312_finance__init.sql` (`budget_categories`, `budgets`, `budget_items`, `transactions`, `transaction_allocations`), plus a one-time default-category backfill in `db/migrations/20261025153025_finance__backfill_default_categories.sql` (see the seed list under `budget_categories`). **Second slice implemented** in `db/migrations/20261025155734_finance__recurring_and_checklist.sql`: `recurring_transactions`, transaction status (approvals), the monthly checklist columns, category descriptions, and the `finance.users_with_recurring()` function for the hourly job. Every table and column below is built. See [db-overview.md](db-overview.md) for conventions (audit columns, soft deletes, RLS, money types) that apply to every table below. The API is in [api-overview.md](../api/api-overview.md) §7 and the screens in [finance-ui.md](../ui/finance-ui.md).*
+*Status: **first slice implemented** in `db/migrations/20261025150312_finance__init.sql` (`budget_categories`, `budgets`, `budget_items`, `transactions`, `transaction_allocations`), plus a one-time default-category backfill in `db/migrations/20261025153025_finance__backfill_default_categories.sql` (see the seed list under `budget_categories`). **Second slice implemented** in `db/migrations/20261025155734_finance__recurring_and_checklist.sql`: `recurring_transactions`, transaction status (approvals), the monthly checklist columns, category descriptions, and the `finance.users_with_recurring()` function for the hourly job. The deprecated `satisfies_checklist` columns were then dropped in `db/migrations/20261025170608_finance__drop_satisfies_checklist.sql`. Every table and column below is built. See [db-overview.md](db-overview.md) for conventions (audit columns, soft deletes, RLS, money types) that apply to every table below. The API is in [api-overview.md](../api/api-overview.md) §7 and the screens in [finance-ui.md](../ui/finance-ui.md).*
 
 **Replaces:** EveryDollar (budget plus every logged expense) **and** the Google Sheet bills checklist.
 
@@ -148,7 +148,6 @@ Money that actually moved (or, while `pending`, is expected to).
 | `status` | `text` | no | `CHECK IN ('pending','confirmed')`, default `'confirmed'`. Only rules with `requires_approval` create `pending` ones; everything else is confirmed on creation. |
 | `recurring_transaction_id` | `uuid` | yes | → `recurring_transactions`. Set if generated from a rule. |
 | `scheduled_on` | `date` | yes | For generated rows: the occurrence date the rule produced. Set exactly when `recurring_transaction_id` is (`transactions_recurring_scheduled_check`). |
-| `satisfies_checklist` | `boolean` | no | **Deprecated, unused.** Default `false`. Formerly ticked off checklist items; the checklist now goes by actual vs. planned (§4), and the API no longer reads or writes it. To be dropped in a later release (§6 follow-ups). |
 
 - Unique `(id, user_id)`.
 - **Unique `(recurring_transaction_id, scheduled_on)` where `recurring_transaction_id IS NOT NULL`** (`transactions_recurring_occurrence_key`). Deliberately **not** limited to undeleted rows, so the generator is idempotent *and* a rejected or deleted occurrence is never generated again.
@@ -194,7 +193,6 @@ A rule for money that moves on a schedule: subscriptions, rent, utilities, paych
 | `ends_on` | `date` | yes | Optional, `>= starts_on`. For subscriptions that end, or loans paid off. |
 | `auto_apply` | `boolean` | no | Default `false`. **"Automatically apply to all budgets"** (§4). Off: the transaction is logged unassigned and shows in the inbox's "Not in a budget" list. |
 | `requires_approval` | `boolean` | no | Default `false`. Generated transactions start `pending` instead of `confirmed`. |
-| `satisfies_checklist` | `boolean` | no | **Deprecated, unused.** Default `false`. Formerly copied onto generated transactions; the API no longer reads or writes it. To be dropped in a later release (§6 follow-ups). |
 | `paused_at` | `timestamptz` | yes | Paused rules generate nothing. The API exposes it as a `paused` boolean. |
 
 - Unique `(id, user_id)`: target of `transactions`' composite FK.
@@ -278,4 +276,4 @@ Combined with RLS's `WITH CHECK (user_id = core.current_user_id())`, a row can o
 
 ### Follow-ups
 
-- **Drop the unused `satisfies_checklist` columns** on `finance.transactions` and `finance.recurring_transactions`. The checklist no longer uses a per-transaction flag (done = confirmed actual ≥ planned and > 0), and the API stopped reading and writing them. Because migrations run **before** the new API code is deployed (expand/contract, see [deployment.md](../ops/deployment.md)), the columns stay until the API version without them is live; a migration in a **later release** drops them.
+- ~~**Drop the unused `satisfies_checklist` columns** on `finance.transactions` and `finance.recurring_transactions`.~~ **Done** in `db/migrations/20261025170608_finance__drop_satisfies_checklist.sql`, the contract step of expand/contract (see [deployment.md](../ops/deployment.md)): the API stopped reading and writing them one release earlier, after the checklist moved to strict completion (§5).
