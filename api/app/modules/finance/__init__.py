@@ -4,11 +4,9 @@ from uuid import UUID
 from psycopg import Connection
 
 from app.core.module import Module
-from app.core.sql import Queries
 from app.modules.finance import service
-from app.modules.finance.router import router
-
-queries = Queries(__file__)
+from app.modules.finance.routes import router
+from app.modules.finance.sql import queries
 
 
 def setup(conn: Connection[dict[str, Any]], user_id: UUID) -> None:

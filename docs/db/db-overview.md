@@ -1,6 +1,6 @@
 # Data Model Overview
 
-*Status: the **`core` schema is implemented** (`db/migrations/20261025134012_core__init.sql`), and so is the **first slice of `finance`** (`db/migrations/20261025150312_finance__init.sql`; recurring transactions still planned). `tasks` and `nutrition` are still **planning drafts** that their migrations will be written from. For the exact current schema, read the auto-generated `db/schema.sql`.*
+*Status: the **`core` schema is implemented** (`db/migrations/20261025134012_core__init.sql`), and so is **`finance`** (`db/migrations/20261025150312_finance__init.sql`, then recurring transactions, approvals and the monthly checklist in `db/migrations/20261025155734_finance__recurring_and_checklist.sql`). `tasks` and `nutrition` are still **planning drafts** that their migrations will be written from. For the exact current schema, read the auto-generated `db/schema.sql`.*
 
 This is the entry point for the Postgres data model. It covers how the model is split into modules, the conventions every table follows, and how the modules relate. Each module has its own doc with full table definitions.
 
@@ -22,7 +22,7 @@ Each module is a self-contained slice of the app and gets its **own Postgres sch
 | Module | Postgres schema | Tables | Status | Doc |
 |---|---|---|---|---|
 | Shared | `core` | `users`, `user_modules` | Implemented | [shared.md](shared.md) |
-| Finance | `finance` | `budgets`, `budget_categories`, `budget_items`, `transactions`, `transaction_allocations`, `recurring_transactions` | First slice implemented; `recurring_transactions` (and the recurring/status columns) planned | [finance.md](finance.md) |
+| Finance | `finance` | `budgets`, `budget_categories`, `budget_items`, `transactions`, `transaction_allocations`, `recurring_transactions` | Implemented (two slices) | [finance.md](finance.md) |
 | Tasks | `tasks` | `tasks`, `task_occurrences` | Planning draft | [tasks.md](tasks.md) |
 | Nutrition | `nutrition` | `food_items`, `food_item_logs`, `macro_goals` | Planning draft | [nutrition.md](nutrition.md) |
 
@@ -60,7 +60,7 @@ These come straight from the design principles in `docs/project_plans/project-in
 ### Types
 - **Money:** `numeric(12,2)`, always **positive**. Direction comes from a `kind` column (`'income'` / `'expense'`), never from a negative sign. USD only in v1.
 - **Enumerations:** `text` + `CHECK (col IN (...))` rather than Postgres `ENUM` types, because CHECK constraints are much easier to change in a migration.
-- **Recurrence:** iCal **RRULE** strings (e.g. `FREQ=DAILY`, `FREQ=WEEKLY;INTERVAL=2`) wherever something repeats (recurring bills and recurring tasks), so there's one parser and one mental model.
+- **Recurrence:** decided per module, preferring the simplest form that covers the real cases. Finance's recurring transactions use **explicit schedule columns** (`frequency`, `day_of_week`, `day_of_month`, `starts_on`, `ends_on`; see [finance.md](finance.md)) rather than RRULE strings: easy to CHECK and to edit in a form, with no parser. The tasks draft still plans RRULE strings ([tasks.md](tasks.md)); revisit when it's built.
 - **Dates vs. times:** "which day does this belong to" is stored as a `date` resolved in the **user's timezone** (`core.users.timezone`) at write time. Exact moments are `timestamptz`.
 
 ### Integrity
@@ -79,6 +79,11 @@ These come straight from the design principles in `docs/project_plans/project-in
       USING (user_id = core.current_user_id())
       WITH CHECK (user_id = core.current_user_id());
   ```
+- **`SECURITY DEFINER` functions are the only way around RLS for `disci_app`, and are kept narrow.** Two patterns exist:
+  - **Bootstrap before the user is known:** `core.ensure_user(sub, email)` runs before `app.user_id` can be set (see [shared.md](shared.md)).
+  - **Narrow cross-user lookups for scheduled jobs:** e.g. `finance.users_with_recurring()` returns only `(user_id, timezone)` for users with active recurring rules. The job then sets `app.user_id` and works **one user at a time under RLS**, exactly like an API request.
+
+  Each one sets `search_path` explicitly (`SET search_path = pg_catalog, ...`), returns the minimum it needs to, `REVOKE`s `EXECUTE` from `PUBLIC` and grants it only to `disci_app`.
 - **Grants come from default privileges per schema.** Each module's first migration (the one that creates its schema) must `GRANT USAGE ON SCHEMA <module> TO disci_app` and `ALTER DEFAULT PRIVILEGES IN SCHEMA <module> GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO disci_app`. Tables created later in that schema then need no per-table grants.
 
 ### Seeded defaults

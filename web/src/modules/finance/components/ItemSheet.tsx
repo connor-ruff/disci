@@ -3,6 +3,7 @@ import { type FormEvent, useState } from 'react'
 import { errorMessage } from '@/shared/api/client'
 import { parseMoneyInput } from '@/shared/lib/money'
 import { Button } from '@/shared/ui/button'
+import { Checkbox } from '@/shared/ui/checkbox'
 import { Field, inputClasses } from '@/shared/ui/field'
 import { Sheet } from '@/shared/ui/sheet'
 
@@ -17,6 +18,8 @@ import {
 
 type ItemSheetProps = {
   budgetId: string
+  /** Checklist items are only allowed in monthly budgets. */
+  isMonthly: boolean
   /** Edit this item, or create a new one of `kind` when undefined. */
   item?: BudgetItem
   kind: Kind
@@ -25,7 +28,15 @@ type ItemSheetProps = {
   onLogTransaction?: (item: BudgetItem) => void
 }
 
-export function ItemSheet({ budgetId, item, kind, open, onOpenChange, onLogTransaction }: ItemSheetProps) {
+export function ItemSheet({
+  budgetId,
+  isMonthly,
+  item,
+  kind,
+  open,
+  onOpenChange,
+  onLogTransaction,
+}: ItemSheetProps) {
   const noun = kind === 'income' ? 'income' : 'expense'
   return (
     <Sheet open={open} onOpenChange={onOpenChange} title={item ? item.name : `Add ${noun}`}>
@@ -33,6 +44,7 @@ export function ItemSheet({ budgetId, item, kind, open, onOpenChange, onLogTrans
       <ItemForm
         key={item?.id ?? `new-${kind}`}
         budgetId={budgetId}
+        isMonthly={isMonthly}
         item={item}
         kind={kind}
         onDone={() => onOpenChange(false)}
@@ -44,12 +56,14 @@ export function ItemSheet({ budgetId, item, kind, open, onOpenChange, onLogTrans
 
 function ItemForm({
   budgetId,
+  isMonthly,
   item,
   kind,
   onDone,
   onLogTransaction,
 }: {
   budgetId: string
+  isMonthly: boolean
   item?: BudgetItem
   kind: Kind
   onDone: () => void
@@ -63,6 +77,8 @@ function ItemForm({
   const [name, setName] = useState(item?.name ?? '')
   const [categoryId, setCategoryId] = useState(item?.category_id ?? '')
   const [planned, setPlanned] = useState(item ? String(Number(item.planned_amount)) : '')
+  const [isChecklist, setIsChecklist] = useState(item?.is_checklist_item ?? false)
+  const [checklistDay, setChecklistDay] = useState(item?.checklist_day ?? 1)
   const [invalid, setInvalid] = useState<string | null>(null)
 
   const options = (categories.data ?? []).filter((c) => c.kind === kind)
@@ -73,7 +89,13 @@ function ItemForm({
     const amount = parseMoneyInput(planned || '0')
     if (amount === null) return setInvalid('Enter an amount like 120 or 120.50')
     setInvalid(null)
-    const body = { name: name.trim(), category_id: categoryId || null, planned_amount: amount }
+    const body = {
+      name: name.trim(),
+      category_id: categoryId || null,
+      planned_amount: amount,
+      is_checklist_item: isChecklist,
+      checklist_day: isChecklist ? checklistDay : null,
+    }
     if (item) update.mutate({ id: item.id, ...body }, { onSuccess: onDone })
     else create.mutate({ kind, ...body }, { onSuccess: onDone })
   }
@@ -126,6 +148,34 @@ function ItemForm({
         </select>
       </Field>
 
+      {isMonthly && (
+        <div className="flex flex-col gap-3 rounded-lg bg-background p-3">
+          <Checkbox
+            id="item-checklist"
+            checked={isChecklist}
+            onChange={setIsChecklist}
+            label="On the monthly checklist"
+            hint="Shows on the Checklist tab until a transaction marked as satisfying it is logged."
+          />
+          {isChecklist && (
+            <Field label="Due on day" htmlFor="item-checklist-day">
+              <select
+                id="item-checklist-day"
+                value={checklistDay}
+                onChange={(e) => setChecklistDay(Number(e.target.value))}
+                className={inputClasses}
+              >
+                {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
+                  <option key={d} value={d}>
+                    {ordinal(d)} of the month
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
+        </div>
+      )}
+
       {(invalid || mutation.isError) && (
         <p className="text-sm text-red-700">{invalid ?? errorMessage(mutation.error)}</p>
       )}
@@ -147,4 +197,9 @@ function ItemForm({
       )}
     </form>
   )
+}
+
+export function ordinal(n: number): string {
+  const suffix = n % 100 >= 11 && n % 100 <= 13 ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[n % 10] ?? 'th'
+  return `${n}${suffix}`
 }

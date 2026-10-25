@@ -1,8 +1,8 @@
 # API Overview
 
-*Status: **skeleton implemented and deployed** to AWS Lambda behind API Gateway (https://molrqp0ch5.execute-api.us-east-2.amazonaws.com). Core endpoints (`/me`, `/me/modules`) work, and so does the **first slice of the finance module** (categories, budgets, budget items, transactions; recurring transactions not yet). Cognito auth works in production. Deploying and operating it: [deployment.md](../ops/deployment.md).*
+*Status: **skeleton implemented and deployed** to AWS Lambda behind API Gateway (https://molrqp0ch5.execute-api.us-east-2.amazonaws.com). Core endpoints (`/me`, `/me/modules`) work, and so does the **finance module** (categories, budgets, budget items, transactions, reordering, recurring transactions with approvals, the inbox and the monthly checklist). The first scheduled job (hourly recurring-transaction generation, `app/jobs/recurring.py`) runs as the `disci-jobs` Lambda. Cognito auth works in production. Deploying and operating it: [deployment.md](../ops/deployment.md).*
 
-The API is the only thing that talks to the database. The web app, the MCP server and the scheduled jobs all go through it (see [disci-infrastructure.md](../project_plans/disci-infrastructure.md)). It is **FastAPI** on Python 3.13, with plain SQL through **psycopg 3** (no ORM), managed with **uv**.
+The API is the only thing that talks to the database. The web app and the MCP server go through it over HTTP; scheduled jobs (`app/jobs/`) are part of the same codebase and zip, run in their own Lambda, and use the same database role, queries and row-level security (see §9 and [disci-infrastructure.md](../project_plans/disci-infrastructure.md)). It is **FastAPI** on Python 3.13, with plain SQL through **psycopg 3** (no ORM), managed with **uv**.
 
 ---
 
@@ -16,6 +16,8 @@ api/
 │   ├── main.py                    # builds the app: CORS, /health, core routers, mounts each module at /<key>
 │   ├── lambda_handler.py          # Lambda entry point `handler` (Mangum wraps the app)
 │   ├── migrator.py                # migrator Lambda entry point (roles + dbmate; see §9)
+│   ├── jobs/                      # scheduled jobs, one file per job (see §9.1)
+│   │   └── recurring.py           # hourly: create due recurring transactions (handler + `python -m`)
 │   ├── core/                      # cross-module plumbing
 │   │   ├── settings.py            # Settings from DISCI_* env vars
 │   │   ├── auth.py                # request → Identity (sub, email)
@@ -30,17 +32,33 @@ api/
 │       ├── __init__.py            # MODULES registry
 │       └── finance/               # mounted at /finance
 │           ├── __init__.py        # `module` + `setup` (seeds default expense categories on first enable)
-│           ├── router.py          # thin HTTP routes; maps constraint errors to 409/422
+│           ├── routes/            # thin HTTP routes, one file per area (see below)
+│           │   ├── __init__.py    # `router`: composes the area routers
+│           │   ├── _common.py     # shared helpers: not_found, invalid, constraint_errors, user_prefs, today_in
+│           │   ├── categories.py  # categories + category order
+│           │   ├── budgets.py     # budgets, items, item order
+│           │   ├── transactions.py# create/delete, approve/reject, allocations, inbox, budget transactions
+│           │   ├── recurring.py   # recurring rules
+│           │   └── checklist.py   # monthly checklist
 │           ├── schemas.py         # Pydantic models (Money = Decimal, 2 places)
 │           ├── service.py         # period bounds, default budget names, allocation validation, totals
+│           ├── recurring.py       # Schedule, occurrences, next_occurrence, generate_for_user
+│           ├── sql.py             # `queries = Queries(__file__)`, shared by routes, services and jobs
 │           └── queries/           # one .sql per query
 └── tests/                         # pytest, against the disci_test database
     ├── conftest.py
     ├── core/                      # test_users.py, test_user_modules.py, test_aws.py
-    └── modules/finance/           # test_finance.py
+    └── modules/finance/           # test_finance.py, test_recurring.py
 ```
 
-A full module has `router.py` (thin HTTP routes), `schemas.py` (Pydantic models), `service.py` (business rules that don't belong in SQL) and `queries/` (one `.sql` per query); `finance/` is the reference example.
+A small module has `router.py` (thin HTTP routes), `schemas.py` (Pydantic models), `service.py` (business rules that don't belong in SQL) and `queries/` (one `.sql` per query); `core/users/` is a minimal example (no service).
+
+**When a module outgrows one router file**, follow `finance/`:
+- `routes/` becomes a package: one file per area, each with its own `router = APIRouter()` (optionally with a `prefix`), and `routes/__init__.py` builds the module's `router` by `include_router`-ing them. The module's `__init__.py` imports `router` from `routes`, so registration (§6) doesn't change.
+- Helpers shared by several route files go in `routes/_common.py`.
+- SQL is loaded once in `<module>/sql.py` (`queries = Queries(__file__)`, pointing at `<module>/queries/`), and routes, services and jobs all import `queries` from there.
+- Domain logic that isn't HTTP-specific and is reused (e.g. by a job) gets its own file (`finance/recurring.py`), taking a `Connection` rather than a request.
+- Scheduled jobs live in `app/jobs/` (one file per job, with a Lambda `handler` and a `python -m` entry point) and call into the module's code.
 
 ---
 
@@ -94,7 +112,7 @@ The dependency uses `Depends(get_db, scope="function")`, so the commit happens *
 ## 5. SQL conventions
 
 - Every SQL statement lives in a `queries/<name>.sql` file inside the package that uses it.
-- Load by name: `queries = Queries(__file__)`, then `conn.execute(queries["get_user"], params)`.
+- Load by name: `queries = Queries(__file__)`, then `conn.execute(queries["get_user"], params)`. A module with several files that need its SQL defines `queries` once in `<module>/sql.py` and imports it.
 - Values are **always bound parameters** (`%(name)s`). Never build SQL with f-strings, `.format()` or `+`; ruff's `S608` rule flags it.
 - Dynamic identifiers (e.g. a sort column) go through `psycopg.sql.Identifier` and an allow-list.
 - Rows come back as dicts (`dict_row`), ready for `Model.model_validate(row)`.
@@ -134,28 +152,39 @@ Data model: [finance.md](../db/finance.md). **Money** is a `Decimal` with two pl
 
 | Method | Path | What it does |
 |---|---|---|
-| GET | `/finance/categories` | The user's categories (both kinds), ordered by kind, `sort_order`, name. |
-| POST | `/finance/categories` | Create `{kind, name}`. Duplicate name within a kind (case-insensitive) → **409**. |
-| PUT | `/finance/categories/{id}` | Rename `{name}`. Duplicate → 409. |
+| GET | `/finance/categories` | The user's categories (both kinds, each with `description`), ordered by kind, `sort_order`, name. |
+| POST | `/finance/categories` | Create `{kind, name, description?}` (description ≤300 chars). It goes last in its kind's order. Duplicate name within a kind (case-insensitive) → **409**. |
+| PUT | `/finance/categories/order` | Reorder one kind: `{kind, ids}`, the category ids in the desired order (each gets its position as `sort_order`). The order is per user and applies to every budget. Returns the full category list. |
+| PUT | `/finance/categories/{id}` | Replace `{name, description}`. Duplicate → 409. |
 | DELETE | `/finance/categories/{id}` | Soft-delete; its items become Uncategorized. 204. |
 | GET | `/finance/budgets` | Budget list (`BudgetOut`), newest period first. |
-| POST | `/finance/budgets` | Create `{period_type, period_date, name?}`. `period_date` is **any date in the period**; the API snaps it to the period start (weeks use the user's `week_starts_on`) and sets `period_end`. `name` defaults to "October 2026", "2026" or "Week of Oct 19, 2026". Optional `copy_from_budget_id` starts it from another budget's items (kind, category, name, planned amount, sort order, notes; items in a deleted category come across Uncategorized). Transactions and allocations are not copied. The source must be the user's own budget with the same `period_type`, else **422**. |
-| GET | `/finance/budgets/{id}` | `BudgetDetail`: the budget, its `items` (each with `planned_amount` and net `actual_amount`: same-kind allocated transactions add, opposite-kind subtract), and `income` / `expense` totals (`{planned, actual}`). |
+| POST | `/finance/budgets` | Create `{period_type, period_date, name?}`. `period_date` is **any date in the period**; the API snaps it to the period start (weeks use the user's `week_starts_on`) and sets `period_end`. `name` defaults to "October 2026", "2026" or "Week of Oct 19, 2026". Optional `copy_from_budget_id` starts it from another budget's items (kind, category, name, planned amount, sort order, notes, checklist flag and day; items in a deleted category come across Uncategorized). Transactions and allocations are not copied. The source must be the user's own budget with the same `period_type`, else **422**. |
+| GET | `/finance/budgets/{id}` | `BudgetDetail`: the budget, its `items` and `income` / `expense` totals (`{planned, actual}`). Each item has `planned_amount`, net `actual_amount` over **confirmed** transactions (same-kind allocated transactions add, opposite-kind subtract), `pending_amount` (the same over transactions awaiting approval), `is_checklist_item`, `checklist_day`, `checklist_done` and `sort_order`. Items are ordered by kind, category order (Uncategorized last), then item order. |
 | PUT | `/finance/budgets/{id}` | Replace `{name, notes}`. The period can't change. |
 | DELETE | `/finance/budgets/{id}` | Soft-delete the budget and its items; their allocations are dropped (the transactions become unassigned). 204. |
-| POST | `/finance/budgets/{id}/items` | Add `{kind, name, category_id?, planned_amount}`. Returns the updated **`BudgetDetail`** (totals change too). |
-| PUT | `/finance/items/{id}` | Replace `{name, category_id, planned_amount}` (kind can't change). Returns `BudgetDetail`. |
+| POST | `/finance/budgets/{id}/items` | Add `{kind, name, category_id?, planned_amount, is_checklist_item?, checklist_day?}`. It goes last in the budget's order. Returns the updated **`BudgetDetail`** (totals change too). |
+| PUT | `/finance/budgets/{id}/items/order` | Reorder the budget's items: `{ids}` in the desired order. Returns `BudgetDetail`. |
+| PUT | `/finance/items/{id}` | Replace `{name, category_id, planned_amount, is_checklist_item, checklist_day}` (kind can't change). Returns `BudgetDetail`. |
 | DELETE | `/finance/items/{id}` | Soft-delete; its allocations are dropped. Returns `BudgetDetail`. |
-| POST | `/finance/transactions` | Log `{kind, amount, occurred_on, payee?, description?, allocations: [{budget_item_id, amount}]}`. An empty `allocations` list leaves it unassigned. Each item may appear once. |
-| GET | `/finance/budgets/{id}/transactions` | The budget's transactions, **one row per allocation** (`allocated_amount`, `budget_item_id`, `budget_item_name`), newest first. |
+| POST | `/finance/transactions` | Log `{kind, amount, occurred_on, payee?, description?, notes?, satisfies_checklist?, allocations: [{budget_item_id, amount}]}`. Always `confirmed`. An empty `allocations` list leaves it unassigned. Each item may appear once. `TransactionOut` includes `notes`, `status`, `satisfies_checklist` and `recurring_transaction_id`. |
+| PUT | `/finance/transactions/{id}/allocations` | Replace the transaction's allocations with `{allocations: [...]}` (same validation as on create). Used to assign from the inbox. |
+| POST | `/finance/transactions/{id}/approve` | Confirm a **pending** transaction, with an optional corrected `{amount}`; its allocations follow the new amount. Not pending (or not found) → 404. |
+| POST | `/finance/transactions/{id}/reject` | Discard a **pending** transaction (soft delete). Its rule never generates that date again. 204. |
+| GET | `/finance/budgets/{id}/transactions` | The budget's transactions, **one row per allocation** (`allocated_amount`, `budget_item_id`, `budget_item_name`), newest first. Includes pending ones (`status`). |
 | DELETE | `/finance/transactions/{id}` | Soft-delete; its allocations are dropped. 204. |
+| GET | `/finance/inbox` | `{pending, unassigned}`: transactions awaiting approval (oldest first), and confirmed transactions not counted toward any budget item (newest first). Each row adds `recurring_name` when it came from a rule. |
+| GET | `/finance/recurring` | The user's recurring rules (`RecurringOut`: the rule's fields, `paused`, `category_name` and `next_occurrence`, the first date on or after today in the user's timezone, or null). |
+| POST | `/finance/recurring` | Create a rule: `{kind, name, category_id?, amount, payee?, notes?, frequency, day_of_week?, day_of_month?, starts_on, ends_on?, auto_apply, requires_approval, satisfies_checklist, paused}`. Weekly needs `day_of_week` (1–7, Mon–Sun) and monthly `day_of_month` (1–28), and only they; quarterly needs a `starts_on` day ≤ 28; `ends_on ≥ starts_on`; otherwise 422. Anything due today is generated **immediately**. 201. |
+| PUT | `/finance/recurring/{id}` | Replace a rule (same body). Applies to future occurrences; transactions already created are unchanged. Generates anything now due. |
+| DELETE | `/finance/recurring/{id}` | Soft-delete; nothing more is generated, its transactions stay. 204. |
+| GET | `/finance/checklist` | Checklist items in the **monthly** budget(s) covering today (user's timezone), by due day: `budget_id`, `budget_name`, `item_id`, `item_name`, `kind`, `checklist_day`, `planned_amount`, `due_on`, `done_on` (null until a confirmed transaction with `satisfies_checklist` is allocated to the item). |
 
 **Errors:**
-- **404**: the budget, item, category or transaction doesn't exist, is deleted, or belongs to another user (RLS hides it, so it's indistinguishable from missing).
+- **404**: the budget, item, category, rule or transaction doesn't exist, is deleted, or belongs to another user (RLS hides it, so it's indistinguishable from missing). Approve/reject of a transaction that isn't pending is also 404.
 - **409**: unique violation (duplicate category name within a kind).
-- **422**: request validation (Pydantic), plus: an item whose category doesn't exist or is of the other kind (the composite FK rejects it); a transaction allocated to an unknown or another user's item; a `copy_from_budget_id` that isn't the user's budget or has a different period type; allocations **within one budget** summing to more than the transaction's `amount` (across different budgets the same dollars may count again).
+- **422**: request validation (Pydantic), plus: an item or rule whose category doesn't exist or is of the other kind (the composite FK rejects it); a transaction allocated to an unknown or another user's item; a `copy_from_budget_id` that isn't the user's budget or has a different period type; allocations **within one budget** summing to more than the transaction's `amount` (across different budgets the same dollars may count again); a checklist item in a budget that isn't monthly, or `is_checklist_item` without a `checklist_day` (or vice versa); a recurring schedule that doesn't match its frequency.
 
-Constraint violations are caught inside a savepoint (`_constraint_errors` in `router.py`), so the request's transaction stays usable and the client gets a 4xx instead of a 500.
+Constraint violations are caught inside a savepoint (`constraint_errors` in `routes/_common.py`), so the request's transaction stays usable and the client gets a 4xx instead of a 500.
 
 ---
 
@@ -169,8 +198,9 @@ Requires Docker (for Postgres) and **uv**.
 | `make api` | Applies pending migrations, then serves http://localhost:8000 with auto-reload, as `disci_api` with dev auth. |
 | `make api-test` | Rebuilds the `disci_test` database from the migrations, then runs `pytest`. |
 | `make api-lint` | `ruff check` and `ruff format --check`. |
+| `make jobs-recurring` | Applies pending migrations, then runs the recurring-transactions job once against the local database, as `disci_api` (AWS runs it hourly; see §9.1). |
 
-**Tests** run against `disci_test`, a separate database in the same local Postgres, so your dev data is untouched. Each test starts with empty tables (an autouse fixture truncates them as the owner). Use `as_user("<sub>")` from `tests/conftest.py` to send requests as a given dev user. **41 tests** in total. Core tests cover user creation, settings validation, per-user isolation, RLS (as `disci_api` with no `app.user_id`, no rows are visible), module enable/disable and the prod dev-auth guard. The **20 finance tests** (`tests/modules/finance/test_finance.py`) cover period bounds and default names, category seeding on enable, per-kind custom categories, uncategorizing on category delete, multiple budgets per period, Uncategorized items, the item/category kind check, opposite-kind netting, the per-budget allocation cap, counting the same dollars in two budgets, transaction delete, cross-user isolation, and copying a budget (items carried over without transactions, same period type required, no copying another user's budget).
+**Tests** run against `disci_test`, a separate database in the same local Postgres, so your dev data is untouched. Each test starts with empty tables (an autouse fixture truncates them as the owner). Use `as_user("<sub>")` from `tests/conftest.py` to send requests as a given dev user. **64 tests** in total. The **21 core tests** cover user creation, settings validation, per-user isolation, RLS (as `disci_api` with no `app.user_id`, no rows are visible), module enable/disable, the prod dev-auth guard and the AWS code paths below. The **20 finance tests** (`tests/modules/finance/test_finance.py`) cover period bounds and default names, category seeding on enable, per-kind custom categories, uncategorizing on category delete, multiple budgets per period, Uncategorized items, the item/category kind check, opposite-kind netting, the per-budget allocation cap, counting the same dollars in two budgets, transaction delete, cross-user isolation, and copying a budget (items carried over without transactions, same period type required, no copying another user's budget). The **23 recurring tests** (`tests/modules/finance/test_recurring.py`) cover occurrence dates for every frequency (including the yearly Feb 29 clamp and `ends_on`), rule validation, `next_occurrence`, auto-apply (creating the item planned for every occurrence in the period, matching an existing item by name, hitting every covering budget, idempotency), landing unassigned without auto-apply, the approve/reject flow and a rejected occurrence never coming back, the job running for every user, the checklist (monthly budgets only, done via a satisfying transaction or a rule that ticks it), reordering categories and items, and category descriptions and transaction notes.
 
 `tests/core/test_aws.py` exercises the production-only code paths locally:
 - **Cognito mode** builds requests the way Mangum does from an API Gateway event: verified ID-token claims → `Identity`; no claims, an access token (`token_use: access`) or a missing email → 401; the `X-Dev-User` header is ignored.
@@ -186,5 +216,17 @@ Built into one zip by `scripts/build-api-zip.sh` (no Docker) and shipped by `scr
 |---|---|---|
 | `disci-api` | `app.lambda_handler.handler` | `Mangum(app, lifespan="auto")`: turns API Gateway HTTP API (payload v2) events into ASGI requests for the FastAPI app. |
 | `disci-migrator` | `app.migrator.handler` | Connects as the RDS master user (`DISCI_MIGRATOR_DATABASE_URL`), runs `db/aws/roles.sql` (idempotent: ensures `disci_app`, `disci_api`, `rds_iam` grant), then the bundled `bin/dbmate --no-dump-schema --migrations-dir db/migrations up`. Raises if dbmate fails, which stops the deploy before the API is updated. Returns dbmate's output. |
+| `disci-jobs` | `app.jobs.recurring.handler` | Scheduled work, triggered hourly by EventBridge Scheduler. Today it only creates due recurring transactions (§9.1). Same environment variables as `disci-api`. |
 
-The deploy runs the migrator **before** updating the API, so migrations must be backward compatible with the live API (expand/contract).
+The deploy runs the migrator **before** updating the API, so migrations must be backward compatible with the live API (expand/contract). `disci-jobs` gets the same zip right after `disci-api`.
+
+### 9.1 Scheduled jobs (`app/jobs/`)
+
+`app/jobs/recurring.py` runs `run()`:
+
+1. Connects as the API's database login (`disci_api`, IAM auth when `DISCI_DB_IAM_AUTH=true`, so in production it signs its own token), not as the owner, so **RLS applies**.
+2. Calls `finance.users_with_recurring()`, a narrow `SECURITY DEFINER` function that returns only `(user_id, timezone)` for users with active rules (see [db-overview.md](../db/db-overview.md) §2).
+3. For each user, in **its own transaction**: sets `app.user_id`, then runs `generate_for_user` (`finance/recurring.py`) with today's date **in that user's timezone**. A failure for one user is logged and rolled back without blocking the others.
+4. Returns and logs `{users, created}`.
+
+Generation is idempotent (one transaction per rule per date, ever; see [finance.md](../db/finance.md) §4), so extra or retried runs are harmless. The API calls the same `generate_for_user` right after a rule is created or updated. Locally: `make jobs-recurring`.

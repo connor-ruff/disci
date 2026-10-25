@@ -2,7 +2,7 @@
 
 *Project name: **Disci** (short for discipline). Code/resource name: `disci`. Draft as of Oct 25, 2026. Prices are AWS on-demand list prices for us-east-1.*
 
-> **This is the original plan.** The infrastructure was built and first deployed on Oct 25, 2026. For what actually exists and how to deploy and operate it, see **[docs/ops/deployment.md](../ops/deployment.md)** (the source of truth). This doc has been corrected where it would mislead (zip packages instead of container images, config via Lambda env vars, no ACM/us-east-1 yet), but it still describes planned pieces that aren't built (MCP, scheduled jobs, SES).
+> **This is the original plan.** The infrastructure was built and first deployed on Oct 25, 2026. For what actually exists and how to deploy and operate it, see **[docs/ops/deployment.md](../ops/deployment.md)** (the source of truth). This doc has been corrected where it would mislead (zip packages instead of container images, config via Lambda env vars, no ACM/us-east-1 yet), but it still describes planned pieces that aren't built (MCP, the report jobs, SES). The jobs Lambda and EventBridge Scheduler exist, running hourly recurring-transaction generation.
 
 ## 1. What we're building
 
@@ -10,7 +10,7 @@ A single web app that replaces EveryDollar, the bills checklist, the to-do sheet
 
 - **Web UI**: live dashboards and manual input forms.
 - **MCP server**: lets Claude read and write the same data ("I had an apple").
-- **Scheduled jobs**: morning and night summary reports.
+- **Scheduled jobs**: morning and night summary reports (planned), and hourly generation of recurring transactions (built).
 
 All three go through **one API**, which is the only thing that talks to the database.
 
@@ -60,10 +60,10 @@ aws_iac_mngr/
         ├── network.tf              # VPC, private subnets, security groups, EC2 Instance Connect Endpoint
         ├── database.tf             # RDS Postgres
         ├── auth.tf                 # Cognito user pool + app clients
-        ├── compute.tf              # Lambdas (api, migrator now; mcp, jobs later), zip packages, no ECR
+        ├── compute.tf              # Lambdas (api, migrator, jobs now; mcp later), zip packages, no ECR
         ├── api.tf                  # API Gateway HTTP API, routes
         ├── frontend.tf             # S3 bucket + CloudFront
-        ├── schedules.tf            # (later) EventBridge Scheduler (reports, recurring generation)
+        ├── schedules.tf            # EventBridge Scheduler: hourly recurring generation (reports later)
         ├── email.tf                # (later) SES identity
         ├── budget.tf               # AWS Budgets alert on project=disci
         ├── ci.tf                   # deploy role for this repo, trusting the shared GitHub OIDC provider
@@ -111,9 +111,9 @@ disci/
 │   │   │   └── user_modules/      # GET /me/modules, PUT/DELETE /me/modules/{key}
 │   │   └── modules/
 │   │       ├── __init__.py        # MODULES registry
-│   │       └── finance/           # stub today; a full module grows into:
+│   │       └── finance/           # built; see docs/api/api-overview.md §1 for its full layout
 │   │           ├── __init__.py    #   `module = Module(...)`
-│   │           ├── router.py      #   HTTP routes (thin)
+│   │           ├── routes/        #   HTTP routes (thin), one file per area (router.py in smaller modules)
 │   │           ├── schemas.py     #   Pydantic request/response models
 │   │           ├── service.py     #   business rules (allocation checks, etc.)
 │   │           └── queries/       #   one .sql file per query, loaded by name
@@ -141,10 +141,11 @@ disci/
 │               ├── components/    #   incl. its Home card
 │               └── api.ts         #   TanStack Query hooks for this module
 ├── mcp/                           # (later) MCP server; calls the API
-├── jobs/                          # (later) scheduled jobs: reports, recurring generation
+├── (api/app/jobs/)                # scheduled jobs live in the API package, not a top-level jobs/:
+│                                  #   recurring.py (built); reports later
 └── .github/workflows/
     └── deploy.yml                 # test on every push/PR; on main: OIDC → scripts/deploy.sh
-                                   #   (build zip → update + run migrator → update API → build web → sync S3 → invalidate CF)
+                                   #   (build zip → update + run migrator → update API + jobs → build web → sync S3 → invalidate CF)
 ```
 
 **SQL and injection safety** (plain SQL via psycopg 3, no ORM):
@@ -232,11 +233,11 @@ You never need to "create an account" locally. The API creates the `core.users` 
 | Service | Role | Notes |
 |---|---|---|
 | RDS for PostgreSQL | Source of truth | db.t4g.micro, single-AZ, 20 GB gp3, private subnet |
-| Lambda | api, mcp, jobs, migrator | Zip packages (arm64, Python 3.13), built without Docker; in the VPC so they can reach RDS. Only api and migrator exist so far |
+| Lambda | api, mcp, jobs, migrator | Zip packages (arm64, Python 3.13), built without Docker; in the VPC so they can reach RDS. api, migrator and jobs exist so far (mcp not yet) |
 | API Gateway (HTTP API) | Public HTTPS entry point | HTTP API, not REST API (~3.5× cheaper) |
 | Cognito | User accounts, OAuth for the MCP connector | Essentials/Lite tier |
 | S3 + CloudFront | Hosts the static frontend | Default `*.cloudfront.net` domain for now; a custom domain would add a free ACM certificate in us-east-1 |
-| EventBridge Scheduler | Morning/night reports, recurring-task generation | |
+| EventBridge Scheduler | Morning/night reports, recurring-task generation | Built for recurring transactions (hourly); reports not yet |
 | SES | Sends report emails | |
 | SSM Parameter Store | Config handoff from Terraform to the **deploy script** (Lambdas get config from environment variables; they have no internet access) | Standard parameters are free |
 | CloudWatch Logs | Logs and basic alarms | |

@@ -14,7 +14,7 @@ API_ENV := DISCI_ENV=local DISCI_AUTH_MODE=dev \
 .DEFAULT_GOAL := help
 .PHONY: help db-up db-down db-roles db-migrate db-rollback db-status db-new db-seed db-reset \
 	db-psql db-test-prepare api-install api api-test api-lint \
-	web-install web web-api-types web-check
+	web-install web web-api-types web-check jobs-recurring
 
 help: ## List available commands
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -70,6 +70,9 @@ api-test: db-test-prepare ## Run API tests against a fresh test database
 
 api-lint: ## Lint and format-check the API
 	cd api && uv run ruff check . && uv run ruff format --check .
+
+jobs-recurring: db-migrate ## Run the recurring-transactions job once (AWS runs it hourly)
+	cd api && $(API_ENV) uv run python -m app.jobs.recurring
 
 # --- Web -----------------------------------------------------------------------
 

@@ -86,6 +86,21 @@ END
 $$;
 
 
+--
+-- Name: users_with_recurring(); Type: FUNCTION; Schema: finance; Owner: -
+--
+
+CREATE FUNCTION finance.users_with_recurring() RETURNS TABLE(user_id uuid, timezone text)
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'core', 'finance'
+    AS $$
+    SELECT DISTINCT u.id, u.timezone
+    FROM finance.recurring_transactions r
+    JOIN core.users u ON u.id = r.user_id AND u.deleted_at IS NULL
+    WHERE r.deleted_at IS NULL AND r.paused_at IS NULL
+$$;
+
+
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
@@ -141,6 +156,7 @@ CREATE TABLE finance.budget_categories (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     deleted_at timestamp with time zone,
+    description text,
     CONSTRAINT budget_categories_kind_check CHECK ((kind = ANY (ARRAY['expense'::text, 'income'::text]))),
     CONSTRAINT budget_categories_name_check CHECK ((length(TRIM(BOTH FROM name)) > 0))
 );
@@ -163,6 +179,10 @@ CREATE TABLE finance.budget_items (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     deleted_at timestamp with time zone,
+    is_checklist_item boolean DEFAULT false NOT NULL,
+    checklist_day smallint,
+    CONSTRAINT budget_items_checklist_check CHECK ((is_checklist_item = (checklist_day IS NOT NULL))),
+    CONSTRAINT budget_items_checklist_day_check CHECK (((checklist_day >= 1) AND (checklist_day <= 28))),
     CONSTRAINT budget_items_kind_check CHECK ((kind = ANY (ARRAY['expense'::text, 'income'::text]))),
     CONSTRAINT budget_items_name_check CHECK ((length(TRIM(BOTH FROM name)) > 0)),
     CONSTRAINT budget_items_planned_amount_check CHECK ((planned_amount >= (0)::numeric))
@@ -187,6 +207,44 @@ CREATE TABLE finance.budgets (
     CONSTRAINT budgets_check CHECK ((period_end >= period_start)),
     CONSTRAINT budgets_name_check CHECK ((length(TRIM(BOTH FROM name)) > 0)),
     CONSTRAINT budgets_period_type_check CHECK ((period_type = ANY (ARRAY['week'::text, 'month'::text, 'year'::text])))
+);
+
+
+--
+-- Name: recurring_transactions; Type: TABLE; Schema: finance; Owner: -
+--
+
+CREATE TABLE finance.recurring_transactions (
+    id uuid DEFAULT uuidv7() NOT NULL,
+    user_id uuid NOT NULL,
+    kind text NOT NULL,
+    name text NOT NULL,
+    category_id uuid,
+    amount numeric(12,2) NOT NULL,
+    payee text,
+    notes text,
+    frequency text NOT NULL,
+    day_of_week smallint,
+    day_of_month smallint,
+    starts_on date NOT NULL,
+    ends_on date,
+    auto_apply boolean DEFAULT false NOT NULL,
+    requires_approval boolean DEFAULT false NOT NULL,
+    satisfies_checklist boolean DEFAULT false NOT NULL,
+    paused_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    deleted_at timestamp with time zone,
+    CONSTRAINT recurring_transactions_amount_check CHECK ((amount > (0)::numeric)),
+    CONSTRAINT recurring_transactions_check CHECK (((frequency = 'weekly'::text) = (day_of_week IS NOT NULL))),
+    CONSTRAINT recurring_transactions_check1 CHECK (((frequency = 'monthly'::text) = (day_of_month IS NOT NULL))),
+    CONSTRAINT recurring_transactions_check2 CHECK (((frequency <> 'quarterly'::text) OR (EXTRACT(day FROM starts_on) <= (28)::numeric))),
+    CONSTRAINT recurring_transactions_check3 CHECK (((ends_on IS NULL) OR (ends_on >= starts_on))),
+    CONSTRAINT recurring_transactions_day_of_month_check CHECK (((day_of_month >= 1) AND (day_of_month <= 28))),
+    CONSTRAINT recurring_transactions_day_of_week_check CHECK (((day_of_week >= 1) AND (day_of_week <= 7))),
+    CONSTRAINT recurring_transactions_frequency_check CHECK ((frequency = ANY (ARRAY['weekly'::text, 'monthly'::text, 'quarterly'::text, 'yearly'::text]))),
+    CONSTRAINT recurring_transactions_kind_check CHECK ((kind = ANY (ARRAY['expense'::text, 'income'::text]))),
+    CONSTRAINT recurring_transactions_name_check CHECK ((length(TRIM(BOTH FROM name)) > 0))
 );
 
 
@@ -222,8 +280,14 @@ CREATE TABLE finance.transactions (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     deleted_at timestamp with time zone,
+    status text DEFAULT 'confirmed'::text NOT NULL,
+    recurring_transaction_id uuid,
+    scheduled_on date,
+    satisfies_checklist boolean DEFAULT false NOT NULL,
     CONSTRAINT transactions_amount_check CHECK ((amount > (0)::numeric)),
-    CONSTRAINT transactions_kind_check CHECK ((kind = ANY (ARRAY['expense'::text, 'income'::text])))
+    CONSTRAINT transactions_kind_check CHECK ((kind = ANY (ARRAY['expense'::text, 'income'::text]))),
+    CONSTRAINT transactions_recurring_scheduled_check CHECK (((recurring_transaction_id IS NULL) = (scheduled_on IS NULL))),
+    CONSTRAINT transactions_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'confirmed'::text])))
 );
 
 
@@ -298,6 +362,22 @@ ALTER TABLE ONLY finance.budgets
 
 ALTER TABLE ONLY finance.budgets
     ADD CONSTRAINT budgets_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: recurring_transactions recurring_transactions_id_user_id_key; Type: CONSTRAINT; Schema: finance; Owner: -
+--
+
+ALTER TABLE ONLY finance.recurring_transactions
+    ADD CONSTRAINT recurring_transactions_id_user_id_key UNIQUE (id, user_id);
+
+
+--
+-- Name: recurring_transactions recurring_transactions_pkey; Type: CONSTRAINT; Schema: finance; Owner: -
+--
+
+ALTER TABLE ONLY finance.recurring_transactions
+    ADD CONSTRAINT recurring_transactions_pkey PRIMARY KEY (id);
 
 
 --
@@ -397,6 +477,20 @@ CREATE INDEX transaction_allocations_item_idx ON finance.transaction_allocations
 
 
 --
+-- Name: transactions_pending_idx; Type: INDEX; Schema: finance; Owner: -
+--
+
+CREATE INDEX transactions_pending_idx ON finance.transactions USING btree (user_id) WHERE ((status = 'pending'::text) AND (deleted_at IS NULL));
+
+
+--
+-- Name: transactions_recurring_occurrence_key; Type: INDEX; Schema: finance; Owner: -
+--
+
+CREATE UNIQUE INDEX transactions_recurring_occurrence_key ON finance.transactions USING btree (recurring_transaction_id, scheduled_on) WHERE (recurring_transaction_id IS NOT NULL);
+
+
+--
 -- Name: transactions_user_date_idx; Type: INDEX; Schema: finance; Owner: -
 --
 
@@ -436,6 +530,13 @@ CREATE TRIGGER set_updated_at BEFORE UPDATE ON finance.budget_items FOR EACH ROW
 --
 
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON finance.budgets FOR EACH ROW EXECUTE FUNCTION core.set_updated_at();
+
+
+--
+-- Name: recurring_transactions set_updated_at; Type: TRIGGER; Schema: finance; Owner: -
+--
+
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON finance.recurring_transactions FOR EACH ROW EXECUTE FUNCTION core.set_updated_at();
 
 
 --
@@ -501,6 +602,22 @@ ALTER TABLE ONLY finance.budgets
 
 
 --
+-- Name: recurring_transactions recurring_transactions_category_id_kind_user_id_fkey; Type: FK CONSTRAINT; Schema: finance; Owner: -
+--
+
+ALTER TABLE ONLY finance.recurring_transactions
+    ADD CONSTRAINT recurring_transactions_category_id_kind_user_id_fkey FOREIGN KEY (category_id, kind, user_id) REFERENCES finance.budget_categories(id, kind, user_id);
+
+
+--
+-- Name: recurring_transactions recurring_transactions_user_id_fkey; Type: FK CONSTRAINT; Schema: finance; Owner: -
+--
+
+ALTER TABLE ONLY finance.recurring_transactions
+    ADD CONSTRAINT recurring_transactions_user_id_fkey FOREIGN KEY (user_id) REFERENCES core.users(id);
+
+
+--
 -- Name: transaction_allocations transaction_allocations_budget_item_id_user_id_fkey; Type: FK CONSTRAINT; Schema: finance; Owner: -
 --
 
@@ -522,6 +639,14 @@ ALTER TABLE ONLY finance.transaction_allocations
 
 ALTER TABLE ONLY finance.transaction_allocations
     ADD CONSTRAINT transaction_allocations_user_id_fkey FOREIGN KEY (user_id) REFERENCES core.users(id);
+
+
+--
+-- Name: transactions transactions_recurring_fk; Type: FK CONSTRAINT; Schema: finance; Owner: -
+--
+
+ALTER TABLE ONLY finance.transactions
+    ADD CONSTRAINT transactions_recurring_fk FOREIGN KEY (recurring_transaction_id, user_id) REFERENCES finance.recurring_transactions(id, user_id);
 
 
 --
@@ -598,6 +723,13 @@ CREATE POLICY owner ON finance.budgets TO disci_app USING ((user_id = core.curre
 
 
 --
+-- Name: recurring_transactions owner; Type: POLICY; Schema: finance; Owner: -
+--
+
+CREATE POLICY owner ON finance.recurring_transactions TO disci_app USING ((user_id = core.current_user_id())) WITH CHECK ((user_id = core.current_user_id()));
+
+
+--
 -- Name: transaction_allocations owner; Type: POLICY; Schema: finance; Owner: -
 --
 
@@ -610,6 +742,12 @@ CREATE POLICY owner ON finance.transaction_allocations TO disci_app USING ((user
 
 CREATE POLICY owner ON finance.transactions TO disci_app USING ((user_id = core.current_user_id())) WITH CHECK ((user_id = core.current_user_id()));
 
+
+--
+-- Name: recurring_transactions; Type: ROW SECURITY; Schema: finance; Owner: -
+--
+
+ALTER TABLE finance.recurring_transactions ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: transaction_allocations; Type: ROW SECURITY; Schema: finance; Owner: -
@@ -637,4 +775,5 @@ ALTER TABLE finance.transactions ENABLE ROW LEVEL SECURITY;
 INSERT INTO public.schema_migrations (version) VALUES
     ('20261025134012'),
     ('20261025150312'),
-    ('20261025153025');
+    ('20261025153025'),
+    ('20261025155734');

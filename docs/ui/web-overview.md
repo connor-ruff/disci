@@ -1,6 +1,6 @@
 # Web App Overview
 
-*Status: **shell implemented and deployed** to S3 + CloudFront (https://d2j30iivfr2al9.cloudfront.net) with Cognito sign-in. The shell pages (Home, Manage modules, Settings) work; the finance module has its first slice (budgets list, new budget, budget page with items and transactions, categories; see [finance-ui.md](finance-ui.md)). Deploying: [deployment.md](../ops/deployment.md).*
+*Status: **shell implemented and deployed** to S3 + CloudFront (https://d2j30iivfr2al9.cloudfront.net) with Cognito sign-in. The shell pages (Home, Manage modules, Settings) work; the finance module has budgets, categories, the monthly checklist, recurring transactions and the inbox (see [finance-ui.md](finance-ui.md)). Deploying: [deployment.md](../ops/deployment.md).*
 
 The engineering entry point for the web app (`web/`): stack, layout, conventions and local workflow. What the shell looks like and how modules plug into it is in [app-shell.md](app-shell.md); the brand palette is in [ui-overview.md](ui-overview.md).
 
@@ -18,6 +18,7 @@ The engineering entry point for the web app (`web/`): stack, layout, conventions
 | Styling | **Tailwind CSS v4** via `@tailwindcss/vite` | No `tailwind.config`; tokens are declared in `src/index.css` with `@theme inline`. |
 | Components | **radix-ui** primitives + hand-written shadcn-style components in `src/shared/ui/` | Radix Dialog (drawer, sheet) and Switch so far. Not the shadcn CLI. `cn()` (`clsx` + `tailwind-merge`) merges classes. |
 | Icons | **lucide-react** | |
+| Drag and drop | **@dnd-kit** (`core`, `sortable`, `utilities`) | Only used through the shared `SortableList` (§6). Touch, mouse and keyboard sensors. |
 | API client | **openapi-fetch**, types from **openapi-typescript** | See §3. |
 | Auth | **oidc-client-ts** + **react-oidc-context** | Cognito hosted login, code + PKCE. See §8. |
 
@@ -52,16 +53,19 @@ web/
     │   │   └── schema.d.ts        # GENERATED from the API's OpenAPI spec (never edit)
     │   ├── auth/auth.ts           # authMode, UserManager, getIdToken, signOut, handleUnauthorized
     │   ├── ui/                    # button, card, drawer, switch, page (header/loading/error),
-    │   │                          # sheet (bottom-sheet form panel), field (Field + inputClasses), segmented
+    │   │                          # sheet (bottom-sheet form panel), field (Field + inputClasses), segmented,
+    │   │                          # checkbox (Checkbox), sortable (SortableList: drag-to-reorder)
     │   └── lib/                   # cn.ts, money.ts (formatMoney, parseMoneyInput),
     │                              # dates.ts (todayIn, formatShortDate, formatDateRange)
     └── modules/
         └── finance/
-            ├── index.ts           # the module's ModuleManifest (sub-nav: Budgets, Categories)
+            ├── index.ts           # the module's ModuleManifest (sub-nav: Budgets, Checklist, Recurring, Inbox, Categories)
             ├── routes.tsx         # route tree under /finance
             ├── api.ts             # TanStack Query hooks + financeKeys
-            ├── pages/             # BudgetsPage, NewBudgetPage, BudgetPage, CategoriesPage
-            └── components/        # FinanceHomeCard, ItemSheet, TransactionSheet
+            ├── pages/             # BudgetsPage, NewBudgetPage, BudgetPage, CategoriesPage,
+            │                      # ChecklistPage, RecurringPage, InboxPage
+            └── components/        # FinanceHomeCard, ActiveBadge, ItemSheet, TransactionSheet,
+                                   # RecurringSheet, ReorderToggle
 ```
 
 **Rule of thumb:** `app/` is the shell, `shared/` is anything two or more places use, and `modules/<key>/` holds everything specific to one module. A module may import from `shared/` and `app/` (its manifest type, the root route); `shared/` never imports from a module.
@@ -133,9 +137,10 @@ The brand palette from [ui-overview.md](ui-overview.md) (ink `#002421`, teal `#0
 The app will mostly be used on phones, so:
 
 - **Touch targets are at least 44 px** (`h-11` / `size-11` on buttons, icon buttons, inputs and the account icon; menu rows are 48 px).
-- **Native form controls** where possible (`<select>`, `type="date"`, `inputMode="decimal"` for amounts), so phones show their own pickers. Avoid `type="month"`: desktop Safari doesn't support it and shows a free-text field, so use Month and Year selects instead. Shared `Field` (label + optional hint) and `inputClasses` in `shared/ui/field.tsx`; `Segmented` (`shared/ui/segmented.tsx`) for small either/or choices like Expense / Income.
+- **Native form controls** where possible (`<select>`, `type="date"`, `inputMode="decimal"` for amounts), so phones show their own pickers. Avoid `type="month"`: desktop Safari doesn't support it and shows a free-text field, so use Month and Year selects instead. Shared `Field` (label + optional hint) and `inputClasses` in `shared/ui/field.tsx`; `Segmented` (`shared/ui/segmented.tsx`) for small either/or choices like Expense / Income; `Checkbox` (`shared/ui/checkbox.tsx`) for yes/no options: a native checkbox with a label and optional hint, sized for touch.
 - **Forms open in a `Sheet`** (`shared/ui/sheet.tsx`, Radix Dialog): it slides up from the bottom on phones (max 90% of the screen height, safe-area padding) and is a centred dialog from `sm` up. Inputs use `text-base` (16 px) so iOS doesn't zoom on focus.
 - **Safe-area insets**: `viewport-fit=cover` in `index.html`, with `env(safe-area-inset-*)` padding on the top bar, drawer and page bottom for notched phones.
+- **Reordering lists**: `SortableList` (`shared/ui/sortable.tsx`, on @dnd-kit) renders a vertical list where each row gets a 44 px grip handle; `onReorder` receives the items in their new order after a drop. Touch needs a short press-and-hold (120 ms) so normal scrolling still works; the keyboard works too (focus a handle, Space, arrows, Space). Pages put lists into a separate reorder mode (finance's `ReorderToggle`: Reorder / Done) rather than making rows always draggable, and save each drop with an optimistic cache update.
 - **Full-height drawer** for the module menu (`w-72`, at most 85% of the screen width).
 - **Sub-nav scrolls sideways** instead of wrapping. A tab is active when the URL **starts with** its path (prefix match, not exact), so Budgets stays highlighted on `/finance/budgets/<id>`.
 - `min-h-dvh` for the page frame (handles mobile browser chrome), and the tap highlight is turned off.

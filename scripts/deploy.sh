@@ -14,6 +14,7 @@ cfg() { aws ssm get-parameter --name "/disci/prod/$1" --query Parameter.Value --
 echo "==> Reading deploy config from SSM"
 API_FN=$(cfg lambda_api_name)
 MIGRATOR_FN=$(cfg lambda_migrator_name)
+JOBS_FN=$(cfg lambda_jobs_name)
 API_URL=$(cfg api_url)
 WEB_URL=$(cfg web_url)
 WEB_BUCKET=$(cfg web_bucket)
@@ -44,8 +45,9 @@ if grep -q FunctionError "$ROOT/build/migrator-invoke.json"; then
   exit 1
 fi
 
-echo "==> Updating API"
+echo "==> Updating API and jobs"
 update_code "$API_FN"
+update_code "$JOBS_FN"
 
 echo "==> Building web"
 (

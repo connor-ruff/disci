@@ -1,29 +1,45 @@
+import { ListChecks, Wallet } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
 
 import { errorMessage } from '@/shared/api/client'
 import { useMe } from '@/shared/api/hooks'
-import { todayIn } from '@/shared/lib/dates'
+import { formatDateRange, formatShortDate, todayIn } from '@/shared/lib/dates'
 import { parseMoneyInput } from '@/shared/lib/money'
 import { Button } from '@/shared/ui/button'
+import { Checkbox } from '@/shared/ui/checkbox'
 import { Field, inputClasses } from '@/shared/ui/field'
 import { Segmented } from '@/shared/ui/segmented'
 import { Sheet } from '@/shared/ui/sheet'
 
-import { type BudgetItem, type Kind, useCreateTransaction } from '../api'
+import { type Budget, type BudgetItem, type Kind, useCreateTransaction } from '../api'
+import { ordinal } from './ItemSheet'
+
+type BudgetContext = Pick<Budget, 'name' | 'period_start' | 'period_end'>
 
 type TransactionSheetProps = {
+  /** The budget being logged into, shown prominently so it's clear what's affected. */
+  budget: BudgetContext
   items: BudgetItem[]
-  /** Pre-selects this item (e.g. opened from an item). */
+  /** Pre-selects this item (e.g. opened from an item or the checklist). */
   defaultItem?: BudgetItem
   open: boolean
   onOpenChange: (open: boolean) => void
+  title?: string
 }
 
-export function TransactionSheet({ items, defaultItem, open, onOpenChange }: TransactionSheetProps) {
+export function TransactionSheet({
+  budget,
+  items,
+  defaultItem,
+  open,
+  onOpenChange,
+  title = 'Log transaction',
+}: TransactionSheetProps) {
   return (
-    <Sheet open={open} onOpenChange={onOpenChange} title="Log transaction">
+    <Sheet open={open} onOpenChange={onOpenChange} title={title}>
       <TransactionForm
         key={`${open}-${defaultItem?.id ?? ''}`}
+        budget={budget}
         items={items}
         defaultItem={defaultItem}
         onDone={() => onOpenChange(false)}
@@ -33,10 +49,12 @@ export function TransactionSheet({ items, defaultItem, open, onOpenChange }: Tra
 }
 
 function TransactionForm({
+  budget,
   items,
   defaultItem,
   onDone,
 }: {
+  budget: BudgetContext
   items: BudgetItem[]
   defaultItem?: BudgetItem
   onDone: () => void
@@ -46,10 +64,14 @@ function TransactionForm({
   const today = todayIn(me.data?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone)
 
   const [kind, setKind] = useState<Kind>(defaultItem?.kind ?? 'expense')
-  const [amount, setAmount] = useState('')
+  const paysChecklist = !!defaultItem?.is_checklist_item && !defaultItem.checklist_done
+  const [amount, setAmount] = useState(paysChecklist ? String(Number(defaultItem.planned_amount)) : '')
   const [occurredOn, setOccurredOn] = useState(today)
   const [itemId, setItemId] = useState(defaultItem?.id ?? '')
   const [payee, setPayee] = useState('')
+  const [notes, setNotes] = useState('')
+  // Logging against an open checklist item usually means paying it.
+  const [satisfies, setSatisfies] = useState(paysChecklist)
   const [invalid, setInvalid] = useState<string | null>(null)
 
   const item = items.find((i) => i.id === itemId)
@@ -67,6 +89,8 @@ function TransactionForm({
         amount: value,
         occurred_on: occurredOn,
         payee: payee.trim() || null,
+        notes: notes.trim() || null,
+        satisfies_checklist: !!item?.is_checklist_item && satisfies,
         allocations: itemId ? [{ budget_item_id: itemId, amount: value }] : [],
       },
       { onSuccess: onDone },
@@ -78,6 +102,27 @@ function TransactionForm({
 
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-4">
+      <div className="flex flex-col gap-2 rounded-lg border border-border bg-highlight p-3">
+        <div className="flex items-start gap-3">
+          <Wallet className="mt-0.5 size-5 shrink-0 text-accent" />
+          <div className="min-w-0">
+            <p className="text-xs font-medium tracking-wide text-muted uppercase">Logging to</p>
+            <p className="truncate font-semibold">{budget.name}</p>
+            <p className="text-sm text-muted">{formatDateRange(budget.period_start, budget.period_end)}</p>
+          </div>
+        </div>
+        {item?.is_checklist_item && item.checklist_day && (
+          <div className="flex items-center gap-3 border-t border-border pt-2 text-sm">
+            <ListChecks className="size-5 shrink-0 text-accent" />
+            <span>
+              Checklist item <span className="font-semibold">{item.name}</span>, due the{' '}
+              {ordinal(item.checklist_day)} ({formatShortDate(dueOn(budget, item.checklist_day))})
+              {item.checklist_done && ' · already done'}
+            </span>
+          </div>
+        )}
+      </div>
+
       <Segmented
         label="Transaction type"
         value={kind}
@@ -151,6 +196,27 @@ function TransactionForm({
         />
       </Field>
 
+      <Field label="Notes (optional)" htmlFor="txn-notes">
+        <textarea
+          id="txn-notes"
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          maxLength={1000}
+          rows={2}
+          className={inputClasses + ' h-auto py-2'}
+        />
+      </Field>
+
+      {item?.is_checklist_item && (
+        <Checkbox
+          id="txn-satisfies"
+          checked={satisfies}
+          onChange={setSatisfies}
+          label="Satisfies the checklist"
+          hint={`Ticks off ${item.name} on this month's checklist.`}
+        />
+      )}
+
       {(invalid || create.isError) && (
         <p className="text-sm text-red-700">{invalid ?? errorMessage(create.error)}</p>
       )}
@@ -160,4 +226,9 @@ function TransactionForm({
       </Button>
     </form>
   )
+}
+
+/** The checklist due date within the budget's month. */
+function dueOn(budget: BudgetContext, day: number): string {
+  return `${budget.period_start.slice(0, 8)}${String(day).padStart(2, '0')}`
 }

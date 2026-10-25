@@ -98,6 +98,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/finance/categories/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Reorder Categories */
+        put: operations["reorder_categories_finance_categories_order_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/finance/categories/{category_id}": {
         parameters: {
             query?: never;
@@ -176,6 +193,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/finance/budgets/{budget_id}/items/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Reorder Budget Items */
+        put: operations["reorder_budget_items_finance_budgets__budget_id__items_order_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/finance/items/{item_id}": {
         parameters: {
             query?: never;
@@ -214,17 +248,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/finance/budgets/{budget_id}/transactions": {
+    "/finance/transactions/{transaction_id}/allocations": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** List Budget Transactions */
-        get: operations["list_budget_transactions_finance_budgets__budget_id__transactions_get"];
-        put?: never;
+        get?: never;
+        /**
+         * Replace Allocations
+         * @description Sets which budget items a transaction counts toward (e.g. assigning from the inbox).
+         */
+        put: operations["replace_allocations_finance_transactions__transaction_id__allocations_put"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/finance/transactions/{transaction_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Transaction */
+        post: operations["approve_transaction_finance_transactions__transaction_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/finance/transactions/{transaction_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject Transaction
+         * @description Discards a pending transaction. Its rule won't generate that date again.
+         */
+        post: operations["reject_transaction_finance_transactions__transaction_id__reject_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -248,6 +322,105 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/finance/budgets/{budget_id}/transactions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Budget Transactions */
+        get: operations["list_budget_transactions_finance_budgets__budget_id__transactions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/finance/inbox": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Inbox
+         * @description Transactions needing attention: awaiting approval, or not in any budget yet.
+         */
+        get: operations["get_inbox_finance_inbox_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/finance/recurring": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Recurring */
+        get: operations["list_recurring_finance_recurring_get"];
+        put?: never;
+        /** Create Recurring */
+        post: operations["create_recurring_finance_recurring_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/finance/recurring/{recurring_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Recurring
+         * @description Changes apply to future occurrences; transactions already created stay as they are.
+         */
+        put: operations["update_recurring_finance_recurring__recurring_id__put"];
+        post?: never;
+        /**
+         * Delete Recurring
+         * @description Stops future occurrences. Transactions it already created stay.
+         */
+        delete: operations["delete_recurring_finance_recurring__recurring_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/finance/checklist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Checklist
+         * @description Checklist items from the monthly budget(s) covering today, by due day.
+         */
+        get: operations["get_checklist_finance_checklist_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -261,6 +434,19 @@ export interface components {
             budget_item_id: string;
             /** Amount */
             amount: number | string;
+        };
+        /** AllocationsReplace */
+        AllocationsReplace: {
+            /** Allocations */
+            allocations: components["schemas"]["AllocationIn"][];
+        };
+        /** ApproveIn */
+        ApproveIn: {
+            /**
+             * Amount
+             * @description Corrected amount, if it differs from the rule's.
+             */
+            amount?: number | string | null;
         };
         /** BudgetCreate */
         BudgetCreate: {
@@ -319,17 +505,24 @@ export interface components {
         };
         /** BudgetItemCreate */
         BudgetItemCreate: {
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "expense" | "income";
             /** Name */
             name: string;
             /** Category Id */
             category_id?: string | null;
             /** Planned Amount */
             planned_amount: number | string;
+            /**
+             * Is Checklist Item
+             * @default false
+             */
+            is_checklist_item: boolean;
+            /** Checklist Day */
+            checklist_day?: number | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "expense" | "income";
         };
         /** BudgetItemOut */
         BudgetItemOut: {
@@ -353,9 +546,20 @@ export interface components {
             planned_amount: string;
             /**
              * Actual Amount
-             * @description Net of allocated transactions: same kind adds, opposite kind subtracts.
+             * @description Net of confirmed allocated transactions: same kind adds, opposite subtracts.
              */
             actual_amount: string;
+            /**
+             * Pending Amount
+             * @description The same, for transactions awaiting approval.
+             */
+            pending_amount: string;
+            /** Is Checklist Item */
+            is_checklist_item: boolean;
+            /** Checklist Day */
+            checklist_day: number | null;
+            /** Checklist Done */
+            checklist_done: boolean;
             /** Sort Order */
             sort_order: number;
         };
@@ -370,6 +574,13 @@ export interface components {
             category_id?: string | null;
             /** Planned Amount */
             planned_amount: number | string;
+            /**
+             * Is Checklist Item
+             * @default false
+             */
+            is_checklist_item: boolean;
+            /** Checklist Day */
+            checklist_day?: number | null;
         };
         /** BudgetOut */
         BudgetOut: {
@@ -424,6 +635,17 @@ export interface components {
             payee: string | null;
             /** Description */
             description: string | null;
+            /** Notes */
+            notes: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "confirmed";
+            /** Satisfies Checklist */
+            satisfies_checklist: boolean;
+            /** Recurring Transaction Id */
+            recurring_transaction_id: string | null;
             /**
              * Budget Item Id
              * Format: uuid
@@ -450,6 +672,21 @@ export interface components {
             kind: "expense" | "income";
             /** Name */
             name: string;
+            /** Description */
+            description?: string | null;
+        };
+        /** CategoryOrder */
+        CategoryOrder: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "expense" | "income";
+            /**
+             * Ids
+             * @description Category ids of this kind, in the desired order.
+             */
+            ids: string[];
         };
         /** CategoryOut */
         CategoryOut: {
@@ -465,6 +702,8 @@ export interface components {
             kind: "expense" | "income";
             /** Name */
             name: string;
+            /** Description */
+            description: string | null;
             /** Color */
             color: string | null;
             /** Icon */
@@ -474,15 +713,111 @@ export interface components {
             /** Is Default */
             is_default: boolean;
         };
-        /** CategoryUpdate */
+        /**
+         * CategoryUpdate
+         * @description All editable fields, sent in full.
+         */
         CategoryUpdate: {
             /** Name */
             name: string;
+            /** Description */
+            description?: string | null;
+        };
+        /** ChecklistItemOut */
+        ChecklistItemOut: {
+            /**
+             * Budget Id
+             * Format: uuid
+             */
+            budget_id: string;
+            /** Budget Name */
+            budget_name: string;
+            /**
+             * Item Id
+             * Format: uuid
+             */
+            item_id: string;
+            /** Item Name */
+            item_name: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "expense" | "income";
+            /** Checklist Day */
+            checklist_day: number;
+            /** Planned Amount */
+            planned_amount: string;
+            /**
+             * Due On
+             * Format: date
+             */
+            due_on: string;
+            /** Done On */
+            done_on: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** Inbox */
+        Inbox: {
+            /**
+             * Pending
+             * @description Awaiting approval.
+             */
+            pending: components["schemas"]["InboxTransactionOut"][];
+            /**
+             * Unassigned
+             * @description Not counted in any budget.
+             */
+            unassigned: components["schemas"]["InboxTransactionOut"][];
+        };
+        /** InboxTransactionOut */
+        InboxTransactionOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "expense" | "income";
+            /** Amount */
+            amount: string;
+            /**
+             * Occurred On
+             * Format: date
+             */
+            occurred_on: string;
+            /** Payee */
+            payee: string | null;
+            /** Description */
+            description: string | null;
+            /** Notes */
+            notes: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "confirmed";
+            /** Satisfies Checklist */
+            satisfies_checklist: boolean;
+            /** Recurring Transaction Id */
+            recurring_transaction_id: string | null;
+            /** Recurring Name */
+            recurring_name: string | null;
+        };
+        /** ItemOrder */
+        ItemOrder: {
+            /**
+             * Ids
+             * @description This budget's item ids, in the desired order.
+             */
+            ids: string[];
         };
         /** KindTotals */
         KindTotals: {
@@ -502,6 +837,145 @@ export interface components {
             /** Enabled */
             enabled: boolean;
         };
+        /** RecurringIn */
+        RecurringIn: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "expense" | "income";
+            /**
+             * Name
+             * @description The budget item it counts toward (matched by name).
+             */
+            name: string;
+            /** Category Id */
+            category_id?: string | null;
+            /** Amount */
+            amount: number | string;
+            /** Payee */
+            payee?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Frequency
+             * @enum {string}
+             */
+            frequency: "weekly" | "monthly" | "quarterly" | "yearly";
+            /**
+             * Day Of Week
+             * @description Weekly: 1=Mon..7=Sun
+             */
+            day_of_week?: number | null;
+            /**
+             * Day Of Month
+             * @description Monthly
+             */
+            day_of_month?: number | null;
+            /**
+             * Starts On
+             * Format: date
+             * @description First occurrence for quarterly/yearly (they repeat from it); the earliest date for weekly/monthly.
+             */
+            starts_on: string;
+            /** Ends On */
+            ends_on?: string | null;
+            /**
+             * Auto Apply
+             * @description Count it in every budget whose period includes the date.
+             * @default false
+             */
+            auto_apply: boolean;
+            /**
+             * Requires Approval
+             * @default false
+             */
+            requires_approval: boolean;
+            /**
+             * Satisfies Checklist
+             * @default false
+             */
+            satisfies_checklist: boolean;
+            /**
+             * Paused
+             * @default false
+             */
+            paused: boolean;
+        };
+        /** RecurringOut */
+        RecurringOut: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "expense" | "income";
+            /**
+             * Name
+             * @description The budget item it counts toward (matched by name).
+             */
+            name: string;
+            /** Category Id */
+            category_id?: string | null;
+            /** Amount */
+            amount: string;
+            /** Payee */
+            payee?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Frequency
+             * @enum {string}
+             */
+            frequency: "weekly" | "monthly" | "quarterly" | "yearly";
+            /**
+             * Day Of Week
+             * @description Weekly: 1=Mon..7=Sun
+             */
+            day_of_week?: number | null;
+            /**
+             * Day Of Month
+             * @description Monthly
+             */
+            day_of_month?: number | null;
+            /**
+             * Starts On
+             * Format: date
+             * @description First occurrence for quarterly/yearly (they repeat from it); the earliest date for weekly/monthly.
+             */
+            starts_on: string;
+            /** Ends On */
+            ends_on?: string | null;
+            /**
+             * Auto Apply
+             * @description Count it in every budget whose period includes the date.
+             * @default false
+             */
+            auto_apply: boolean;
+            /**
+             * Requires Approval
+             * @default false
+             */
+            requires_approval: boolean;
+            /**
+             * Satisfies Checklist
+             * @default false
+             */
+            satisfies_checklist: boolean;
+            /**
+             * Paused
+             * @default false
+             */
+            paused: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Category Name */
+            category_name: string | null;
+            /** Next Occurrence */
+            next_occurrence: string | null;
+        };
         /** TransactionCreate */
         TransactionCreate: {
             /**
@@ -520,6 +994,14 @@ export interface components {
             payee?: string | null;
             /** Description */
             description?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Satisfies Checklist
+             * @description Ticks off the checklist item(s) it's allocated to.
+             * @default false
+             */
+            satisfies_checklist: boolean;
             /**
              * Allocations
              * @description Budget items this counts toward. May be empty (shows as unassigned).
@@ -549,6 +1031,17 @@ export interface components {
             payee: string | null;
             /** Description */
             description: string | null;
+            /** Notes */
+            notes: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "confirmed";
+            /** Satisfies Checklist */
+            satisfies_checklist: boolean;
+            /** Recurring Transaction Id */
+            recurring_transaction_id: string | null;
         };
         /** UserOut */
         UserOut: {
@@ -813,6 +1306,39 @@ export interface operations {
             };
         };
     };
+    reorder_categories_finance_categories_order_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CategoryOrder"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoryOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     update_category_finance_categories__category_id__put: {
         parameters: {
             query?: never;
@@ -1060,6 +1586,41 @@ export interface operations {
             };
         };
     };
+    reorder_budget_items_finance_budgets__budget_id__items_order_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                budget_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ItemOrder"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BudgetDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     update_budget_item_finance_items__item_id__put: {
         parameters: {
             query?: never;
@@ -1159,16 +1720,20 @@ export interface operations {
             };
         };
     };
-    list_budget_transactions_finance_budgets__budget_id__transactions_get: {
+    replace_allocations_finance_transactions__transaction_id__allocations_put: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                budget_id: string;
+                transaction_id: string;
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AllocationsReplace"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -1176,8 +1741,72 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["BudgetTransactionOut"][];
+                    "application/json": components["schemas"]["TransactionOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_transaction_finance_transactions__transaction_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                transaction_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApproveIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransactionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_transaction_finance_transactions__transaction_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                transaction_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -1215,6 +1844,194 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_budget_transactions_finance_budgets__budget_id__transactions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                budget_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BudgetTransactionOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_inbox_finance_inbox_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Inbox"];
+                };
+            };
+        };
+    };
+    list_recurring_finance_recurring_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecurringOut"][];
+                };
+            };
+        };
+    };
+    create_recurring_finance_recurring_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecurringIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecurringOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_recurring_finance_recurring__recurring_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recurring_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecurringIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecurringOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_recurring_finance_recurring__recurring_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recurring_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_checklist_finance_checklist_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChecklistItemOut"][];
                 };
             };
         };

@@ -20,7 +20,7 @@ The **shell** is the frame around every page: the top bar, the module menu, and 
 ┌──────────────────────────────────────────────────┐
 │ ☰  Disci / Finance                          [👤] │  ← top bar (sticky)
 ├──────────────────────────────────────────────────┤
-│ Budgets · Transactions · Recurring · Categories  │  ← module sub-nav (only if > 1 tab)
+│ Budgets · Checklist · Recurring · Inbox · Categories │  ← module sub-nav (only if > 1 tab)
 ├──────────────────────────────────────────────────┤
 │                                                  │
 │               (module page content)              │
@@ -70,7 +70,7 @@ Each module folder (`web/src/modules/<key>/`) exports a **manifest** (`ModuleMan
 | `key` | `'finance'` | Matches the API module key (`core.user_modules.module_key`), the Postgres schema and the URL prefix `/<key>` |
 | `icon` | `Wallet` (lucide-react) | Module menu, manage-modules page, disabled-module gate |
 | `route` | `financeRoute`: the TanStack Router tree under `/finance` (`routes.tsx`) | Added to the router's route tree |
-| `subNav` | Budgets (`/finance/budgets`), Categories (`/finance/categories`); Recurring etc. later | Module sub-nav (shown only when > 1 entry) |
+| `subNav` | Budgets, Checklist, Recurring, Inbox, Categories (`/finance/budgets`, `/finance/checklist`, ...) | Module sub-nav (shown only when > 1 entry) |
 | `HomeCard` | `FinanceHomeCard` component | Home page |
 
 **Name and description are not in the web manifest.** They come from the API (`GET /me/modules`), so they are defined once, in the API's module registry (see [api-overview.md](../api/api-overview.md)).

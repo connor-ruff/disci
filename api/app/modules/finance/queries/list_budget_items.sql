@@ -1,12 +1,20 @@
--- Items with their net actual: allocated transactions of the item's own kind add,
--- the opposite kind subtracts (a grocery rebate reduces Groceries).
+-- Items with their net actual (confirmed transactions only): allocated transactions of
+-- the item's own kind add, the opposite kind subtracts (a rebate reduces Groceries).
+-- Pending (awaiting approval) amounts are reported separately.
 SELECT
     i.id, i.kind, i.name, i.category_id, c.name AS category_name, i.planned_amount,
     coalesce(
         sum(CASE WHEN t.kind = i.kind THEN a.amount ELSE -a.amount END)
-            FILTER (WHERE t.id IS NOT NULL),
+            FILTER (WHERE t.status = 'confirmed'),
         0
     )::numeric(12,2) AS actual_amount,
+    coalesce(
+        sum(CASE WHEN t.kind = i.kind THEN a.amount ELSE -a.amount END)
+            FILTER (WHERE t.status = 'pending'),
+        0
+    )::numeric(12,2) AS pending_amount,
+    i.is_checklist_item, i.checklist_day,
+    coalesce(bool_or(t.satisfies_checklist AND t.status = 'confirmed'), false) AS checklist_done,
     i.sort_order
 FROM finance.budget_items i
 LEFT JOIN finance.budget_categories c ON c.id = i.category_id AND c.deleted_at IS NULL
