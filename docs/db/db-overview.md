@@ -1,6 +1,6 @@
 # Data Model Overview
 
-*Status: **planning draft**. No migrations exist yet. These docs are the design that the first migrations will be written from.*
+*Status: the **`core` schema is implemented** (first migration: `db/migrations/20261025134012_core__init.sql`). The `finance`, `tasks` and `nutrition` modules are still **planning drafts** that their migrations will be written from. For the exact current schema, read the auto-generated `db/schema.sql`.*
 
 This is the entry point for the Postgres data model. It covers how the model is split into modules, the conventions every table follows, and how the modules relate. Each module has its own doc with full table definitions.
 
@@ -46,10 +46,10 @@ These come straight from the design principles in `docs/project_plans/project-in
 
 | Column | Type | Notes |
 |---|---|---|
-| `id` | `uuid` PK | Default `gen_random_uuid()`. Switch to `uuidv7()` if we land on Postgres 18+ (time-ordered, nicer indexes). |
+| `id` | `uuid` PK | Default `uuidv7()` (native in Postgres 18, which we run locally and on RDS). Time-ordered, so indexes stay compact. |
 | `user_id` | `uuid` NOT NULL → `core.users.id` | On every user-owned table, **even child tables** (like `budget_items`), so row-level security never needs a join. Not on `core.users` itself. |
 | `created_at` | `timestamptz` NOT NULL default `now()` | |
-| `updated_at` | `timestamptz` NOT NULL default `now()` | Maintained by a shared trigger. |
+| `updated_at` | `timestamptz` NOT NULL default `now()` | Maintained by the shared `core.set_updated_at()` trigger function. **Every table** gets `CREATE TRIGGER set_updated_at BEFORE UPDATE ... FOR EACH ROW EXECUTE FUNCTION core.set_updated_at()`. |
 | `deleted_at` | `timestamptz` NULL | Soft delete. App queries filter `deleted_at IS NULL`. |
 
 ### Naming
@@ -65,8 +65,19 @@ These come straight from the design principles in `docs/project_plans/project-in
 
 ### Integrity
 - **Unique constraints are partial indexes** with `WHERE deleted_at IS NULL`, so a soft-deleted row doesn't block re-creating something with the same name.
-- **Row-level security** on every user-owned table. The API sets `app.user_id` per request, and policies check `user_id = current_setting('app.user_id')::uuid`.
+- **Row-level security** on every user-owned table (see below).
 - **Derived numbers aren't stored as the only record.** Totals (budget actuals, daily macros, task completion counts) are computed by queries or views from the raw rows.
+
+### Row-level security & privileges
+- The API connects as (a login user that is a member of) the role **`disci_app`**. It is **not** the table owner, so RLS applies to it. Migrations run as the owner.
+- At the start of each transaction the API runs `SET LOCAL app.user_id = '<uuid>'`. **`core.current_user_id()`** reads that setting and returns NULL when it's unset, so a request that forgot to set it sees no rows.
+- Every user-owned table runs `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` and gets a policy of the form:
+  ```sql
+  CREATE POLICY <table>_owner ON <schema>.<table> TO disci_app
+      USING (user_id = core.current_user_id())
+      WITH CHECK (user_id = core.current_user_id());
+  ```
+- **Grants come from default privileges per schema.** Each module's first migration (the one that creates its schema) must `GRANT USAGE ON SCHEMA <module> TO disci_app` and `ALTER DEFAULT PRIVILEGES IN SCHEMA <module> GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO disci_app`. Tables created later in that schema then need no per-table grants.
 
 ### Seeded defaults
 Some lookup tables (currently just `budget_categories`) ship with defaults. Defaults are **copied into each user's own rows when they first enable the module** (see `core.user_modules`) (flagged `is_default = true`) instead of living as shared global rows. The user can then rename, recolor or delete them freely, and RLS stays simple.
@@ -77,5 +88,5 @@ Some lookup tables (currently just `budget_categories`) ship with defaults. Defa
 
 Module-specific questions live at the bottom of each module doc.
 
-1. **Postgres version on RDS:** 18+ gets native `uuidv7()`.
-2. **Week start day** for weekly budgets and "this week" views: Monday or Sunday? This could be a per-user setting on `core.users`.
+1. ~~Postgres version on RDS~~. Decided: Postgres 18 (native `uuidv7()`).
+2. ~~Week start day~~. Decided: a per-user setting, `core.users.week_starts_on` (default Monday).

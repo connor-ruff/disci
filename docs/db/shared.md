@@ -1,8 +1,8 @@
 # Shared Tables (`core` schema)
 
-*Status: planning draft. See [db-overview.md](db-overview.md) for conventions.*
+*Status: **implemented** in `db/migrations/20261025134012_core__init.sql`. See [db-overview.md](db-overview.md) for conventions.*
 
-Tables that every module depends on: `users` and `user_modules` (which modules each user has turned on).
+Tables that every module depends on: `users` and `user_modules` (which modules each user has turned on). The schema also holds the shared helper functions (see the end of this doc).
 
 ---
 
@@ -16,12 +16,12 @@ One row per person who can sign in. Identity itself (passwords, OAuth) lives in 
 | `cognito_sub` | `text` | no | Unique. The Cognito user's `sub` claim, used to map a JWT to a user row. |
 | `email` | `text` | no | Unique (case-insensitive). Copied from Cognito for convenience and reports. |
 | `display_name` | `text` | yes | |
-| `timezone` | `text` | no | IANA name, e.g. `America/Chicago`. Decides which **day** a food log, task or transaction falls on, and when reports go out. |
-| `week_starts_on` | `smallint` | no | Default `1` (Monday). Used for weekly budgets and "this week" views. *(See open question in the overview.)* |
+| `timezone` | `text` | no | IANA name, e.g. `America/Chicago`. Default `'UTC'`. Decides which **day** a food log, task or transaction falls on, and when reports go out. |
+| `week_starts_on` | `smallint` | no | ISO day numbering: `1` = Monday ... `7` = Sunday, enforced by `CHECK (week_starts_on BETWEEN 1 AND 7)`. Default `1` (Monday). Used for weekly budgets and "this week" views. |
 | `created_at` / `updated_at` / `deleted_at` | `timestamptz` | | Standard audit columns. |
 
 ### What happens at first sign-in
-The API creates the `users` row **lazily** on the first authenticated request whose `cognito_sub` it hasn't seen. There's no Cognito trigger. The new user starts with **no modules enabled**, and the UI prompts them to turn one on (see `user_modules`).
+The API creates the `users` row **lazily** on the first authenticated request whose `cognito_sub` it hasn't seen, by calling `core.ensure_user(cognito_sub, email)` (see below). There's no Cognito trigger. The new user starts with **no modules enabled**, and the UI prompts them to turn one on (see `user_modules`).
 
 This also means a freshly reset local database needs no setup: sign in and your user row comes back.
 
@@ -46,3 +46,17 @@ Which modules a user has turned on. Modules are opt-in so new users aren't overw
 
 ### Likely future additions
 - **Report preferences** (morning/night report on or off, send time, channel). These could be columns here or a `core.user_settings` table once there are more than a few settings.
+
+---
+
+## Functions
+
+| Function | Returns | Notes |
+|---|---|---|
+| `core.ensure_user(p_cognito_sub text, p_email text)` | `uuid` | Returns the user's `id`, inserting the `core.users` row first if this `cognito_sub` is new. Safe under concurrent first requests. **`SECURITY DEFINER`**, so it bypasses RLS: it has to run before `app.user_id` is known. `EXECUTE` is granted only to `disci_app`. |
+| `core.current_user_id()` | `uuid` | The user the current request acts as, read from the `app.user_id` setting (which the API sets with `SET LOCAL` per transaction). NULL when unset, so RLS policies match nothing. Used by every RLS policy. |
+| `core.set_updated_at()` | `trigger` | Sets `updated_at = now()`. Attached to every table as a `BEFORE UPDATE` trigger. |
+
+Typical request flow: verify the JWT, call `core.ensure_user(sub, email)` to get the user id, then `SET LOCAL app.user_id = '<id>'` and run the request's queries.
+
+**Local dev seed:** `db/seeds/dev.sql` creates a stand-in user (`cognito_sub = 'local-dev-user'`, `dev@disci.local`, `America/Chicago`) with the finance module enabled, for working on the API before Cognito login is wired up.

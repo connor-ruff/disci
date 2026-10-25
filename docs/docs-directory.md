@@ -10,11 +10,12 @@ docs/
 │   └── project-inspiration.md
 ├── db/                            # Postgres data model docs (one file per module)
 │   ├── db-overview.md             # Start here: modules, conventions, open questions
-│   ├── shared.md                  # core.users
+│   ├── shared.md                  # core schema: users, user_modules, helper functions
 │   ├── finance.md
 │   ├── tasks.md
 │   └── nutrition.md
 └── ui/                            # Front-end layout & UX docs
+    ├── ui-overview.md             # General style guidelines
     └── app-shell.md               # Shell, module menu, opt-in modules, how modules plug in
 ```
 
