@@ -39,52 +39,122 @@ Snowflake is **not** in v1. It gets added later as a reporting layer (nightly ex
 
 ## 3. Repos
 
-### 3a. Existing IaC repo (Terraform): new project root
+### 3a. Existing IaC repo (`aws_iac_mngr`, OpenTofu): new project root
+
+The IaC repo uses **OpenTofu** (Terraform-compatible). Primary region is **us-east-2**. State lives in the shared `connor-ruff-terraform-state` bucket created by `admin_resources/bootstrap/`, so disci needs no new bootstrap, just its own state key. Everything that predates disci was moved into `controlled_resources/general/` (Oct 2026; every root re-planned with "No changes").
 
 ```
-iac/
-  modules/                     # shared building blocks (reuse or add)
-  projects/
-    disci/
-      backend.tf               # its OWN state key → isolated blast radius
-      providers.tf             # default_tags { project = "disci" }
-      variables.tf             # account_id, region, domain, etc.
-      network.tf               # VPC, private subnets, security groups
-      database.tf              # RDS Postgres
-      auth.tf                  # Cognito user pool + app clients
-      compute.tf               # Lambdas (api, mcp, jobs, migrator), ECR
-      api.tf                   # API Gateway HTTP API, routes, custom domain
-      frontend.tf              # S3 bucket + CloudFront + ACM cert
-      schedules.tf             # EventBridge Scheduler (morning/night reports)
-      email.tf                 # SES domain identity
-      ci.tf                    # GitHub OIDC role for the app repo's deploys
-      outputs.tf               # values written to SSM Parameter Store
+aws_iac_mngr/
+├── admin_resources/                # one-time, account-level setup
+│   ├── bootstrap/                  # state bucket + lock table (shared, unchanged)
+│   ├── iam_identity_center/
+│   └── github_oidc/                # (to add) GitHub OIDC provider: one per account, shared by any project's CI
+└── controlled_resources/
+    ├── general/                    # all pre-disci resources, one root per AWS service
+    └── disci/                      # one root, ONE state: key = disci/terraform.tfstate
+        ├── main.tf                 # backend; providers: us-east-2 + us-east-1 alias (CloudFront's ACM cert must be in us-east-1);
+        │                           #   default_tags { project = "disci" }
+        ├── variables.tf            # account_id, region, etc.
+        ├── network.tf              # VPC, private subnets, security groups, EC2 Instance Connect Endpoint
+        ├── database.tf             # RDS Postgres
+        ├── auth.tf                 # Cognito user pool + app clients
+        ├── compute.tf              # Lambdas (api, mcp, jobs, migrator), ECR
+        ├── api.tf                  # API Gateway HTTP API, routes
+        ├── frontend.tf             # S3 bucket + CloudFront
+        ├── schedules.tf            # EventBridge Scheduler (reports, recurring generation)
+        ├── email.tf                # SES identity
+        ├── ci.tf                   # deploy role for this repo, trusting the shared GitHub OIDC provider
+        ├── outputs.tf              # values written to SSM Parameter Store
+        └── disci.md
 ```
 
 Terraform owns the *slots*. Lambda resources use `lifecycle { ignore_changes = [image_uri] }` so app deploys aren't reverted by a later `terraform apply`.
 
-### 3b. New app repo (monorepo)
+### 3b. App repo (this repo, `disci`: monorepo)
+
+Code is **segmented by module** at every layer. A module (finance, tasks, nutrition) has a folder in the API, a folder in the web app and its own Postgres schema, all with the same name. Shared plumbing lives in `core/` (API) and `app/` + `shared/` (web). Adding a module means adding those folders and registering the module in one place on each side.
 
 ```
 disci/
-  db/
-    migrations/                # versioned SQL (dbmate/Flyway), or schema/ for Atlas
-  api/                         # FastAPI: routes, business logic, validation
-    app/
-      domains/                 # finance/, tasks/, nutrition/
-      core/                    # auth, db session, settings (reads SSM)
-    tests/
-  mcp/                         # MCP server (streamable HTTP, stateless); calls api/
-  jobs/                        # report builders invoked by EventBridge
-  web/                         # React + Vite SPA (static build → S3)
-  .github/workflows/
-    deploy.yml                 # build images → push ECR → update Lambdas
-                               # → run migrator → build web → sync S3 → invalidate CF
+├── docs/                          # all documentation (see docs/docs-directory.md)
+├── db/
+│   ├── migrations/                # dbmate migrations (see §3d)
+│   └── seeds/
+│       └── dev.sql                # fake data for local development (never run in prod)
+├── api/                           # FastAPI on Lambda
+│   ├── app/
+│   │   ├── main.py                # builds the app, mounts each module's router
+│   │   ├── core/                  # cross-module plumbing
+│   │   │   ├── auth.py            # Cognito JWT verification → current user
+│   │   │   ├── db.py              # psycopg pool, per-request transaction, sets app.user_id
+│   │   │   ├── settings.py        # config (reads SSM in AWS, .env locally)
+│   │   │   └── users/             # core.users: lazy creation, /me endpoint
+│   │   └── modules/
+│   │       └── finance/
+│   │           ├── router.py      # HTTP routes (thin)
+│   │           ├── schemas.py     # Pydantic request/response models
+│   │           ├── service.py     # business rules (allocation checks, etc.)
+│   │           └── queries/       # one .sql file per query, loaded by name
+│   └── tests/
+│       └── modules/finance/
+├── web/                           # React + Vite + TS SPA (static build → S3)
+│   └── src/
+│       ├── app/                   # shell: layout, module nav, auth, router root
+│       ├── shared/                # UI components, generated API client, utils
+│       └── modules/
+│           └── finance/
+│               ├── routes.tsx     # the module's pages, registered with the shell
+│               ├── pages/
+│               ├── components/
+│               └── api.ts         # TanStack Query hooks for this module
+├── mcp/                           # (later) MCP server; calls the API
+├── jobs/                          # (later) scheduled jobs: reports, recurring generation
+└── .github/workflows/
+    └── deploy.yml                 # build images → push ECR → update Lambdas
+                                   # → run migrator → build web → sync S3 → invalidate CF
 ```
+
+**SQL and injection safety** (plain SQL via psycopg 3, no ORM):
+- Values are **always** bound parameters (`%(name)s`), never put into SQL with f-strings, `.format()` or `+`.
+- Dynamic identifiers (e.g. a sort column) go through `psycopg.sql.Identifier` and are checked against an allow-list.
+- Queries live in `.sql` files, so string-building SQL in Python is unusual and stands out in review. Ruff's `S608` rule flags it in CI.
+- Row-level security (`app.user_id`) is the backstop: even a buggy query can't read another user's rows.
 
 ### 3c. Existing Snowflake repo
 
 No changes for v1. Later it gets a `DISCI` database folder (raw tables, Snowpipe, reporting views).
+
+### 3d. Environments, local development & migrations
+
+There are **two environments: local (your laptop) and production (AWS).** No staging copy, which would roughly double the cost.
+
+| | Local | Production |
+|---|---|---|
+| Postgres | Docker container with a **named volume**, so data survives restarts | RDS |
+| API / web | Run on your machine (FastAPI dev server, Vite dev server) | Lambda / S3 + CloudFront |
+| Login | The **same Cognito user pool**, with `localhost` allowed as a callback URL | Cognito |
+| Data | Fake data from `db/seeds/dev.sql` plus whatever you create while testing | Your real data |
+
+**Local database lifecycle.** Stopping and starting the container keeps everything. The database is only wiped when you explicitly reset it:
+
+| Command (planned) | What it does |
+|---|---|
+| `make db-up` | Start Postgres. Existing data is still there. |
+| `make db-migrate` | Apply any migrations that haven't run yet. |
+| `make db-seed` | Load the fake dev data. |
+| `make db-reset` | Drop everything, re-run all migrations from scratch, re-seed. Use it when you want a clean slate. |
+
+You never need to "create an account" locally. Signing in through Cognito gives the same identity (`sub`) locally and in production, and the API creates the `core.users` row on the first request, so even after a reset you just sign in again.
+
+**What keeps local and production in sync: schema yes, data no.**
+- **Schema** is synced by the migration files. Both databases run the same files in the same order, and dbmate records which ones each database has applied (in a `schema_migrations` table).
+- **Data is never synced.** Production data stays in production. If realistic data is ever wanted locally, that's a deliberate one-off export, not part of the workflow.
+
+**Migrations (dbmate).**
+- One folder, `db/migrations/`, applied in timestamp order. Files are named `<timestamp>_<module>__<description>.sql`, e.g. `20261026120000_finance__create_budgets.sql`, so it's obvious which module a migration belongs to.
+- Each file has a `-- migrate:up` section and a `-- migrate:down` section.
+- **Never edit a migration that has already run in production.** Fix it with a new migration.
+- In production, the deploy pipeline invokes the `migrator` Lambda **before** shipping the new API code, so migrations must keep working with the currently deployed code (add columns first, remove old ones in a later release).
 
 ## 4. AWS services used
 
@@ -110,7 +180,7 @@ Lambdas run in the VPC's private subnets next to RDS, with **no NAT Gateway** (~
 - Logs flow through the Lambda service itself, with no VPC endpoint required.
 - Food lookups happen on the Claude side or in a separate non-VPC Lambda.
 - **Migrations** run through a small `migrator` Lambda that CI invokes. No bastion is needed for deploys.
-- **Ad-hoc SQL from your laptop**: a bastion EC2 you start only when needed (SSM port forwarding), or temporarily flip RDS to public access with your IP allow-listed. *Open decision.*
+- **Ad-hoc SQL from your laptop**: an **EC2 Instance Connect Endpoint** in the VPC (no hourly charge) opens a tunnel from your laptop to RDS's private address (`aws ec2-instance-connect open-tunnel`, then `psql` against localhost). There's no bastion to run and RDS stays private. SSM port forwarding was ruled out because, without a NAT, it needs three interface endpoints (~$20+/mo). *Decided. Fallback if the endpoint proves awkward: a t4g.nano bastion started only when needed.*
 
 ## 5. Estimated monthly cost (single user)
 
@@ -148,7 +218,7 @@ Roughly flat until hundreds of active users: Lambda, API Gateway and Cognito sta
 ## 6. Open questions to settle during build
 
 1. **MCP auth with Cognito.** Cognito doesn't support OAuth dynamic client registration. Verify that Claude's custom connector setup accepts a pre-registered client ID/secret, or put a thin auth shim in front.
-2. **Ad-hoc database access method** (bastion on demand vs. temporary public access).
-3. **Migration tool**: Atlas (declarative, closest to your Snowflake repo style) vs. dbmate/Flyway (hand-written migrations).
+2. ~~Ad-hoc database access method~~. Decided: EC2 Instance Connect Endpoint (see networking above).
+3. ~~Migration tool~~. Decided: dbmate (see §3d).
 4. **Report delivery**: email via SES (deterministic, cheap) vs. Claude scheduled tasks (conversational), or both.
 5. **Domain name.**

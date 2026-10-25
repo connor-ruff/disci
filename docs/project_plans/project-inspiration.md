@@ -108,12 +108,23 @@ Discussed and agreed with the user; details are in `disci-infrastructure.md`.
 | App database | **Plain Postgres on RDS** | It's a transactional app workload. Snowflake is the wrong engine for per-row writes and interactive latency. |
 | Snowflake | **Not in v1.** Added later as an analysis/reporting layer | Live dashboards are simple Postgres queries. Snowflake comes in when deeper, long-horizon analysis is wanted. |
 | Cloud | **AWS only**, existing account | User's existing expertise and tooling. |
-| Infra as code | **Existing Terraform repo**, new `projects/disci/` root with **its own state** and `default_tags { project = "disci" }` | Keeps all AWS infra in one place while staying isolated and easy to move to its own account later. |
+| Infra as code | **Existing IaC repo (`aws_iac_mngr`, OpenTofu)**, new `controlled_resources/disci/` root with **its own single state** and `default_tags { project = "disci" }`. Pre-existing resources moved to `controlled_resources/general/`. | Keeps all AWS infra in one place while staying isolated and easy to move to its own account later. |
 | App code | **New monorepo**: `db/`, `api/`, `mcp/`, `jobs/`, `web/` | These pieces change together and share models. |
 | Repo seam | Terraform owns infrastructure "slots"; app CI deploys code into them; values pass via **SSM Parameter Store** | Avoids Terraform and CI fighting over the same resources. |
-| Schema management | **Versioned migrations in the app repo** (tool TBD: Atlas vs. dbmate/Flyway) | An app schema evolves with live data, so it can't be dropped and recreated. |
+| Schema management | **Versioned migrations in the app repo, using dbmate** (hand-written SQL up/down files) | An app schema evolves with live data, so it can't be dropped and recreated. |
 | Bank connections | **None** | User logs manually by choice. |
 | Budget | Keep it **~$15/mo**. Avoid NAT Gateways and public IPs | See the cost section of the infra doc. |
+| App repo | **This repo (`disci`) is the monorepo**: `docs/` plus app code | One place for code and docs. |
+| Build order | **Framework first, then finance.** Deploy a walking skeleton (infra, auth, user row, app shell with module nav) before features. Then a thin finance slice (budgets, categories, items, manual transactions), then recurring transactions and the bills checklist. | Shakes out infra and auth risk before feature code. Finance is the biggest current pain point. |
+| Auth | **Cognito Hosted UI**, self-signup **off** for now. The `core.users` row is created lazily on the first authenticated API request. | Simplest login. No Cognito trigger Lambda needed. |
+| Domain | **CloudFront default domain** for v1 | A custom domain can come later. |
+| Postgres | **Latest major version RDS offers (18)** | Native `uuidv7()`. |
+| DB access from the API | **Plain SQL via psycopg 3**, no ORM. Queries are always parameterized. | Full visibility into SQL. See the infra doc for the injection-safety rules. |
+| Frontend stack | **React + Vite + TypeScript**, TanStack Router, TanStack Query, Tailwind + shadcn/ui. API types are generated from FastAPI's OpenAPI spec. | Mainstream, well documented, type-safe end to end. |
+| Code organization | **Segmented by module** everywhere: `api/app/modules/<module>/`, `web/src/modules/<module>/`, plus a Postgres schema per module | See the infra doc §3b. |
+| Environments | **Local + production only.** Local Postgres runs in Docker with a persistent volume and fake seed data. Schema stays in sync through migrations. Data is never synced. | No staging copy, to keep cost ~$15/mo. See the infra doc §3d. |
+| Modules are opt-in | Users **turn modules on** from a module menu (`core.user_modules`). Only enabled modules appear in navigation. | Avoids overwhelming new users. See `docs/ui/app-shell.md`. |
+| Ad-hoc DB access | **EC2 Instance Connect Endpoint** tunnel to RDS (no bastion, no hourly cost). Fallback: an on-demand bastion. | Keeps RDS private and avoids the cost of SSM VPC endpoints, which a NAT-less VPC would need. |
 
 ---
 
@@ -135,3 +146,5 @@ CSV exports of each Google Sheet would answer most of this at once, and would do
 ## 7. Where we left off
 
 Infrastructure and repo layout are agreed (see `disci-infrastructure.md`). **The next step is the data model**, starting with whichever domain the user picks first, guided by the principles in section 4 and the answers to section 6.
+
+**Update:** a first-draft data model for all three modules now lives in `docs/db/` (start at `docs/db/db-overview.md`). Each module doc ends with its own open questions.
