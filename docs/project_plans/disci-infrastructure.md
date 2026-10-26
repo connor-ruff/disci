@@ -61,7 +61,7 @@ aws_iac_mngr/
         ├── database.tf             # RDS Postgres
         ├── auth.tf                 # Cognito user pool (invite-only) + app clients + users
         ├── compute.tf              # Lambdas (api, migrator, jobs), zip packages, no ECR
-        ├── mcp.tf                  # mcp Lambda (outside the VPC) + its routes (2026-10-26, not applied yet)
+        ├── mcp.tf                  # mcp Lambda (outside the VPC) + its routes (added 2026-10-26)
         ├── api.tf                  # API Gateway HTTP API, routes
         ├── frontend.tf             # S3 bucket + CloudFront
         ├── schedules.tf            # EventBridge Scheduler: hourly recurring generation (reports later)
@@ -234,7 +234,7 @@ You never need to "create an account" locally. The API creates the `core.users` 
 | Service | Role | Notes |
 |---|---|---|
 | RDS for PostgreSQL | Source of truth | db.t4g.micro, single-AZ, 20 GB gp3, private subnet |
-| Lambda | api, mcp, jobs, migrator | Zip packages (arm64, Python 3.13), built without Docker; in the VPC so they can reach RDS (mcp runs outside it: it only calls the API). api, migrator and jobs exist; mcp is built but not applied yet (2026-10-26) |
+| Lambda | api, mcp, jobs, migrator | Zip packages (arm64, Python 3.13), built without Docker; in the VPC so they can reach RDS (mcp runs outside it: it only calls the API). all four exist (mcp since 2026-10-26) |
 | API Gateway (HTTP API) | Public HTTPS entry point | HTTP API, not REST API (~3.5× cheaper) |
 | Cognito | User accounts, OAuth for the MCP connector | Essentials/Lite tier |
 | S3 + CloudFront | Hosts the static frontend | Default `*.cloudfront.net` domain for now; a custom domain would add a free ACM certificate in us-east-1 |

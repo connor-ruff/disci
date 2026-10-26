@@ -1,6 +1,6 @@
 # MCP Server
 
-*Status (as of 2026-10-26): **proof of concept built, awaiting `tofu apply` and deploy.** The server lives in `mcp_server/` (§4) with one read-only tool, `get_budget_summary`. The infrastructure (`aws_iac_mngr`, `controlled_resources/disci/mcp.tf`: the `disci-mcp` Lambda and its routes, plus authorizer/API changes) is planned (10 add, 4 change, 0 destroy) but **not applied**, and the code is **not deployed**. Cognito is kept as the auth provider: a throwaway test on 2026-10-25 proved Claude's custom connector can authenticate against Cognito with a pre-registered client, per-user identity works, and silent token refresh works. Already live: the `disci-mcp` Cognito client (`controlled_resources/disci/auth.tf`) and its Secrets Manager secret `disci-mcp-cognito-client-keys` (`controlled_resources/general/secrets_manager`). The auth detail (client, discovery, tokens) lives in [deployment.md §9](../ops/deployment.md#9-known-follow-ups) and is not repeated here.*
+*Status (as of 2026-10-26): **proof of concept live and verified end to end.** The server lives in `mcp_server/` (§4) with one read-only tool, `get_budget_summary`. Its infrastructure (`aws_iac_mngr`, `controlled_resources/disci/mcp.tf`: the `disci-mcp` Lambda and its routes, plus authorizer/API changes) is applied and the code deployed (PR #2). On 2026-10-26 the custom connector logged in through Cognito, listed the tools and called `get_budget_summary` against production data. Cognito is kept as the auth provider: a throwaway test on 2026-10-25 proved Claude's custom connector can authenticate against Cognito with a pre-registered client, per-user identity works, and silent token refresh works. Already live: the `disci-mcp` Cognito client (`controlled_resources/disci/auth.tf`) and its Secrets Manager secret `disci-mcp-cognito-client-keys` (`controlled_resources/general/secrets_manager`). The auth detail (client, discovery, tokens) lives in [deployment.md §9](../ops/deployment.md#9-known-follow-ups) and is not repeated here.*
 
 This doc exists so a fresh session can pick up the MCP server without re-deriving anything: what the auth test proved, how to repeat it, SDK notes, how the server is built and run, how to connect Claude to it, what is decided and what is still open, and the historical stub source (appendix).
 
@@ -15,7 +15,7 @@ Details of the client, discovery and tokens are in [deployment.md §9](../ops/de
 - Claude lists tools, resources and prompts right after connecting (UA `Claude-User`; requests were also seen from `python-httpx`).
 - The access token has `sub` but no `email` and no `aud`.
 - With a 5-minute access token, Claude refreshed silently (new `jti`, no 401, no re-login).
-- One request returned HTTP 400 mid-handshake (followed by successful retries) and was never explained. Treat as unknown; check once the real server is deployed.
+- One request returned HTTP 400 mid-handshake (followed by successful retries) and was never explained. Treat as unknown; see (g) in §6.
 
 ---
 
@@ -132,7 +132,7 @@ Logs: `/aws/lambda/disci-mcp` (14 days).
 
 **Decided**
 
-- Separate MCP Lambda with routes on the existing HTTP API, outside the VPC (`mcp.tf`; built, not applied).
+- Separate MCP Lambda with routes on the existing HTTP API, outside the VPC (`mcp.tf`).
 - Unauthenticated `/.well-known/*` routes (the MCP server does its own auth).
 - Claude's callback `https://claude.ai/api/mcp/auth_callback` is already on the `disci-mcp` client.
 - Identify users by Cognito `sub`.
@@ -145,7 +145,7 @@ Logs: `/aws/lambda/disci-mcp` (14 days).
 - (d) **Disci settings page** showing each user the MCP URL, client ID and shared secret. The secret is shared across invited users, which is acceptable now; Anthropic-held credentials (directory listing) or a DCR provider would remove the paste step later.
 - (e) **CloudWatch alarms / alerting.** None exist yet, including for `disci-jobs` and `disci-mcp` failures.
 - (f) **API Gateway limits.** 30 s HTTP API timeout and no streaming (fine for stateless tools; the Lambda times out at 25 s).
-- (g) **Verify end to end** after apply + deploy: connect from Claude, call `get_budget_summary`, watch for the unexplained mid-handshake 400 (§1).
+- (g) **The mid-handshake 400** (§1). The first production connect (2026-10-26) worked, with no errors in the `disci-mcp` logs, but the Lambda doesn't log response status codes, so a 400 can't be ruled out. Enabling API Gateway access logs would show it.
 
 **Limits to design within**
 

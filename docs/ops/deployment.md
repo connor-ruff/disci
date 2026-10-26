@@ -1,6 +1,6 @@
 # Deployment & Operations
 
-*Status: **live in production** since Oct 25, 2026 (first deploy). This is the source of truth for what was actually built on AWS and how to operate it. The original plan, [disci-infrastructure.md](../project_plans/disci-infrastructure.md), explains the reasoning and costs but differs in places (see §10). **Pending (2026-10-26):** the MCP server (`disci-mcp` Lambda, its routes, the authorizer audience change; §2.2) is written and planned in tofu but **not yet applied or deployed**; items marked *(not applied yet)* below describe it.*
+*Status: **live in production** since Oct 25, 2026 (first deploy). This is the source of truth for what was actually built on AWS and how to operate it. The original plan, [disci-infrastructure.md](../project_plans/disci-infrastructure.md), explains the reasoning and costs but differs in places (see §10). The MCP server (`disci-mcp`, §2.2) has been live since 2026-10-26.*
 
 | | URL |
 |---|---|
@@ -31,7 +31,7 @@ Account: the `connor-ruff-dev-acct` AWS profile. Region: **us-east-2** for every
 
   EventBridge Scheduler (rate 1 hour, 2 retries) ──► Lambda disci-jobs (app.jobs.recurring.handler)
 
-  Claude connector (not applied yet):
+  Claude connector:
     Claude ──► API Gateway  ANY /mcp, GET /.well-known/{proxy+}  (no authorizer)
            ──► Lambda disci-mcp (outside the VPC; verifies the Cognito access token itself)
            ──► public API URL with Authorization: Bearer <same access token> ──► authorizer ──► disci-api
@@ -48,7 +48,7 @@ Nothing inside the VPC needs the internet, which is why there is no NAT (~$33/mo
 
 `disci-mcp` sits **outside** the VPC because it needs the internet (Cognito JWKS, the public API URL); it never touches the database.
 
-Not built yet: the report jobs, SES report emails, a custom domain (see §9). The first scheduled job, hourly recurring-transaction generation, is built (§2.1). The MCP server is built but not applied/deployed (§2.2).
+Not built yet: the report jobs, SES report emails, a custom domain (see §9). The first scheduled job, hourly recurring-transaction generation, is built (§2.1). The MCP server is live (§2.2).
 
 ---
 
@@ -63,8 +63,8 @@ All infrastructure is **OpenTofu** in the IaC repo, root `aws_iac_mngr/controlle
 | `auth.tf` | Cognito user pool (email usernames, **self-signup off: invite-only**, deletion protection), hosted login domain, public web client (code + PKCE, no secret; ID/access tokens 60 min, refresh 30 days), a second confidential client `disci-mcp` for the Claude connector (auth-code flow, scopes openid/email/profile, callback `https://claude.ai/api/mcp/auth_callback`, no password flows, access 60 min, refresh 30 days; outputs `mcp_client_id` / `mcp_client_secret`, secret kept in Secrets Manager as `disci-mcp-cognito-client-keys`; see §9), the admin user (`admin_email`) and one user per address in `invited_emails` |
 | `compute.tf` | `disci-api`, `disci-migrator` and `disci-jobs` Lambdas (arm64, Python 3.13, zip, 512 MB; 15 s / 300 s / 120 s timeouts), their IAM roles, 14-day log groups. Created with **placeholder code**; `ignore_changes = [filename, source_code_hash]` so app deploys never show as drift |
 | `schedules.tf` | EventBridge Scheduler: the hourly `disci-recurring-transactions` schedule targeting `disci-jobs`, and the `disci-scheduler` role it assumes (may only `lambda:InvokeFunction` on `disci-jobs`) |
-| `api.tf` | HTTP API, CORS for the web origin, Cognito JWT authorizer on `$default` (audience: web client and, *not applied yet*, the `disci-mcp` client), open `GET /health`, throttle 10 rps / burst 20 |
-| `mcp.tf` | *(not applied yet)* `disci-mcp` Lambda (outside the VPC), its role, log group, and the `ANY /mcp` and `GET /.well-known/{proxy+}` routes without the authorizer (§2.2) |
+| `api.tf` | HTTP API, CORS for the web origin, Cognito JWT authorizer on `$default` (audience: web client and the `disci-mcp` client), open `GET /health`, throttle 10 rps / burst 20 |
+| `mcp.tf` | `disci-mcp` Lambda (outside the VPC), its role, log group, and the `ANY /mcp` and `GET /.well-known/{proxy+}` routes without the authorizer (§2.2) |
 | `frontend.tf` | Private S3 bucket + CloudFront (Origin Access Control, SPA fallback: 403/404 → `/index.html` with 200, managed security-headers policy, default certificate) |
 | `ci.tf` | `disci-github-deploy` role (GitHub OIDC; see §7) |
 | `budget.tf` | $25/mo AWS Budgets alert filtered on `project=disci` (see §8) |
@@ -76,12 +76,12 @@ The account-wide GitHub OIDC provider lives separately in `aws_iac_mngr/admin_re
 
 | Lambda | Variables |
 |---|---|
-| `disci-api` | `DISCI_ENV=prod`, `DISCI_AUTH_MODE=cognito`, `DISCI_DB_IAM_AUTH=true`, `DISCI_DATABASE_URL=postgresql://disci_api@<rds>/disci?sslmode=require` (no password), `DISCI_CORS_ORIGINS=["<web origin>"]`, *(not applied yet)* `DISCI_MCP_CLIENT_ID=<disci-mcp client id>` |
+| `disci-api` | `DISCI_ENV=prod`, `DISCI_AUTH_MODE=cognito`, `DISCI_DB_IAM_AUTH=true`, `DISCI_DATABASE_URL=postgresql://disci_api@<rds>/disci?sslmode=require` (no password), `DISCI_CORS_ORIGINS=["<web origin>"]`, `DISCI_MCP_CLIENT_ID=<disci-mcp client id>` |
 | `disci-migrator` | `DISCI_MIGRATOR_DATABASE_URL` (master user `disci` with its password) |
 | `disci-jobs` | The same variables as `disci-api` (copied from it in `compute.tf`) |
-| `disci-mcp` | *(not applied yet)* `DISCI_MCP_ENV=prod`, `DISCI_MCP_AUTH_MODE=cognito`, `DISCI_MCP_PUBLIC_URL` and `DISCI_MCP_API_URL` = the API endpoint, `DISCI_MCP_COGNITO_ISSUER`, `DISCI_MCP_COGNITO_CLIENT_ID` (the `disci-mcp` client) |
+| `disci-mcp` | `DISCI_MCP_ENV=prod`, `DISCI_MCP_AUTH_MODE=cognito`, `DISCI_MCP_PUBLIC_URL` and `DISCI_MCP_API_URL` = the API endpoint, `DISCI_MCP_COGNITO_ISSUER`, `DISCI_MCP_COGNITO_CLIENT_ID` (the `disci-mcp` client) |
 
-**SSM `/disci/prod/*`** (read only by the deploy script): `region`, `api_url`, `web_url`, `web_bucket`, `cloudfront_distribution_id`, `cognito_user_pool_id`, `cognito_client_id`, `cognito_domain`, `lambda_api_name`, `lambda_migrator_name`, `lambda_jobs_name`, and *(not applied yet)* `lambda_mcp_name` and `mcp_url` (`<api endpoint>/mcp`, the Claude connector URL).
+**SSM `/disci/prod/*`** (read only by the deploy script): `region`, `api_url`, `web_url`, `web_bucket`, `cloudfront_distribution_id`, `cognito_user_pool_id`, `cognito_client_id`, `cognito_domain`, `lambda_api_name`, `lambda_migrator_name`, `lambda_jobs_name`, `lambda_mcp_name` and `mcp_url` (`<api endpoint>/mcp`, the Claude connector URL).
 
 ### 2.1 Scheduled jobs (`disci-jobs`)
 
@@ -95,7 +95,7 @@ The account-wide GitHub OIDC provider lives separately in `aws_iac_mngr/admin_re
 
 Run it by hand with `aws lambda invoke --function-name disci-jobs out.json`, or locally with `make jobs-recurring`.
 
-### 2.2 MCP server (`disci-mcp`) *(not applied yet)*
+### 2.2 MCP server (`disci-mcp`)
 
 | Piece | Details |
 |---|---|
@@ -211,15 +211,15 @@ Tunnels last up to 1 hour. The master user `disci` owns the schema and **bypasse
 | Who | Can do | Enforced by |
 |---|---|---|
 | Anyone on the internet | Load the static web app; call `GET /health` | CloudFront; API Gateway route without authorizer |
-| A signed-in Cognito user | Call any other API route, seeing only their own rows | API Gateway JWT authorizer (signature, expiry, issuer, audience = web client, or *not applied yet* the `disci-mcp` client for access tokens), then the API (an ID token with `email`, or an access token whose `client_id` is `DISCI_MCP_CLIENT_ID`), then Postgres RLS on `app.user_id` |
-| Claude, on a user's behalf *(not applied yet)* | Reach `disci-mcp` (`/mcp`, `/.well-known/*`); tools act as that user through the API | `disci-mcp` verifies the access token itself (JWKS, `iss`, `token_use=access`, `client_id`); the API re-verifies it via the authorizer; MCP identities can't create users (`core.find_user`, lookup only) |
+| A signed-in Cognito user | Call any other API route, seeing only their own rows | API Gateway JWT authorizer (signature, expiry, issuer, audience = web client, or the `disci-mcp` client for access tokens), then the API (an ID token with `email`, or an access token whose `client_id` is `DISCI_MCP_CLIENT_ID`), then Postgres RLS on `app.user_id` |
+| Claude, on a user's behalf | Reach `disci-mcp` (`/mcp`, `/.well-known/*`); tools act as that user through the API | `disci-mcp` verifies the access token itself (JWKS, `iss`, `token_use=access`, `client_id`); the API re-verifies it via the authorizer; MCP identities can't create users (`core.find_user`, lookup only) |
 | New people | Cannot sign up; only invited emails get an account | Cognito self-signup off (invite-only); users created by tofu from `admin_email` and `invited_emails` |
 | S3 bucket | Not public; readable only by this CloudFront distribution | Public access block + bucket policy on OAC `AWS:SourceArn` |
 | API Lambda | Invoked only by this API Gateway; connects to RDS only as `disci_api` | Lambda permission scoped to the API's execution ARN; IAM `rds-db:connect` on `disci_api` |
 | Jobs Lambda | Invoked by the scheduler role (also invokable by the deploy role and admins); connects to RDS only as `disci_api`, under RLS per user | `disci-scheduler` role may only invoke `disci-jobs`; IAM `rds-db:connect` on `disci_api`; the only cross-user read is `finance.users_with_recurring()` (ids and timezones) |
 | RDS | Reachable only from the Lambda and EICE security groups; not publicly accessible | Security groups, private subnets, no IGW |
 | GitHub Actions | Only `connor-ruff/disci` on `refs/heads/main` can assume `disci-github-deploy` | OIDC trust conditions on `aud` and `sub` |
-| `disci-github-deploy` | Update/invoke the Lambdas (api, migrator, jobs, and *not applied yet* mcp), write the web bucket, invalidate the distribution, read SSM `/disci/*`. **Cannot change infrastructure, IAM, or Lambda config** | `ci.tf` inline policy |
+| `disci-github-deploy` | Update/invoke the Lambdas (api, migrator, jobs and mcp), write the web bucket, invalidate the distribution, read SSM `/disci/*`. **Cannot change infrastructure, IAM, or Lambda config** | `ci.tf` inline policy |
 | Infrastructure changes | Only an admin with the `connor-ruff-dev-acct` profile, via `tofu apply` | Manual |
 
 Because the Lambda can only be invoked by API Gateway, the claims in Mangum's `scope["aws.event"]` were already verified and cannot be forged by a client. The `X-Dev-User` header is ignored in `cognito` mode, and `DISCI_AUTH_MODE=dev` is refused at startup when `DISCI_ENV=prod`.
@@ -243,7 +243,7 @@ Until then the budget sees $0.
 
 ## 9. Known follow-ups
 
-- **MCP server: built, not applied or deployed (2026-10-26).** Cognito kept (verified 2026-10-25 with a throwaway connector test). Infrastructure in §2.2; code, local dev, connecting and the checklist in [mcp/mcp-overview.md](../mcp/mcp-overview.md). Next: `tofu apply`, deploy, connect from Claude and test end to end.
+- **MCP server: live since 2026-10-26, verified end to end from Claude.** Cognito kept (verified 2026-10-25 with a throwaway connector test). Infrastructure in §2.2; code, local dev, connecting and the checklist in [mcp/mcp-overview.md](../mcp/mcp-overview.md). Next: more tools (see the checklist there).
   - **Client.** The `disci-mcp` Cognito client (§2) is separate from `disci-web`, which is unchanged. Cognito has no dynamic client registration, so each user adds the connector in Claude via Customize > Connectors > Add custom connector (server URL = `mcp_url`), then Advanced settings > "Use your own OAuth client" and pastes the shared client ID and secret. They still sign in on Cognito's hosted login as themselves, so the token carries their own `sub`. Planned: a Disci settings page showing these instructions (URL, client ID/secret). The shared secret is acceptable for a small invite-only group; Anthropic-held credentials (directory listing) or a DCR provider would remove the paste step later.
   - **Discovery.** Claude accepted Cognito's OIDC discovery doc (`https://cognito-idp.<region>.amazonaws.com/<pool>/.well-known/openid-configuration`) even though it has no `registration_endpoint` or `code_challenge_methods_supported` (the oauth-authorization-server path returns 400). The MCP server answers unauthenticated calls with `401` and `WWW-Authenticate: Bearer resource_metadata="<url>"`, and serves RFC 9728 protected-resource metadata: `resource` equal to the MCP URL exactly, first `authorization_servers` entry the issuer `https://cognito-idp.us-east-2.amazonaws.com/<pool id>`, and `scopes_supported` (Claude requests only what is advertised).
   - **Tokens.** The access token has `sub`, `username` (= sub), `client_id`, `scope`, `token_use=access`, `iss`, `iat`, `exp`, `jti`; **no `email` and no `aud`**. Handled by keying on `sub`: the authorizer matches `client_id` against its audience list (web + `disci-mcp`), the API accepts access tokens from `DISCI_MCP_CLIENT_ID` and looks the user up with `core.find_user(sub)` (lookup only; a user must sign in to the web app once first, else 403).
@@ -265,5 +265,5 @@ Until then the budget sees $0.
 | us-east-1 provider alias for CloudFront's ACM cert | None | No custom domain yet |
 | Config handed to the app via SSM | SSM is read only by the **deploy script**; Lambdas get config from **environment variables** | Lambdas have no internet access and no SSM endpoint |
 | API verifies Cognito JWTs | **API Gateway** verifies them; the API reads the verified claims | No JWKS fetch from inside the VPC |
-| Lambdas api, mcp, jobs, migrator | api, migrator, jobs and mcp (mcp not applied yet) | MCP has its own zip and runs outside the VPC; jobs so far only generates recurring transactions |
+| Lambdas api, mcp, jobs, migrator | api, migrator, jobs and mcp | MCP has its own zip and runs outside the VPC; jobs so far only generates recurring transactions |
 | API verifies JWTs for every caller | `disci-mcp` routes skip the authorizer; the MCP server verifies Claude's token itself, then the API re-verifies it | The MCP server must answer unauthenticated requests with its own 401 and OAuth metadata |
