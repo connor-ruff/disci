@@ -21,7 +21,7 @@ What the Nutrition screens look like and how they behave. The data model is in [
 
 **Links to a day** (`dayPath` in `components/DaySheet.tsx`): today always goes to `/nutrition/daily`; any other day goes to `/nutrition/history/<date>`. That applies to the day arrows, the History cards and "Go to a day".
 
-**Home card** (`NutritionHomeCard`): "Log today's food.", links to `/nutrition/daily`.
+**Home card** (`NutritionHomeCard`, built on the shared `ModuleCard` / `Meter`): links to `/nutrition/daily`. The subtitle reads "Today · N foods" or "Nothing logged yet today". If calories are tracked, today's calories show in large type, with an amber alert icon when some logged foods have no calorie value. Below that, one meter per goal for a **tracked** nutrient (goals for untracked nutrients are hidden): the nutrient, its kind (target / limit), "amount / goal" and a percentage. A limit over 100% turns amber; a reached target gets a teal check; an amber icon marks a nutrient some of today's foods lack. With no goals: "No daily goals yet. Add targets or limits on the Goals tab."
 
 **Settings** (`NutritionSettings`, the module's `SettingsPanel`; see [app-shell.md](app-shell.md) §4): while Nutrition is on, the Settings page shows a **Nutrition** card with a checkbox for each of the eleven nutrients ("Protein (g)", ...). Each change **saves immediately** (no Save button); a failed save shows "Couldn't save. Try again." Only tracked nutrients appear on the daily sheets, history and food repo. New users track calories, protein, saturated fat, sodium and added sugars.
 
@@ -188,6 +188,5 @@ Dates use the shared helpers in `shared/lib/dates.ts`: `todayIn(me.timezone)` fo
 
 ## 9. Not built yet
 
-- **Goals on the daily sheet**: progress toward targets and warnings near limits. Planned as a later dashboard combining goals with day totals; the API already serves goals for any day (`GET /nutrition/goals?on=`).
-- A summary (today's totals) on the Nutrition **Home card**.
+- **Goals on the daily sheet**: progress toward targets and warnings near limits (the Home card shows today's goal progress, §1, but the daily and history sheets don't yet). Planned as a later dashboard combining goals with day totals; the API already serves goals for any day (`GET /nutrition/goals?on=`).
 - **Meals** (breakfast, lunch, ...), **recipes / saved meals**, and logging through Claude. See [nutrition.md](../db/nutrition.md) §6.

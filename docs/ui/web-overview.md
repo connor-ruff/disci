@@ -59,7 +59,8 @@ web/
     │   ├── auth/auth.ts           # authMode, UserManager, getIdToken, signOut, handleUnauthorized
     │   ├── ui/                    # button, card, drawer, switch, page (header/loading/error),
     │   │                          # sheet (bottom-sheet form panel), field (Field + inputClasses), segmented,
-    │   │                          # checkbox (Checkbox), sortable (SortableList: drag-to-reorder)
+    │   │                          # checkbox (Checkbox), sortable (SortableList: drag-to-reorder),
+    │   │                          # module-card (ModuleCard + Meter for Home cards)
     │   └── lib/                   # cn.ts, money.ts (formatMoney, parseMoneyInput),
     │                              # dates.ts (todayIn, formatShortDate, formatDateRange, addDays, formatLongDate)
     └── modules/
@@ -140,7 +141,7 @@ The brand palette from [ui-overview.md](ui-overview.md) (ink `#002421`, teal `#0
 
 **Contrast rule.** Brand teal (`#00998E`) on white is only ~3.4:1, below the 4.5:1 WCAG AA needs for body text, so it is for non-text accents (icons, toggles, active states, focus rings). Buttons with text use the slightly deeper teal `#00857C` with white text, which is 4.6:1 and passes AA.
 
-**Cards** (`shared/ui/card.tsx`) are `rounded-2xl` on `bg-surface` with a `border-border` outline and a very faint shadow.
+**Cards** (`shared/ui/card.tsx`) are `rounded-2xl` on `bg-surface` with a `border-border` outline and a very faint shadow. Module Home cards use `ModuleCard` (`shared/ui/module-card.tsx`): icon, title, optional subtitle and summary children, with a hover highlight; each module wraps it in its own `Link`. `Meter` (same file) is a thin progress bar: the ratio is capped at full, and `warn` turns it amber.
 
 ---
 

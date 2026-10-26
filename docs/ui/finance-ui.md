@@ -21,7 +21,7 @@ What the Finance screens look like and how they behave. The data model is in [fi
 
 **Sub-nav tabs:** Budgets, Checklist, Recurring, Inbox, Categories. Tabs match by URL prefix, so **Budgets stays active** on a budget page and on New budget.
 
-**Home card** (`FinanceHomeCard`): links to `/finance/budgets` (budget-vs-actual summary on the card itself comes later).
+**Home card** (`FinanceHomeCard`, built on the shared `ModuleCard` / `Meter`): finds the most recent **monthly** budget whose dates include today (in the user's timezone) and links straight to it (`/finance/budgets/<id>`). It shows the budget name, the **% of budget spent** (expense actual ÷ expense planned) in large type, a meter (amber when over) and "$spent of $planned · $left left", or "· $X over" in amber when over. If nothing is planned for expenses it shows the spent amount and "spent, nothing budgeted". With **no active monthly budget** the subtitle reads "No budget for this month yet" and the card links to `/finance/budgets`.
 
 ---
 
@@ -304,4 +304,3 @@ The API or data model already supports some of these; the UI doesn't yet.
 
 - **Splitting** a transaction across several items, and **allocating one transaction to more than one budget** from the UI (the API accepts several allocations, e.g. a monthly and a yearly budget). Inbox Assign and the transaction form write one allocation in the budget at hand (editing keeps allocations in other budgets, §4.5).
 - **Renaming a budget / editing notes** in the UI (the API has `PUT /finance/budgets/{id}`).
-- A budget-vs-actual summary on the Finance **Home card**.
