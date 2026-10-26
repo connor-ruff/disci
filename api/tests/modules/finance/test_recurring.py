@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import psycopg
 import pytest
@@ -158,20 +158,23 @@ def test_auto_apply_creates_item_and_is_idempotent(client: TestClient, finance_o
 
 def test_auto_apply_plans_every_occurrence_in_the_budget(client: TestClient, finance_on) -> None:
     october = new_budget(client)
+    # Saving logs anything due today (UTC, the user's timezone), so use a weekday that
+    # isn't today's. Oct 2026 has 4 Mondays (5th..26th) and 4 Tuesdays (6th..27th).
+    weekday = 2 if datetime.now(UTC).isoweekday() == 1 else 1
     rule = make_rule(
         client,
         name="Lunch",
         amount="20.00",
         frequency="weekly",
         day_of_month=None,
-        day_of_week=1,
+        day_of_week=weekday,
         auto_apply=True,
-    )  # Mondays
+    )
     backdate(rule, starts_on="2026-10-01", created_on="2026-10-01")
     generate(client, "2026-10-06")
     lunch = item_named(budget(client, october["id"]), "Lunch")
-    assert lunch["planned_amount"] == "80.00"  # 4 Mondays in Oct 2026
-    assert lunch["actual_amount"] == "20.00"  # only Oct 5 has happened
+    assert lunch["planned_amount"] == "80.00"  # 4 occurrences in Oct 2026
+    assert lunch["actual_amount"] == "20.00"  # only Oct 5 (or 6) has happened
 
 
 def test_auto_apply_matches_existing_item_by_name(client: TestClient, finance_on) -> None:
