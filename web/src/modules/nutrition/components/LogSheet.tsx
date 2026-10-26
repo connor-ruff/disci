@@ -148,7 +148,7 @@ function EntryForm({ entry, food, date, onBack, onDone }: EntryFormProps) {
   const standardQuantity = entry?.standard_quantity ?? food!.standard_quantity
   const unit = entry?.standard_unit ?? food!.standard_unit
   const multiple = Number(servings)
-  const valid = /^\d*\.?\d+$/.test(servings.trim()) && multiple > 0
+  const valid = /^(\d+(\.\d{1,6})?|\.\d{1,6})$/.test(servings.trim()) && multiple > 0
 
   /** Per-standard values: a food's own, or an entry's divided back out. */
   function valueFor(key: (typeof tracked)[number]['key']): number | null {
@@ -159,7 +159,7 @@ function EntryForm({ entry, food, date, onBack, onDone }: EntryFormProps) {
 
   function onSubmit(event: FormEvent) {
     event.preventDefault()
-    if (!valid) return setInvalid('Enter how many, like 1, 1.5 or 0.25')
+    if (!valid) return setInvalid('Enter how many, like 1, 1.5 or 0.25 (up to 6 decimal places)')
     setInvalid(null)
     const body = { servings: servings.trim(), eaten_on: eatenOn, notes: notes.trim() || null }
     if (entry) update.mutate({ id: entry.id, ...body }, { onSuccess: onDone })

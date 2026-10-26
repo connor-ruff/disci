@@ -19,8 +19,9 @@ NutrientKey = Literal[
     "added_sugars_g",
 ]
 GoalKind = Literal["target", "limit"]
-Amount = Annotated[Decimal, Field(ge=0, max_digits=10, decimal_places=2)]
-Quantity = Annotated[Decimal, Field(gt=0, max_digits=10, decimal_places=3)]
+# Food values keep 6 decimal places (derived values like "per oz" are often fractional).
+Amount = Annotated[Decimal, Field(ge=0, max_digits=16, decimal_places=6)]
+Quantity = Annotated[Decimal, Field(gt=0, max_digits=16, decimal_places=6)]
 Name = Annotated[str, Field(min_length=1, max_length=100)]
 
 

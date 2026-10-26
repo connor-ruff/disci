@@ -1,6 +1,6 @@
 # Nutrition Module (`nutrition` schema)
 
-*Status: **implemented** in `db/migrations/20261025190000_nutrition__init.sql` (`food_items`, `food_item_logs`, `macro_goals`, `preferences`). Every table and column below is built. See [db-overview.md](db-overview.md) for conventions (audit columns, soft deletes, RLS) that apply to every table below. The API is in [api-overview.md](../api/api-overview.md) §7.2 and the screens in [nutrition-ui.md](../ui/nutrition-ui.md).*
+*Status: **implemented** in `db/migrations/20261025190000_nutrition__init.sql` (`food_items`, `food_item_logs`, `macro_goals`, `preferences`), with food values widened to 6 decimal places in `db/migrations/20261026001500_nutrition__more_precision.sql`. Every table and column below is built. See [db-overview.md](db-overview.md) for conventions (audit columns, soft deletes, RLS) that apply to every table below. The API is in [api-overview.md](../api/api-overview.md) §7.2 and the screens in [nutrition-ui.md](../ui/nutrition-ui.md).*
 
 **Replaces:** the Google Sheet food repo plus its daily log tab.
 
@@ -49,21 +49,22 @@ The food repo. All nutrient values are **per one standard quantity**.
 | `id`, `user_id` | `uuid` | no | |
 | `name` | `text` | no | Non-blank. "Broccoli", "Kirkland Greek yogurt". Unique per user, case-insensitive, among undeleted foods (below). API cap 100 chars; trimmed. |
 | `description` | `text` | yes | Optional, e.g. "Steamed, from frozen". API cap 500 chars. |
-| `standard_quantity` | `numeric(10,3)` | no | `> 0`. The amount the nutrients are for: the `100` in "100 g". |
+| `standard_quantity` | `numeric(16,6)` | no | `> 0`. The amount the nutrients are for: the `100` in "100 g". |
 | `standard_unit` | `text` | no | Non-blank free text: `g`, `oz`, `tbsp`, `egg`... API cap 30 chars; trimmed. The UI suggests common units. |
-| `calories` | `numeric(10,2)` | yes | kcal. `>= 0`. |
-| `protein_g` | `numeric(10,2)` | yes | |
-| `total_fat_g` | `numeric(10,2)` | yes | |
-| `saturated_fat_g` | `numeric(10,2)` | yes | |
-| `trans_fat_g` | `numeric(10,2)` | yes | |
-| `cholesterol_mg` | `numeric(10,2)` | yes | |
-| `sodium_mg` | `numeric(10,2)` | yes | |
-| `total_carbs_g` | `numeric(10,2)` | yes | |
-| `fiber_g` | `numeric(10,2)` | yes | |
-| `total_sugars_g` | `numeric(10,2)` | yes | |
-| `added_sugars_g` | `numeric(10,2)` | yes | |
+| `calories` | `numeric(16,6)` | yes | kcal. `>= 0`. |
+| `protein_g` | `numeric(16,6)` | yes | |
+| `total_fat_g` | `numeric(16,6)` | yes | |
+| `saturated_fat_g` | `numeric(16,6)` | yes | |
+| `trans_fat_g` | `numeric(16,6)` | yes | |
+| `cholesterol_mg` | `numeric(16,6)` | yes | |
+| `sodium_mg` | `numeric(16,6)` | yes | |
+| `total_carbs_g` | `numeric(16,6)` | yes | |
+| `fiber_g` | `numeric(16,6)` | yes | |
+| `total_sugars_g` | `numeric(16,6)` | yes | |
+| `added_sugars_g` | `numeric(16,6)` | yes | |
 
 - Every nutrient column is **NULL = unknown** (never treated as 0) with `CHECK (... >= 0)`. The column suffix is the unit (`_g`, `_mg`; calories are kcal).
+- `standard_quantity` and the nutrients keep **6 decimal places** (`numeric(16,6)`), since values are often derived (per oz from a per-serving label).
 - Name uniqueness is a partial unique index `food_items_name_key` on `(user_id, lower(name)) WHERE deleted_at IS NULL`; the API returns **409** on a duplicate. A deleted food's name can be reused.
 - Unique `(id, user_id)`: target of `food_item_logs`' composite FK.
 - **Editing a food updates history.** Past days that logged it are recalculated with the new values; foods aren't versioned.
@@ -77,7 +78,7 @@ One row per thing eaten.
 | `id`, `user_id` | `uuid` | no | |
 | `food_item_id` | `uuid` | no | → `food_items`. Can't be changed after logging (log a new entry instead). |
 | `eaten_on` | `date` | no | The day it counts toward, in the user's timezone. Editable. |
-| `servings` | `numeric(10,3)` | no | `> 0`. Multiples of the food's standard quantity: 1.2 × (100 g) = 120 g. |
+| `servings` | `numeric(16,6)` | no | `> 0`. Up to 6 decimal places. Multiples of the food's standard quantity: 1.2 × (100 g) = 120 g. |
 | `notes` | `text` | yes | API cap 500 chars. |
 
 - `FOREIGN KEY (food_item_id, user_id) REFERENCES food_items (id, user_id)` (`food_item_logs_food_item_id_user_id_fkey`). It points at soft-deleted foods too, which is how past days keep them. **Logging a deleted food is refused by the API** (the insert only selects undeleted foods, so it's a 404), since the FK alone would accept it.
@@ -92,7 +93,7 @@ Daily targets and limits, one row per nutrient, kind and stretch of time.
 | `id`, `user_id` | `uuid` | no | |
 | `nutrient` | `text` | no | `CHECK IN` the eleven nutrient keys (the `food_items` column names, e.g. `protein_g`). |
 | `kind` | `text` | no | `CHECK IN ('target','limit')`. Target: reach at least. Limit: stay under. |
-| `amount` | `numeric(10,2)` | no | `> 0`, in the nutrient's unit. |
+| `amount` | `numeric(10,2)` | no | `> 0`, in the nutrient's unit. Stays at 2 places on purpose: goals are round numbers the user types. |
 | `starts_on` | `date` | no | First day it applies (the user's "today" when it was created). |
 | `ends_on` | `date` | yes | Last day it applies, inclusive. NULL = still active. `CHECK (ends_on IS NULL OR ends_on >= starts_on)`. |
 
@@ -134,8 +135,8 @@ One row per user: which nutrients they track.
 | Feature | How |
 |---|---|
 | **Nutrient registry** | `NUTRIENTS` in `api/app/modules/nutrition/service.py`: key (= `food_items` column), label and unit, in display order. The same eleven keys are in the migration's CHECKs and the `NutrientKey` type in `schemas.py`; adding a nutrient means a migration plus those two. |
-| **An entry's nutrients** | `service.entry_nutrients`: each of the food's per-standard values × `servings`, rounded to cents. NULL stays NULL. Computed on read, so editing a food changes past days. |
-| **Day totals** | `service.day_totals`, per nutrient over the day's entries: `amount` = sum of the **known** values; `missing_foods` = names of the foods logged that day with no value (sorted, case-insensitive). `amount` is NULL when entries exist but **none** has a value; a day with **no entries** totals 0. Totals are returned for all eleven nutrients; the web app shows the tracked ones. |
+| **An entry's nutrients** | `service.entry_nutrients`: each of the food's per-standard values × `servings`, rounded to 6 decimal places (`PRECISION`). NULL stays NULL. Computed on read, so editing a food changes past days. |
+| **Day totals** | `service.day_totals`, per nutrient over the day's entries: `amount` = sum of the **known** values; `missing_foods` = names of the foods logged that day with no value (sorted, case-insensitive). `amount` is NULL when entries exist but **none** has a value; a day with **no entries** totals 0 (`"0.000000"`). Totals are returned for all eleven nutrients; the web app shows the tracked ones. |
 | **Daily sheet** | `GET /nutrition/days/{date}`: the day's undeleted entries (oldest logged first) joined to their food (deleted or not), plus totals. |
 | **History** | `GET /nutrition/days`: distinct `eaten_on` with undeleted entries, newest first, paged by a `before` date cursor (`queries/list_logged_days.sql`), each with its entry count and totals. |
 | **Recent foods** | Each food's `last_logged_on` = latest `eaten_on` among its undeleted entries (a subquery in `list_foods.sql`). The log picker shows the five most recent. |
@@ -153,6 +154,7 @@ Goals aren't compared with day totals anywhere yet (see §6).
 | Question | Decision |
 |---|---|
 | How are quantities entered? | **Multiples of the food's standard quantity** (`servings`). No unit conversion: a food logged by weight gets a weight standard (`100 g`), a countable one a count (`1 egg`). |
+| How precise are food values? | **6 decimal places** for `standard_quantity`, the nutrients and `servings` (`numeric(16,6)`), so derived values (per oz from a per-serving label) aren't rounded away. Entry nutrients are rounded to 6 places and totals sum those. Goals stay `numeric(10,2)`. Display still rounds (nutrients to 1 decimal, quantities to 3). |
 | Which nutrients? | The **eleven** on a US label (§1). Each user picks which to track; only those are shown. |
 | A nutrient the label doesn't give? | **NULL = unknown, never 0.** Totals sum what's known and list the foods missing a value. |
 | Editing a food's nutrition? | **Updates history (v1).** Past days are recalculated. Versioning would mean an edit creates a new row and soft-deletes the old one. |

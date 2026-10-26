@@ -8,11 +8,11 @@ import { Field, inputClasses } from '@/shared/ui/field'
 import { type Food, type Nutrient, type NutrientKey, usePreferences, useSaveFood } from '../api'
 import { UNIT_SUGGESTIONS } from '../format'
 
-/** A typed number: digits with optional decimals (commas allowed). Blank → null (unknown). */
+/** A typed number, up to 6 decimal places (commas allowed). Blank → null (unknown). */
 function parseAmount(input: string): string | null | undefined {
   const cleaned = input.replace(/[,\s]/g, '')
   if (cleaned === '') return null
-  return /^\d+(\.\d+)?$/.test(cleaned) ? cleaned : undefined
+  return /^\d+(\.\d{1,6})?$/.test(cleaned) ? cleaned : undefined
 }
 
 type FoodFormProps = {
@@ -59,11 +59,11 @@ function FoodFields({
   function onSubmit(event: FormEvent) {
     event.preventDefault()
     const standard = parseAmount(quantity)
-    if (!standard || Number(standard) === 0) return setInvalid('Enter a standard quantity like 100 or 0.5')
+    if (!standard || Number(standard) === 0) return setInvalid('Enter a standard quantity like 100 or 0.5 (up to 6 decimal places)')
     const nutrients: Partial<Record<NutrientKey, string | null>> = {}
     for (const n of all) {
       const value = parseAmount(values[n.key] ?? '')
-      if (value === undefined) return setInvalid(`${n.label}: enter a number, or leave it blank if unknown`)
+      if (value === undefined) return setInvalid(`${n.label}: enter a number (up to 6 decimal places), or leave it blank if unknown`)
       nutrients[n.key] = value
     }
     setInvalid(null)

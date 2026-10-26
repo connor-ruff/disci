@@ -40,7 +40,8 @@ DEFAULT_TRACKED: list[NutrientKey] = [
     "added_sugars_g",
 ]
 
-CENT = Decimal("0.01")
+# Matches the columns' 6 decimal places.
+PRECISION = Decimal("0.000001")
 
 
 def in_display_order(keys: list[str]) -> list[NutrientKey]:
@@ -51,7 +52,7 @@ def entry_nutrients(row: dict[str, Any]) -> dict[NutrientKey, Decimal | None]:
     """A log row's nutrients: the food's per-standard values times servings (None stays None)."""
     servings = row["servings"]
     return {
-        key: None if row[key] is None else (row[key] * servings).quantize(CENT)
+        key: None if row[key] is None else (row[key] * servings).quantize(PRECISION)
         for key in NUTRIENT_KEYS
     }
 
@@ -66,6 +67,6 @@ def day_totals(entries: list[tuple[str, dict[NutrientKey, Decimal | None]]]) -> 
     for key in NUTRIENT_KEYS:
         known = [n[key] for _, n in entries if n[key] is not None]
         missing = sorted({name for name, n in entries if n[key] is None}, key=str.lower)
-        amount = sum(known, Decimal("0.00")) if known or not entries else None
+        amount = sum(known, Decimal(0).quantize(PRECISION)) if known or not entries else None
         totals.append(NutrientTotal(nutrient=key, amount=amount, missing_foods=missing))
     return totals

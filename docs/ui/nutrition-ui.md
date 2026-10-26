@@ -97,7 +97,7 @@ Used for New, editing, and adding a food from the log sheet (§5).
 | Standard quantity / Unit | Side by side. Quantity defaults to **100**, unit to **g**. Unit is free text with suggestions from a native `<datalist>` (g, oz, ml, fl oz, cup, tbsp, tsp, piece, slice, serving, scoop, lb). Hint: "Nutrients below are for this amount. You log multiples of it: 1.2 × 100 g = 120 g." |
 | Nutrients | One `inputMode="decimal"` field per nutrient, labelled with its unit ("Sodium (mg)"), placeholder "Unknown". **Tracked nutrients first**; the rest sit behind a **"Show nutrients you don't track (N)"** toggle, which starts open when the food already has values there. A note says: "Leave a nutrient blank if you don't know it. It won't count as 0." |
 
-- Numbers accept digits with optional decimals (commas and spaces are stripped). **Blank = unknown** (sent as `null`). Anything else shows "<Nutrient>: enter a number, or leave it blank if unknown"; a zero or invalid quantity shows "Enter a standard quantity like 100 or 0.5".
+- Numbers accept digits with up to **6 decimal places** (commas and spaces are stripped), matching the API. **Blank = unknown** (sent as `null`). Anything else shows "<Nutrient>: enter a number (up to 6 decimal places), or leave it blank if unknown"; a zero or invalid quantity shows "Enter a standard quantity like 100 or 0.5 (up to 6 decimal places)".
 - The form waits for the nutrient list (preferences) before rendering, so an edit never saves blanks over values it hadn't loaded.
 - Buttons: **Add food** / **Save**, plus **Cancel** when opened from the log sheet. A duplicate name shows the API's "already exists" error.
 - Saving a change to a food **recalculates every day that logged it**.
@@ -120,7 +120,7 @@ Opened by **Log food** (title "Log food") or by tapping an entry (title: the foo
 | Field | Behaviour |
 |---|---|
 | (food) | New entries show the food's name, "Standard: 100 g" and description, with a back arrow to pick a different food. |
-| How many × <standard> | Autofocused, large text, default **1**. Must be more than 0 ("Enter how many, like 1, 1.5 or 0.25"). Its hint shows the total amount ("= 120 g"). |
+| How many × <standard> | Autofocused, large text, default **1**. Must be more than 0, up to 6 decimal places ("Enter how many, like 1, 1.5 or 0.25 (up to 6 decimal places)"). Its hint shows the total amount ("= 120 g"). |
 | (preview) | A live grid of the **tracked** nutrients for that amount, updating as you type; "unknown" in amber where the food has no value. |
 | Day | `type="date"`, defaults to the sheet's day. Changing it moves the entry to another day. |
 | Notes (optional) | Up to 500 characters. Shown next to the serving on the sheet. |
@@ -167,7 +167,7 @@ Goals are **not compared with the day's totals anywhere yet** (§9).
 | A day's total | Sum of the **known** values of that nutrient over the day's entries. Foods without a value are listed in the amber callout, not counted as 0, so the total may be low. "—" when no entry has a value. 0 on a day with nothing logged. |
 | History card "missing values" | At least one tracked nutrient's total that day is missing values. |
 
-Numbers are shown with up to **1 decimal** and thousands separators ("1,234.5 mg"); quantities with up to 3 decimals (`format.ts`). Calories read "250 kcal" without the word "calories".
+Numbers are shown with up to **1 decimal** and thousands separators ("1,234.5 mg"); quantities with up to 3 decimals (`format.ts`), though the API stores and returns 6. Calories read "250 kcal" without the word "calories".
 
 ---
 

@@ -57,7 +57,7 @@ def test_tracked_nutrients_are_saved_in_display_order(client: TestClient, nutrit
 def test_food_names_are_unique_per_user_ignoring_case(client: TestClient, nutrition_on) -> None:
     food = add_food(client, name="Broccoli", calories="34", sodium_mg=None)
     assert food["sodium_mg"] is None  # unknown, not 0
-    assert food["calories"] == "34.00"
+    assert food["calories"] == "34.000000"
     resp = client.post(
         "/nutrition/foods",
         json={"name": " broccoli ", "standard_quantity": "1", "standard_unit": "cup"},
@@ -76,7 +76,7 @@ def test_editing_a_food_recalculates_past_days(client: TestClient, nutrition_on)
     body = {"name": "Oats", "standard_quantity": "40", "standard_unit": "g", "protein_g": "6"}
     assert client.put(f"/nutrition/foods/{oats['id']}", json=body, headers=ALICE).status_code == 200
     day = client.get(f"/nutrition/days/{DAY}", headers=ALICE).json()
-    assert totals(day)["protein_g"]["amount"] == "12.00"
+    assert totals(day)["protein_g"]["amount"] == "12.000000"
 
 
 # --- Daily log -----------------------------------------------------------------------------
@@ -96,16 +96,16 @@ def test_day_totals_multiply_servings_and_report_missing_values(
     assert [e["food_name"] for e in day["entries"]] == ["Broccoli", "Banana"]
     first = day["entries"][0]
     assert (first["servings"], first["standard_quantity"], first["standard_unit"]) == (
-        "1.200",
-        "100.000",
+        "1.200000",
+        "100.000000",
         "g",
     )
-    assert first["nutrients"]["calories"] == "40.80"
+    assert first["nutrients"]["calories"] == "40.800000"
 
     t = totals(day)
-    assert t["calories"] == {"nutrient": "calories", "amount": "250.80", "missing_foods": []}
+    assert t["calories"] == {"nutrient": "calories", "amount": "250.800000", "missing_foods": []}
     # Banana has no sodium value: the total covers Broccoli only and says so.
-    assert t["sodium_mg"]["amount"] == "39.60"
+    assert t["sodium_mg"]["amount"] == "39.600000"
     assert t["sodium_mg"]["missing_foods"] == ["Banana"]
     # No food has protein: unknown, not 0.
     assert t["protein_g"]["amount"] is None
@@ -113,7 +113,26 @@ def test_day_totals_multiply_servings_and_report_missing_values(
 
     empty = client.get("/nutrition/days/2026-10-21", headers=ALICE).json()
     assert empty["entries"] == []
-    assert totals(empty)["calories"]["amount"] == "0.00"
+    assert totals(empty)["calories"]["amount"] == "0.000000"
+
+
+def test_food_values_keep_six_decimal_places(client: TestClient, nutrition_on) -> None:
+    yogurt = add_food(
+        client, name="Yogurt", standard_quantity="1", standard_unit="oz", calories="20.889131"
+    )
+    assert yogurt["calories"] == "20.889131"
+    assert log(client, yogurt["id"], "6.25").status_code == 201
+    day = client.get(f"/nutrition/days/{DAY}", headers=ALICE).json()
+    assert day["entries"][0]["servings"] == "6.250000"
+    assert totals(day)["calories"]["amount"] == "130.557069"  # 130.55706875, to 6 places
+
+    too_fine = {
+        "name": "Dust",
+        "standard_quantity": "1",
+        "standard_unit": "g",
+        "calories": "0.0000001",
+    }
+    assert client.post("/nutrition/foods", json=too_fine, headers=ALICE).status_code == 422
 
 
 def test_edit_and_delete_log_entries(client: TestClient, nutrition_on) -> None:
@@ -121,7 +140,7 @@ def test_edit_and_delete_log_entries(client: TestClient, nutrition_on) -> None:
     entry = log(client, rice["id"], "1").json()
     body = {"eaten_on": "2026-10-21", "servings": "1.5", "notes": "dinner"}
     edited = client.put(f"/nutrition/logs/{entry['id']}", json=body, headers=ALICE).json()
-    assert (edited["eaten_on"], edited["nutrients"]["calories"]) == ("2026-10-21", "195.00")
+    assert (edited["eaten_on"], edited["nutrients"]["calories"]) == ("2026-10-21", "195.000000")
 
     assert client.delete(f"/nutrition/logs/{entry['id']}", headers=ALICE).status_code == 204
     day = client.get("/nutrition/days/2026-10-21", headers=ALICE).json()
@@ -138,7 +157,7 @@ def test_deleted_food_stays_on_past_days_but_cant_be_logged(
 
     day = client.get(f"/nutrition/days/{DAY}", headers=ALICE).json()
     assert day["entries"][0]["food_deleted"] is True
-    assert totals(day)["protein_g"]["amount"] == "18.00"
+    assert totals(day)["protein_g"]["amount"] == "18.000000"
     assert log(client, eggs["id"], "1").status_code == 404
 
 
