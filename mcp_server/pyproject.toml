@@ -1,0 +1,36 @@
+[project]
+name = "disci-mcp"
+version = "0.1.0"
+requires-python = ">=3.13,<3.14"  # matches the Lambda runtime
+dependencies = [
+    "httpx>=0.28",
+    "mangum>=0.22,<0.23",
+    # mcp 2.x renamed FastMCP and changed its APIs; 1.x is what the auth test proved.
+    "mcp>=1.30,<2",
+    "pydantic-settings>=2.16",
+    "pyjwt[crypto]>=2.10",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.17.2",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106"]

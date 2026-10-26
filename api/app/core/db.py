@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import Depends
+from fastapi import Depends, HTTPException, status
 from psycopg import Connection
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
@@ -49,18 +49,26 @@ class Db:
 def get_db(identity: Annotated[Identity, Depends(get_identity)]) -> Iterator[Db]:
     """One transaction per request.
 
-    Maps the identity to a core.users row (creating it on first sign-in), then sets
+    Maps the identity to a core.users row (creating it on first web sign-in), then sets
     app.user_id for the transaction so row-level security only exposes that user's rows.
+    An identity without an email (MCP) must already have a row, else 403.
     Commits if the endpoint returns normally, rolls back if it raises.
     """
     if _pool is None:
         raise RuntimeError("database pool not open")
     with _pool.connection() as conn, conn.transaction():
-        user = conn.execute(
-            queries["ensure_user"], {"cognito_sub": identity.sub, "email": identity.email}
-        ).fetchone()
-        if user is None or user["id"] is None:
-            raise RuntimeError("core.ensure_user returned no id")
+        if identity.email is None:
+            user = conn.execute(queries["find_user"], {"cognito_sub": identity.sub}).fetchone()
+            if user is None or user["id"] is None:
+                raise HTTPException(
+                    status.HTTP_403_FORBIDDEN, "Sign in to the Disci web app once first"
+                )
+        else:
+            user = conn.execute(
+                queries["ensure_user"], {"cognito_sub": identity.sub, "email": identity.email}
+            ).fetchone()
+            if user is None or user["id"] is None:
+                raise RuntimeError("core.ensure_user returned no id")
         conn.execute(queries["set_user"], {"user_id": str(user["id"])})
         yield Db(conn=conn, user_id=user["id"])
 

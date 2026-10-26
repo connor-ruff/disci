@@ -10,7 +10,10 @@ from app.core.auth import Identity, get_identity
 from app.core.rds_iam import IamAuthConnection
 from app.core.settings import Settings
 
-COGNITO = Settings(env="prod", auth_mode="cognito", database_url="postgresql://x")
+MCP_CLIENT = "mcp-client-id"
+COGNITO = Settings(
+    env="prod", auth_mode="cognito", database_url="postgresql://x", mcp_client_id=MCP_CLIENT
+)
 
 
 def gateway_request(claims: dict[str, str] | None) -> Request:
@@ -26,11 +29,26 @@ def test_cognito_identity_comes_from_verified_claims() -> None:
     assert identity == Identity(sub="abc-123", email="me@example.com")
 
 
+def test_cognito_accepts_mcp_access_token_without_email() -> None:
+    claims = {"sub": "abc-123", "token_use": "access", "client_id": MCP_CLIENT}
+    identity = get_identity(gateway_request(claims), COGNITO)
+    assert identity == Identity(sub="abc-123", email=None)
+
+
+def test_cognito_rejects_mcp_access_token_when_mcp_not_configured() -> None:
+    claims = {"sub": "abc-123", "token_use": "access", "client_id": MCP_CLIENT}
+    settings = COGNITO.model_copy(update={"mcp_client_id": None})
+    with pytest.raises(HTTPException) as exc:
+        get_identity(gateway_request(claims), settings)
+    assert exc.value.status_code == 401
+
+
 @pytest.mark.parametrize(
     "claims",
     [
         None,  # route without the authorizer
-        {"sub": "abc", "email": "me@example.com", "token_use": "access"},  # wrong token type
+        {"sub": "abc", "token_use": "access", "client_id": "web-client"},  # not the MCP client
+        {"sub": "abc", "token_use": "access"},  # access token without a client_id
         {"sub": "abc", "token_use": "id"},  # no email
     ],
 )
