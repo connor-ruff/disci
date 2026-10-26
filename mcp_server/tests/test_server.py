@@ -3,7 +3,7 @@ from typing import Any
 import pytest
 
 from disci_mcp import api
-from tests.conftest import gateway_event, invoke, rpc
+from tests.conftest import MCP_HEADERS, gateway_event, invoke, rpc
 
 BUDGETS = [
     {"id": "b-week", "name": "Week of Oct 26", "period_type": "week",
@@ -107,3 +107,11 @@ def test_dev_auth_is_refused_in_prod(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DISCI_MCP_ENV", "prod")
     with pytest.raises(ValidationError):
         Settings()  # type: ignore[call-arg]
+
+
+def test_request_log_line(caplog: pytest.LogCaptureFixture) -> None:
+    headers = {**MCP_HEADERS, "user-agent": "Claude-User"}
+    with caplog.at_level("INFO", logger="disci_mcp.requests"):
+        invoke(gateway_event("POST", "/mcp", rpc("tools/list"), headers=headers))
+    lines = [r.getMessage() for r in caplog.records if r.name == "disci_mcp.requests"]
+    assert lines == ["POST /mcp -> 200  rpc=tools/list  sub=-  ua=Claude-User"]

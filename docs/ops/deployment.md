@@ -103,7 +103,7 @@ Run it by hand with `aws lambda invoke --function-name disci-jobs out.json`, or 
 | Routes | On the existing HTTP API, **without the JWT authorizer**: `ANY /mcp` (the MCP endpoint) and `GET /.well-known/{proxy+}` (OAuth protected-resource metadata). The server must answer unauthenticated requests itself (401 + `WWW-Authenticate`) and verifies every token itself (JWKS, `iss`, `token_use=access`, `client_id` = `disci-mcp`). |
 | Data | Tools call the public API URL, forwarding the caller's access token. The authorizer's audience includes the `disci-mcp` client (for access tokens API Gateway matches `client_id`), and the API accepts that client's access tokens via `DISCI_MCP_CLIENT_ID` ([api-overview.md §3](../api/api-overview.md)). |
 | IAM | Role `disci-mcp-lambda`: `AWSLambdaBasicExecutionRole` only (logs). |
-| Logs | `/aws/lambda/disci-mcp`, 14 days. |
+| Logs | `/aws/lambda/disci-mcp`, 14 days. One line per HTTP request (method, path, status, JSON-RPC method, short `sub`, user-agent; no tokens or bodies): [mcp-overview.md §4.2](../mcp/mcp-overview.md). |
 
 Connector URL: SSM `/disci/prod/mcp_url`. Server code, local dev and how to connect Claude: [mcp-overview.md](../mcp/mcp-overview.md).
 

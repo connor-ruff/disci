@@ -57,6 +57,7 @@ mcp_server/
 │   ├── auth.py            # CognitoVerifier (token_verifier for FastMCP), caller_token()
 │   ├── api.py             # get(path): calls the Disci API as the caller, maps errors to ToolError
 │   ├── finance.py         # finance tools (register(mcp))
+│   ├── request_log.py     # RequestLog: ASGI middleware, one log line per HTTP request (§4.2)
 │   ├── server.py          # build_mcp(settings), create_app() (a fresh Starlette app)
 │   └── lambda_handler.py  # Lambda entry point `handler` (disci-mcp)
 └── tests/                 # pytest; no database or API needed (the API is faked)
@@ -87,6 +88,8 @@ API errors become tool errors: **403** → "Sign in to the Disci web app once fi
 
 `server.py`: `stateless_http=True` (Lambda), `json_response=True` (plain JSON, not SSE), DNS-rebinding protection off (§3), and server `instructions` telling Claude that amounts are dollar strings and dates are `YYYY-MM-DD` in the user's timezone.
 
+`create_app()` wraps the app in `RequestLog` (`request_log.py`, pure ASGI), so it runs locally and on Lambda. One INFO line per HTTP request on logger `disci_mcp.requests`, e.g. `POST /mcp -> 200  rpc=tools/call  sub=3f9a1c2e  ua=Claude-User`: method, path, status (`error` if the app raised before responding), JSON-RPC method(s) from the body (`-` if none, `response` for client responses, comma-joined for batches), first 8 chars of the verified token's Cognito `sub` (`-` if unauthenticated), user-agent (60 chars max). Never logs tokens or bodies. Purpose: tell MCP clients apart and catch odd status codes (§6 (g)).
+
 ### 4.3 Tools
 
 | Tool | Module | What it does |
@@ -112,7 +115,7 @@ Built by `scripts/build-mcp-zip.sh` → `build/mcp.zip` (Linux arm64 wheels, no 
 
 CI (`.github/workflows/deploy.yml`, `test` job) runs `mcp-lint` and `mcp-test` alongside the API's.
 
-**5 tests** (`tests/test_server.py`): repeated Lambda invocations on one warm handler; `get_budget_summary` returning every covering budget with totals and remaining; defaulting / noting gaps when no budget covers the date; cognito mode answering 401 with `WWW-Authenticate` `resource_metadata` and serving the protected-resource metadata; dev auth refused in prod.
+**6 tests** (`tests/test_server.py`): repeated Lambda invocations on one warm handler; `get_budget_summary` returning every covering budget with totals and remaining; defaulting / noting gaps when no budget covers the date; cognito mode answering 401 with `WWW-Authenticate` `resource_metadata` and serving the protected-resource metadata; dev auth refused in prod; the request log line.
 
 ---
 
@@ -124,7 +127,7 @@ Once applied and deployed:
 2. In Claude: Customize > Connectors > Add custom connector > that URL > Advanced settings > "Use your own OAuth client" > client ID and secret (`tofu output mcp_client_id` / `tofu output -raw mcp_client_secret`, or the Secrets Manager secret).
 3. Sign in on the Cognito hosted page. The user must have **signed in to the Disci web app at least once** first, else tools answer "Sign in to the Disci web app once first".
 
-Logs: `/aws/lambda/disci-mcp` (14 days).
+Logs: `/aws/lambda/disci-mcp` (14 days). Request lines only: `aws logs tail /aws/lambda/disci-mcp --since 1h --filter-pattern '"->"'` (Lambda's default log format omits the logger name, so filter on the arrow).
 
 ---
 
@@ -145,7 +148,7 @@ Logs: `/aws/lambda/disci-mcp` (14 days).
 - (d) **Disci settings page** showing each user the MCP URL, client ID and shared secret. The secret is shared across invited users, which is acceptable now; Anthropic-held credentials (directory listing) or a DCR provider would remove the paste step later.
 - (e) **CloudWatch alarms / alerting.** None exist yet, including for `disci-jobs` and `disci-mcp` failures.
 - (f) **API Gateway limits.** 30 s HTTP API timeout and no streaming (fine for stateless tools; the Lambda times out at 25 s).
-- (g) **The mid-handshake 400** (§1). The first production connect (2026-10-26) worked, with no errors in the `disci-mcp` logs, but the Lambda doesn't log response status codes, so a 400 can't be ruled out. Enabling API Gateway access logs would show it.
+- (g) **The mid-handshake 400** (§1). The first production connect (2026-10-26) worked, with no errors in the `disci-mcp` logs, and the Lambda didn't log status codes then. It now does (`RequestLog`, §4.2), so the next 400 shows up in the `disci-mcp` logs with its JSON-RPC method and user-agent; no API Gateway access logs needed.
 
 **Limits to design within**
 
