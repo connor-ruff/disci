@@ -101,7 +101,7 @@ The first three have **no defaults on purpose**: a misconfigured deploy fails at
 
 Auth produces an `Identity(sub, email)`; it never touches the database itself.
 
-The claims can't be forged because the Lambda can only be invoked by API Gateway, and every route except `GET /health` goes through the authorizer. Only **ID tokens** are accepted because Cognito's access token has no `email`. That's a deliberate v1 choice; an MCP client will likely send access tokens, so revisit it then (see [deployment.md §9](../ops/deployment.md)).
+The claims can't be forged because the Lambda can only be invoked by API Gateway, and every route except `GET /health` goes through the authorizer. Only **ID tokens** are accepted because Cognito's access token has no `email`. That's a deliberate v1 choice; an MCP client will likely send access tokens, so revisit it then. The MCP plan is to key on the access token's `sub` rather than `email` (see [deployment.md §9](../ops/deployment.md)).
 
 ---
 

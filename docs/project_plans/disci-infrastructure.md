@@ -288,7 +288,7 @@ Roughly flat until hundreds of active users: Lambda, API Gateway and Cognito sta
 
 ## 6. Open questions to settle during build
 
-1. **MCP auth with Cognito.** Cognito doesn't support OAuth dynamic client registration. Verify that Claude's custom connector setup accepts a pre-registered client ID/secret, or put a thin auth shim in front. Also: the API currently accepts only Cognito **ID tokens** (they carry `email`; access tokens don't), which MCP will likely need to change (see [deployment.md §9](../ops/deployment.md)).
+1. ~~MCP auth with Cognito~~. Decided: keep Cognito. A second pre-registered client (`disci-mcp`) works with Claude's custom connector (verified 2026-10-25); the API/MCP layer keys on the access token's `sub`. See [deployment.md §9](../ops/deployment.md).
 2. ~~Ad-hoc database access method~~. Decided: EC2 Instance Connect Endpoint (see networking above).
 3. ~~Migration tool~~. Decided: dbmate (see §3d).
 4. **Report delivery**: email via SES (deterministic, cheap) vs. Claude scheduled tasks (conversational), or both.
