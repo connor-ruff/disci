@@ -17,4 +17,6 @@ export type ModuleManifest = {
   subNav: { label: string; to: string }[]
   /** Summary card on the Home page. */
   HomeCard: ComponentType
+  /** Optional section on the Settings page, shown while the module is enabled. */
+  SettingsPanel?: ComponentType
 }

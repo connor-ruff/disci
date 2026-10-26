@@ -30,6 +30,13 @@ CREATE SCHEMA finance;
 
 
 --
+-- Name: nutrition; Type: SCHEMA; Schema: -; Owner: -
+--
+
+CREATE SCHEMA nutrition;
+
+
+--
 -- Name: current_user_id(); Type: FUNCTION; Schema: core; Owner: -
 --
 
@@ -290,6 +297,102 @@ CREATE TABLE finance.transactions (
 
 
 --
+-- Name: food_item_logs; Type: TABLE; Schema: nutrition; Owner: -
+--
+
+CREATE TABLE nutrition.food_item_logs (
+    id uuid DEFAULT uuidv7() NOT NULL,
+    user_id uuid NOT NULL,
+    food_item_id uuid NOT NULL,
+    eaten_on date NOT NULL,
+    servings numeric(10,3) NOT NULL,
+    notes text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    deleted_at timestamp with time zone,
+    CONSTRAINT food_item_logs_servings_check CHECK ((servings > (0)::numeric))
+);
+
+
+--
+-- Name: food_items; Type: TABLE; Schema: nutrition; Owner: -
+--
+
+CREATE TABLE nutrition.food_items (
+    id uuid DEFAULT uuidv7() NOT NULL,
+    user_id uuid NOT NULL,
+    name text NOT NULL,
+    description text,
+    standard_quantity numeric(10,3) NOT NULL,
+    standard_unit text NOT NULL,
+    calories numeric(10,2),
+    protein_g numeric(10,2),
+    total_fat_g numeric(10,2),
+    saturated_fat_g numeric(10,2),
+    trans_fat_g numeric(10,2),
+    cholesterol_mg numeric(10,2),
+    sodium_mg numeric(10,2),
+    total_carbs_g numeric(10,2),
+    fiber_g numeric(10,2),
+    total_sugars_g numeric(10,2),
+    added_sugars_g numeric(10,2),
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    deleted_at timestamp with time zone,
+    CONSTRAINT food_items_added_sugars_g_check CHECK ((added_sugars_g >= (0)::numeric)),
+    CONSTRAINT food_items_calories_check CHECK ((calories >= (0)::numeric)),
+    CONSTRAINT food_items_cholesterol_mg_check CHECK ((cholesterol_mg >= (0)::numeric)),
+    CONSTRAINT food_items_fiber_g_check CHECK ((fiber_g >= (0)::numeric)),
+    CONSTRAINT food_items_name_check CHECK ((length(TRIM(BOTH FROM name)) > 0)),
+    CONSTRAINT food_items_protein_g_check CHECK ((protein_g >= (0)::numeric)),
+    CONSTRAINT food_items_saturated_fat_g_check CHECK ((saturated_fat_g >= (0)::numeric)),
+    CONSTRAINT food_items_sodium_mg_check CHECK ((sodium_mg >= (0)::numeric)),
+    CONSTRAINT food_items_standard_quantity_check CHECK ((standard_quantity > (0)::numeric)),
+    CONSTRAINT food_items_standard_unit_check CHECK ((length(TRIM(BOTH FROM standard_unit)) > 0)),
+    CONSTRAINT food_items_total_carbs_g_check CHECK ((total_carbs_g >= (0)::numeric)),
+    CONSTRAINT food_items_total_fat_g_check CHECK ((total_fat_g >= (0)::numeric)),
+    CONSTRAINT food_items_total_sugars_g_check CHECK ((total_sugars_g >= (0)::numeric)),
+    CONSTRAINT food_items_trans_fat_g_check CHECK ((trans_fat_g >= (0)::numeric))
+);
+
+
+--
+-- Name: macro_goals; Type: TABLE; Schema: nutrition; Owner: -
+--
+
+CREATE TABLE nutrition.macro_goals (
+    id uuid DEFAULT uuidv7() NOT NULL,
+    user_id uuid NOT NULL,
+    nutrient text NOT NULL,
+    kind text NOT NULL,
+    amount numeric(10,2) NOT NULL,
+    starts_on date NOT NULL,
+    ends_on date,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    deleted_at timestamp with time zone,
+    CONSTRAINT macro_goals_amount_check CHECK ((amount > (0)::numeric)),
+    CONSTRAINT macro_goals_check CHECK (((ends_on IS NULL) OR (ends_on >= starts_on))),
+    CONSTRAINT macro_goals_kind_check CHECK ((kind = ANY (ARRAY['target'::text, 'limit'::text]))),
+    CONSTRAINT macro_goals_nutrient_check CHECK ((nutrient = ANY (ARRAY['calories'::text, 'protein_g'::text, 'total_fat_g'::text, 'saturated_fat_g'::text, 'trans_fat_g'::text, 'cholesterol_mg'::text, 'sodium_mg'::text, 'total_carbs_g'::text, 'fiber_g'::text, 'total_sugars_g'::text, 'added_sugars_g'::text])))
+);
+
+
+--
+-- Name: preferences; Type: TABLE; Schema: nutrition; Owner: -
+--
+
+CREATE TABLE nutrition.preferences (
+    id uuid DEFAULT uuidv7() NOT NULL,
+    user_id uuid NOT NULL,
+    tracked_nutrients text[] NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT preferences_tracked_nutrients_check CHECK ((tracked_nutrients <@ ARRAY['calories'::text, 'protein_g'::text, 'total_fat_g'::text, 'saturated_fat_g'::text, 'trans_fat_g'::text, 'cholesterol_mg'::text, 'sodium_mg'::text, 'total_carbs_g'::text, 'fiber_g'::text, 'total_sugars_g'::text, 'added_sugars_g'::text]))
+);
+
+
+--
 -- Name: schema_migrations; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -411,6 +514,54 @@ ALTER TABLE ONLY finance.transactions
 
 
 --
+-- Name: food_item_logs food_item_logs_pkey; Type: CONSTRAINT; Schema: nutrition; Owner: -
+--
+
+ALTER TABLE ONLY nutrition.food_item_logs
+    ADD CONSTRAINT food_item_logs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: food_items food_items_id_user_id_key; Type: CONSTRAINT; Schema: nutrition; Owner: -
+--
+
+ALTER TABLE ONLY nutrition.food_items
+    ADD CONSTRAINT food_items_id_user_id_key UNIQUE (id, user_id);
+
+
+--
+-- Name: food_items food_items_pkey; Type: CONSTRAINT; Schema: nutrition; Owner: -
+--
+
+ALTER TABLE ONLY nutrition.food_items
+    ADD CONSTRAINT food_items_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: macro_goals macro_goals_pkey; Type: CONSTRAINT; Schema: nutrition; Owner: -
+--
+
+ALTER TABLE ONLY nutrition.macro_goals
+    ADD CONSTRAINT macro_goals_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: preferences preferences_pkey; Type: CONSTRAINT; Schema: nutrition; Owner: -
+--
+
+ALTER TABLE ONLY nutrition.preferences
+    ADD CONSTRAINT preferences_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: preferences preferences_user_id_key; Type: CONSTRAINT; Schema: nutrition; Owner: -
+--
+
+ALTER TABLE ONLY nutrition.preferences
+    ADD CONSTRAINT preferences_user_id_key UNIQUE (user_id);
+
+
+--
 -- Name: schema_migrations schema_migrations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -496,6 +647,34 @@ CREATE INDEX transactions_user_date_idx ON finance.transactions USING btree (use
 
 
 --
+-- Name: food_item_logs_food_idx; Type: INDEX; Schema: nutrition; Owner: -
+--
+
+CREATE INDEX food_item_logs_food_idx ON nutrition.food_item_logs USING btree (food_item_id);
+
+
+--
+-- Name: food_item_logs_user_day_idx; Type: INDEX; Schema: nutrition; Owner: -
+--
+
+CREATE INDEX food_item_logs_user_day_idx ON nutrition.food_item_logs USING btree (user_id, eaten_on DESC) WHERE (deleted_at IS NULL);
+
+
+--
+-- Name: food_items_name_key; Type: INDEX; Schema: nutrition; Owner: -
+--
+
+CREATE UNIQUE INDEX food_items_name_key ON nutrition.food_items USING btree (user_id, lower(name)) WHERE (deleted_at IS NULL);
+
+
+--
+-- Name: macro_goals_active_key; Type: INDEX; Schema: nutrition; Owner: -
+--
+
+CREATE UNIQUE INDEX macro_goals_active_key ON nutrition.macro_goals USING btree (user_id, nutrient, kind) WHERE ((ends_on IS NULL) AND (deleted_at IS NULL));
+
+
+--
 -- Name: user_modules set_updated_at; Type: TRIGGER; Schema: core; Owner: -
 --
 
@@ -549,6 +728,34 @@ CREATE TRIGGER set_updated_at BEFORE UPDATE ON finance.transaction_allocations F
 --
 
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON finance.transactions FOR EACH ROW EXECUTE FUNCTION core.set_updated_at();
+
+
+--
+-- Name: food_item_logs set_updated_at; Type: TRIGGER; Schema: nutrition; Owner: -
+--
+
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON nutrition.food_item_logs FOR EACH ROW EXECUTE FUNCTION core.set_updated_at();
+
+
+--
+-- Name: food_items set_updated_at; Type: TRIGGER; Schema: nutrition; Owner: -
+--
+
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON nutrition.food_items FOR EACH ROW EXECUTE FUNCTION core.set_updated_at();
+
+
+--
+-- Name: macro_goals set_updated_at; Type: TRIGGER; Schema: nutrition; Owner: -
+--
+
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON nutrition.macro_goals FOR EACH ROW EXECUTE FUNCTION core.set_updated_at();
+
+
+--
+-- Name: preferences set_updated_at; Type: TRIGGER; Schema: nutrition; Owner: -
+--
+
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON nutrition.preferences FOR EACH ROW EXECUTE FUNCTION core.set_updated_at();
 
 
 --
@@ -656,6 +863,46 @@ ALTER TABLE ONLY finance.transactions
 
 
 --
+-- Name: food_item_logs food_item_logs_food_item_id_user_id_fkey; Type: FK CONSTRAINT; Schema: nutrition; Owner: -
+--
+
+ALTER TABLE ONLY nutrition.food_item_logs
+    ADD CONSTRAINT food_item_logs_food_item_id_user_id_fkey FOREIGN KEY (food_item_id, user_id) REFERENCES nutrition.food_items(id, user_id);
+
+
+--
+-- Name: food_item_logs food_item_logs_user_id_fkey; Type: FK CONSTRAINT; Schema: nutrition; Owner: -
+--
+
+ALTER TABLE ONLY nutrition.food_item_logs
+    ADD CONSTRAINT food_item_logs_user_id_fkey FOREIGN KEY (user_id) REFERENCES core.users(id);
+
+
+--
+-- Name: food_items food_items_user_id_fkey; Type: FK CONSTRAINT; Schema: nutrition; Owner: -
+--
+
+ALTER TABLE ONLY nutrition.food_items
+    ADD CONSTRAINT food_items_user_id_fkey FOREIGN KEY (user_id) REFERENCES core.users(id);
+
+
+--
+-- Name: macro_goals macro_goals_user_id_fkey; Type: FK CONSTRAINT; Schema: nutrition; Owner: -
+--
+
+ALTER TABLE ONLY nutrition.macro_goals
+    ADD CONSTRAINT macro_goals_user_id_fkey FOREIGN KEY (user_id) REFERENCES core.users(id);
+
+
+--
+-- Name: preferences preferences_user_id_fkey; Type: FK CONSTRAINT; Schema: nutrition; Owner: -
+--
+
+ALTER TABLE ONLY nutrition.preferences
+    ADD CONSTRAINT preferences_user_id_fkey FOREIGN KEY (user_id) REFERENCES core.users(id);
+
+
+--
 -- Name: user_modules; Type: ROW SECURITY; Schema: core; Owner: -
 --
 
@@ -760,6 +1007,58 @@ ALTER TABLE finance.transaction_allocations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE finance.transactions ENABLE ROW LEVEL SECURITY;
 
 --
+-- Name: food_item_logs; Type: ROW SECURITY; Schema: nutrition; Owner: -
+--
+
+ALTER TABLE nutrition.food_item_logs ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: food_items; Type: ROW SECURITY; Schema: nutrition; Owner: -
+--
+
+ALTER TABLE nutrition.food_items ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: macro_goals; Type: ROW SECURITY; Schema: nutrition; Owner: -
+--
+
+ALTER TABLE nutrition.macro_goals ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: food_item_logs owner; Type: POLICY; Schema: nutrition; Owner: -
+--
+
+CREATE POLICY owner ON nutrition.food_item_logs TO disci_app USING ((user_id = core.current_user_id())) WITH CHECK ((user_id = core.current_user_id()));
+
+
+--
+-- Name: food_items owner; Type: POLICY; Schema: nutrition; Owner: -
+--
+
+CREATE POLICY owner ON nutrition.food_items TO disci_app USING ((user_id = core.current_user_id())) WITH CHECK ((user_id = core.current_user_id()));
+
+
+--
+-- Name: macro_goals owner; Type: POLICY; Schema: nutrition; Owner: -
+--
+
+CREATE POLICY owner ON nutrition.macro_goals TO disci_app USING ((user_id = core.current_user_id())) WITH CHECK ((user_id = core.current_user_id()));
+
+
+--
+-- Name: preferences owner; Type: POLICY; Schema: nutrition; Owner: -
+--
+
+CREATE POLICY owner ON nutrition.preferences TO disci_app USING ((user_id = core.current_user_id())) WITH CHECK ((user_id = core.current_user_id()));
+
+
+--
+-- Name: preferences; Type: ROW SECURITY; Schema: nutrition; Owner: -
+--
+
+ALTER TABLE nutrition.preferences ENABLE ROW LEVEL SECURITY;
+
+--
 -- PostgreSQL database dump complete
 --
 
@@ -775,4 +1074,5 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('20261025150312'),
     ('20261025153025'),
     ('20261025155734'),
-    ('20261025170608');
+    ('20261025170608'),
+    ('20261025190000');

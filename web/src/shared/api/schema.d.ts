@@ -426,6 +426,198 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/nutrition/preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Preferences
+         * @description Which nutrients the user tracks (shown everywhere), plus every nutrient the app knows.
+         */
+        get: operations["get_preferences_nutrition_preferences_get"];
+        /** Update Preferences */
+        put: operations["update_preferences_nutrition_preferences_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/nutrition/foods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Foods
+         * @description The food repo, by name.
+         */
+        get: operations["list_foods_nutrition_foods_get"];
+        put?: never;
+        /** Create Food */
+        post: operations["create_food_nutrition_foods_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/nutrition/foods/{food_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Food
+         * @description Past days that logged it are recalculated with the new values.
+         */
+        put: operations["update_food_nutrition_foods__food_id__put"];
+        post?: never;
+        /**
+         * Delete Food
+         * @description Removes it from the repo. Days that logged it still show it.
+         */
+        delete: operations["delete_food_nutrition_foods__food_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/nutrition/days": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Days
+         * @description Days with something logged, newest first. Page with `before` = the last date seen.
+         */
+        get: operations["list_days_nutrition_days_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/nutrition/days/{day}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Day
+         * @description One day's food sheet: its entries (oldest first) and per-nutrient totals.
+         */
+        get: operations["get_day_nutrition_days__day__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/nutrition/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Log */
+        post: operations["create_log_nutrition_logs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/nutrition/logs/{log_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Log */
+        put: operations["update_log_nutrition_logs__log_id__put"];
+        post?: never;
+        /** Delete Log */
+        delete: operations["delete_log_nutrition_logs__log_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/nutrition/goals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Goals
+         * @description Goals in effect on a day (default today, in the user's timezone): targets first.
+         */
+        get: operations["list_goals_nutrition_goals_get"];
+        put?: never;
+        /**
+         * Create Goal
+         * @description Starts today. One active target and one active limit per nutrient.
+         */
+        post: operations["create_goal_nutrition_goals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/nutrition/goals/{goal_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Goal
+         * @description Changes the amount from today on; earlier days keep the old amount.
+         *
+         *     A goal that started today is changed in place. Otherwise the old one ends yesterday
+         *     and a new one (with a new id) starts today.
+         */
+        put: operations["update_goal_nutrition_goals__goal_id__put"];
+        post?: never;
+        /**
+         * Delete Goal
+         * @description Ends the goal: it no longer applies from today, but still covers earlier days.
+         */
+        delete: operations["delete_goal_nutrition_goals__goal_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -796,6 +988,158 @@ export interface components {
             /** Last Payment On */
             last_payment_on: string | null;
         };
+        /** DayOut */
+        DayOut: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Entries */
+            entries: components["schemas"]["LogOut"][];
+            /** Totals */
+            totals: components["schemas"]["NutrientTotal"][];
+        };
+        /** DaySummary */
+        DaySummary: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Entry Count */
+            entry_count: number;
+            /** Totals */
+            totals: components["schemas"]["NutrientTotal"][];
+        };
+        /**
+         * FoodIn
+         * @description All editable fields, sent in full.
+         */
+        FoodIn: {
+            /** Calories */
+            calories?: number | string | null;
+            /** Protein G */
+            protein_g?: number | string | null;
+            /** Total Fat G */
+            total_fat_g?: number | string | null;
+            /** Saturated Fat G */
+            saturated_fat_g?: number | string | null;
+            /** Trans Fat G */
+            trans_fat_g?: number | string | null;
+            /** Cholesterol Mg */
+            cholesterol_mg?: number | string | null;
+            /** Sodium Mg */
+            sodium_mg?: number | string | null;
+            /** Total Carbs G */
+            total_carbs_g?: number | string | null;
+            /** Fiber G */
+            fiber_g?: number | string | null;
+            /** Total Sugars G */
+            total_sugars_g?: number | string | null;
+            /** Added Sugars G */
+            added_sugars_g?: number | string | null;
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /** Standard Quantity */
+            standard_quantity: number | string;
+            /** Standard Unit */
+            standard_unit: string;
+        };
+        /** FoodOut */
+        FoodOut: {
+            /** Calories */
+            calories?: string | null;
+            /** Protein G */
+            protein_g?: string | null;
+            /** Total Fat G */
+            total_fat_g?: string | null;
+            /** Saturated Fat G */
+            saturated_fat_g?: string | null;
+            /** Trans Fat G */
+            trans_fat_g?: string | null;
+            /** Cholesterol Mg */
+            cholesterol_mg?: string | null;
+            /** Sodium Mg */
+            sodium_mg?: string | null;
+            /** Total Carbs G */
+            total_carbs_g?: string | null;
+            /** Fiber G */
+            fiber_g?: string | null;
+            /** Total Sugars G */
+            total_sugars_g?: string | null;
+            /** Added Sugars G */
+            added_sugars_g?: string | null;
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /** Standard Quantity */
+            standard_quantity: string;
+            /** Standard Unit */
+            standard_unit: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Last Logged On
+             * @description Most recent day it was logged, if ever.
+             */
+            last_logged_on: string | null;
+        };
+        /** GoalIn */
+        GoalIn: {
+            /**
+             * Nutrient
+             * @enum {string}
+             */
+            nutrient: "calories" | "protein_g" | "total_fat_g" | "saturated_fat_g" | "trans_fat_g" | "cholesterol_mg" | "sodium_mg" | "total_carbs_g" | "fiber_g" | "total_sugars_g" | "added_sugars_g";
+            /**
+             * Kind
+             * @description target: reach at least; limit: stay under.
+             * @enum {string}
+             */
+            kind: "target" | "limit";
+            /** Amount */
+            amount: number | string;
+        };
+        /** GoalOut */
+        GoalOut: {
+            /**
+             * Nutrient
+             * @enum {string}
+             */
+            nutrient: "calories" | "protein_g" | "total_fat_g" | "saturated_fat_g" | "trans_fat_g" | "cholesterol_mg" | "sodium_mg" | "total_carbs_g" | "fiber_g" | "total_sugars_g" | "added_sugars_g";
+            /**
+             * Kind
+             * @description target: reach at least; limit: stay under.
+             * @enum {string}
+             */
+            kind: "target" | "limit";
+            /** Amount */
+            amount: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Starts On
+             * Format: date
+             */
+            starts_on: string;
+            /** Ends On */
+            ends_on: string | null;
+        };
+        /** GoalUpdate */
+        GoalUpdate: {
+            /** Amount */
+            amount: number | string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -864,6 +1208,81 @@ export interface components {
             /** Actual */
             actual: string;
         };
+        /** LogCreate */
+        LogCreate: {
+            /**
+             * Food Item Id
+             * Format: uuid
+             */
+            food_item_id: string;
+            /**
+             * Eaten On
+             * Format: date
+             */
+            eaten_on: string;
+            /**
+             * Servings
+             * @description Multiples of the food's standard quantity.
+             */
+            servings: number | string;
+            /** Notes */
+            notes?: string | null;
+        };
+        /** LogOut */
+        LogOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Food Item Id
+             * Format: uuid
+             */
+            food_item_id: string;
+            /** Food Name */
+            food_name: string;
+            /**
+             * Food Deleted
+             * @description The food was removed from the repo since.
+             */
+            food_deleted: boolean;
+            /** Standard Quantity */
+            standard_quantity: string;
+            /** Standard Unit */
+            standard_unit: string;
+            /**
+             * Eaten On
+             * Format: date
+             */
+            eaten_on: string;
+            /** Servings */
+            servings: string;
+            /** Notes */
+            notes: string | null;
+            /**
+             * Nutrients
+             * @description The food's values times servings; None where the food has no value.
+             */
+            nutrients: {
+                [key: string]: string | null;
+            };
+        };
+        /**
+         * LogUpdate
+         * @description All editable fields, sent in full. The food can't change; log a new entry instead.
+         */
+        LogUpdate: {
+            /**
+             * Eaten On
+             * Format: date
+             */
+            eaten_on: string;
+            /** Servings */
+            servings: number | string;
+            /** Notes */
+            notes?: string | null;
+        };
         /** ModuleOut */
         ModuleOut: {
             /** Key */
@@ -874,6 +1293,54 @@ export interface components {
             description: string;
             /** Enabled */
             enabled: boolean;
+        };
+        /** NutrientOut */
+        NutrientOut: {
+            /**
+             * Key
+             * @enum {string}
+             */
+            key: "calories" | "protein_g" | "total_fat_g" | "saturated_fat_g" | "trans_fat_g" | "cholesterol_mg" | "sodium_mg" | "total_carbs_g" | "fiber_g" | "total_sugars_g" | "added_sugars_g";
+            /** Label */
+            label: string;
+            /** Unit */
+            unit: string;
+        };
+        /** NutrientTotal */
+        NutrientTotal: {
+            /**
+             * Nutrient
+             * @enum {string}
+             */
+            nutrient: "calories" | "protein_g" | "total_fat_g" | "saturated_fat_g" | "trans_fat_g" | "cholesterol_mg" | "sodium_mg" | "total_carbs_g" | "fiber_g" | "total_sugars_g" | "added_sugars_g";
+            /**
+             * Amount
+             * @description Sum of the known values; None when no entry has a value.
+             */
+            amount: string | null;
+            /**
+             * Missing Foods
+             * @description Foods logged this day with no value for it.
+             */
+            missing_foods: string[];
+        };
+        /** PreferencesIn */
+        PreferencesIn: {
+            /** Tracked Nutrients */
+            tracked_nutrients: ("calories" | "protein_g" | "total_fat_g" | "saturated_fat_g" | "trans_fat_g" | "cholesterol_mg" | "sodium_mg" | "total_carbs_g" | "fiber_g" | "total_sugars_g" | "added_sugars_g")[];
+        };
+        /** PreferencesOut */
+        PreferencesOut: {
+            /**
+             * Tracked Nutrients
+             * @description In display order.
+             */
+            tracked_nutrients: ("calories" | "protein_g" | "total_fat_g" | "saturated_fat_g" | "trans_fat_g" | "cholesterol_mg" | "sodium_mg" | "total_carbs_g" | "fiber_g" | "total_sugars_g" | "added_sugars_g")[];
+            /**
+             * Nutrients
+             * @description Every nutrient the app knows, in order.
+             */
+            nutrients: components["schemas"]["NutrientOut"][];
         };
         /** RecurringIn */
         RecurringIn: {
@@ -2187,6 +2654,464 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChecklistItemOut"][];
+                };
+            };
+        };
+    };
+    get_preferences_nutrition_preferences_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreferencesOut"];
+                };
+            };
+        };
+    };
+    update_preferences_nutrition_preferences_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreferencesIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreferencesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_foods_nutrition_foods_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FoodOut"][];
+                };
+            };
+        };
+    };
+    create_food_nutrition_foods_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FoodIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FoodOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_food_nutrition_foods__food_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                food_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FoodIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FoodOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_food_nutrition_foods__food_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                food_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_days_nutrition_days_get: {
+        parameters: {
+            query?: {
+                before?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DaySummary"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_day_nutrition_days__day__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                day: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DayOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_log_nutrition_logs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LogCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_log_nutrition_logs__log_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                log_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LogUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_log_nutrition_logs__log_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                log_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_goals_nutrition_goals_get: {
+        parameters: {
+            query?: {
+                on?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoalOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_goal_nutrition_goals_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoalIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoalOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_goal_nutrition_goals__goal_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                goal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoalUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoalOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_goal_nutrition_goals__goal_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                goal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

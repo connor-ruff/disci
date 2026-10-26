@@ -22,7 +22,8 @@ docs/
     ├── ui-overview.md             # General style guidelines
     ├── app-shell.md               # Shell, module menu, opt-in modules, how modules plug in
     ├── web-overview.md            # Web app engineering: stack, layout, API client, theming, local dev
-    └── finance-ui.md              # Finance screens: routes, budget page, forms, what the numbers mean
+    ├── finance-ui.md              # Finance screens: routes, budget page, forms, what the numbers mean
+    └── nutrition-ui.md            # Nutrition screens: daily sheet, history, food repo, goals, unknown values
 ```
 
 ## project_plans 
@@ -43,4 +44,4 @@ Contains documentation about the Postgres data model used in the back-end of the
 
 ## ui
 
-Contains documentation on front-end layout and user experience. Start with `ui/app-shell.md`, which covers the frame every page lives in and how modules plug into it, and `ui/web-overview.md` for the web app's engineering side (stack, folder layout, API client, theming, mobile conventions, local dev). Module-specific screens have their own docs, e.g. `ui/finance-ui.md`.
+Contains documentation on front-end layout and user experience. Start with `ui/app-shell.md`, which covers the frame every page lives in and how modules plug into it, and `ui/web-overview.md` for the web app's engineering side (stack, folder layout, API client, theming, mobile conventions, local dev). Module-specific screens have their own docs: `ui/finance-ui.md` and `ui/nutrition-ui.md`.

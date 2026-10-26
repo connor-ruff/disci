@@ -2,18 +2,25 @@ import { LogOut } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
 
 import type { User } from '@/shared/api/client'
-import { useMe, useUpdateMe } from '@/shared/api/hooks'
+import { useMe, useModules, useUpdateMe } from '@/shared/api/hooks'
 import { authMode, signOut } from '@/shared/auth/auth'
 import { Button } from '@/shared/ui/button'
 import { Card } from '@/shared/ui/card'
 import { Field, inputClasses } from '@/shared/ui/field'
 import { ErrorState, LoadingState, PageHeader } from '@/shared/ui/page'
 
+import { MODULES } from '../modules'
+
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 const DEVICE_TIMEZONE = Intl.DateTimeFormat().resolvedOptions().timeZone
 
 export function SettingsPage() {
   const me = useMe()
+  const modules = useModules()
+  // Modules can add their own section, shown while they're turned on.
+  const panels = MODULES.filter(
+    (m) => m.SettingsPanel && modules.data?.some((i) => i.key === m.key && i.enabled),
+  )
   return (
     <>
       <PageHeader title="Settings" />
@@ -21,6 +28,11 @@ export function SettingsPage() {
       {me.isError && <ErrorState error={me.error} />}
       {/* Keyed so the form's fields reset if the user changes. */}
       {me.data && <SettingsForm key={me.data.id} user={me.data} />}
+      {panels.map(({ key, SettingsPanel }) => SettingsPanel && (
+        <div key={key} className="mt-4">
+          <SettingsPanel />
+        </div>
+      ))}
       {authMode === 'cognito' && (
         <Button variant="outline" onClick={() => signOut()} className="mt-4 w-full sm:w-auto">
           <LogOut className="size-5" />

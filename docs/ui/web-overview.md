@@ -1,6 +1,6 @@
 # Web App Overview
 
-*Status: **shell implemented and deployed** to S3 + CloudFront (https://d2j30iivfr2al9.cloudfront.net) with Cognito sign-in. The shell pages (Home, Manage modules, Settings) work; the finance module has budgets, categories, the monthly checklist, recurring transactions and the inbox (see [finance-ui.md](finance-ui.md)). Deploying: [deployment.md](../ops/deployment.md).*
+*Status: **shell implemented and deployed** to S3 + CloudFront (https://d2j30iivfr2al9.cloudfront.net) with Cognito sign-in. The shell pages (Home, Manage modules, Settings) work; the finance module has budgets, categories, the monthly checklist, recurring transactions and the inbox (see [finance-ui.md](finance-ui.md)), and the nutrition module has the daily food sheet, history, the food repo and macro goals (see [nutrition-ui.md](nutrition-ui.md)). Deploying: [deployment.md](../ops/deployment.md).*
 
 The engineering entry point for the web app (`web/`): stack, layout, conventions and local workflow. What the shell looks like and how modules plug into it is in [app-shell.md](app-shell.md); the brand palette is in [ui-overview.md](ui-overview.md).
 
@@ -41,7 +41,7 @@ web/
     ├── vite-env.d.ts              # types for the VITE_* build-time env vars (§9)
     ├── index.css                  # Tailwind import + theme tokens (§5)
     ├── app/                       # the shell (see app-shell.md)
-    │   ├── module.ts              # ModuleManifest type
+    │   ├── module.ts              # ModuleManifest type (incl. optional SettingsPanel)
     │   ├── modules.ts             # MODULES registry
     │   ├── module-registry.tsx    # registry React context
     │   ├── root-route.tsx         # root route → Shell, NotFound
@@ -50,7 +50,7 @@ web/
     │   ├── Shell.tsx              # top bar, sub-nav, disabled-module gate
     │   ├── PullToRefresh.tsx      # pull-down-to-reload in the home-screen app (§7)
     │   ├── ModuleMenu.tsx         # ☰ drawer
-    │   └── pages/                 # Home, ManageModules, Settings, NotFound
+    │   └── pages/                 # Home, ManageModules, Settings (+ module SettingsPanels), NotFound
     ├── shared/                    # used by the shell and every module
     │   ├── api/
     │   │   ├── client.ts          # typed `api` client, `unwrap`, `ApiError`, `errorMessage`, type aliases
@@ -61,16 +61,23 @@ web/
     │   │                          # sheet (bottom-sheet form panel), field (Field + inputClasses), segmented,
     │   │                          # checkbox (Checkbox), sortable (SortableList: drag-to-reorder)
     │   └── lib/                   # cn.ts, money.ts (formatMoney, parseMoneyInput),
-    │                              # dates.ts (todayIn, formatShortDate, formatDateRange)
+    │                              # dates.ts (todayIn, formatShortDate, formatDateRange, addDays, formatLongDate)
     └── modules/
-        └── finance/
-            ├── index.ts           # the module's ModuleManifest (sub-nav: Budgets, Checklist, Recurring, Inbox, Categories)
-            ├── routes.tsx         # route tree under /finance
-            ├── api.ts             # TanStack Query hooks + financeKeys
-            ├── pages/             # BudgetsPage, NewBudgetPage, BudgetPage, CategoriesPage,
-            │                      # ChecklistPage, RecurringPage, InboxPage
-            └── components/        # FinanceHomeCard, ActiveBadge, ItemSheet, TransactionSheet,
-                                   # RecurringSheet, ReorderToggle
+        ├── finance/
+        │   ├── index.ts           # the module's ModuleManifest (sub-nav: Budgets, Checklist, Recurring, Inbox, Categories)
+        │   ├── routes.tsx         # route tree under /finance
+        │   ├── api.ts             # TanStack Query hooks + financeKeys
+        │   ├── pages/             # BudgetsPage, NewBudgetPage, BudgetPage, CategoriesPage,
+        │   │                      # ChecklistPage, RecurringPage, InboxPage
+        │   └── components/        # FinanceHomeCard, ActiveBadge, ItemSheet, TransactionSheet,
+        │                          # RecurringSheet, ReorderToggle
+        └── nutrition/
+            ├── index.ts           # ModuleManifest (sub-nav: Daily, History, Food repo, Goals; SettingsPanel)
+            ├── routes.tsx         # route tree under /nutrition
+            ├── api.ts             # TanStack Query hooks + nutritionKeys
+            ├── format.ts          # formatNutrient, formatQuantity, describeServing, UNIT_SUGGESTIONS
+            ├── pages/             # DailyPage, DayPage, HistoryPage, FoodsPage, GoalsPage
+            └── components/        # DaySheet, LogSheet, FoodForm, NutritionSettings, NutritionHomeCard
 ```
 
 **Rule of thumb:** `app/` is the shell, `shared/` is anything two or more places use, and `modules/<key>/` holds everything specific to one module. A module may import from `shared/` and `app/` (its manifest type, the root route); `shared/` never imports from a module.
@@ -108,7 +115,7 @@ web/
 | `useSetModuleEnabled()` | `PUT` / `DELETE /me/modules/{key}` | invalidates `['me', 'modules']` |
 
 - **Query keys** are defined once, in the `queryKeys` object, never as inline arrays. Keys are hierarchical (`['me', 'modules']` sits under `['me']`) so a whole branch can be invalidated at once.
-- A module's hooks live in that module's folder (e.g. `modules/finance/api.ts`, keys in `financeKeys`), with keys starting with the module key (e.g. `['finance', ...]`).
+- A module's hooks live in that module's folder (e.g. `modules/finance/api.ts`, keys in `financeKeys`; `modules/nutrition/api.ts`, keys in `nutritionKeys`), with keys starting with the module key (e.g. `['finance', ...]`).
 - Pages handle `isPending` / `isError` with the shared `LoadingState` / `ErrorState` from `shared/ui/page.tsx`.
 
 ---
@@ -149,7 +156,7 @@ The app will mostly be used on phones, so:
 - **Full-height drawer** for the module menu (`w-72`, at most 85% of the screen width).
 - **Sub-nav scrolls sideways** instead of wrapping. A tab is active when the URL **starts with** its path (prefix match, not exact), so Budgets stays highlighted on `/finance/budgets/<id>`.
 - `min-h-dvh` for the page frame (handles mobile browser chrome), and the tap highlight is turned off.
-- **Dates** a user picks or defaults to are calendar dates in the user's timezone: `todayIn(me.timezone)` (`shared/lib/dates.ts`), and API dates are formatted without timezone conversion (`formatShortDate`, `formatDateRange`).
+- **Dates** a user picks or defaults to are calendar dates in the user's timezone: `todayIn(me.timezone)` (`shared/lib/dates.ts`), and API dates are formatted without timezone conversion (`formatShortDate`, `formatDateRange`, `formatLongDate` for "Sunday, Oct 18, 2026"). Step between days with `addDays(date, n)`, which does calendar math on the `YYYY-MM-DD` string.
 - Design at phone width first; wider screens get a centred `max-w-3xl` column and, on Home, a two-column card grid.
 
 ---
@@ -186,10 +193,10 @@ The API side comes first (registry entry, migration, endpoints; see [api-overvie
    - `routes.tsx`: a base route `createRoute({ getParentRoute: () => rootRoute, path: '<key>' })` plus child routes, exported as one tree.
    - `pages/` and `components/`, including a `HomeCard` component.
    - `api.ts`: the module's TanStack Query hooks (keys start with `'<key>'`).
-   - `index.ts`: `export const <key>Module: ModuleManifest = { key, icon, route, subNav, HomeCard }`. `key` must match the API module key.
+   - `index.ts`: `export const <key>Module: ModuleManifest = { key, icon, route, subNav, HomeCard }`, plus an optional `SettingsPanel` component for module settings on the Settings page. `key` must match the API module key.
 3. Add the manifest to `MODULES` in `src/app/modules.ts`.
 
-The shell then picks it up automatically: menu entry, manage-modules icon, sub-nav, Home card and the disabled-module gate. The module's name and description come from the API.
+The shell then picks it up automatically: menu entry, manage-modules icon, sub-nav, Home card, Settings panel (if any) and the disabled-module gate. The module's name and description come from the API.
 
 ---
 

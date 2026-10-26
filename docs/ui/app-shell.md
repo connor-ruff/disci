@@ -1,6 +1,6 @@
 # App Shell & Navigation
 
-*Status: **implemented** in `web/src/app/`. Home, Manage modules and Settings work, and the finance module renders its pages inside the shell (see [finance-ui.md](finance-ui.md)). Engineering details (stack, conventions, dev workflow) are in [web-overview.md](web-overview.md).*
+*Status: **implemented** in `web/src/app/`. Home, Manage modules and Settings work, and the finance and nutrition modules render their pages inside the shell (see [finance-ui.md](finance-ui.md) and [nutrition-ui.md](nutrition-ui.md)). Engineering details (stack, conventions, dev workflow) are in [web-overview.md](web-overview.md).*
 
 The **shell** is the frame around every page: the top bar, the module menu, and how a user moves between modules. Individual modules (finance, tasks, nutrition) render their own pages *inside* the shell.
 
@@ -36,6 +36,7 @@ The **shell** is the frame around every page: the top bar, the module menu, and 
 │  🏠  Home             │
 │  ───────────────────  │
 │  💵  Finance          │   ← enabled modules only (hidden if none)
+│  🥗  Nutrition        │
 │  ───────────────────  │
 │  ⊞  Manage modules    │   ← turn modules on/off
 │  ⚙  Settings          │
@@ -54,8 +55,8 @@ The **shell** is the frame around every page: the top bar, the module menu, and 
 |---|---|---|
 | `/` | **Home.** With **no modules enabled**: a welcome card with a "Choose modules" button (→ `/modules`). Otherwise "Hi, <display name>" and one `HomeCard` per enabled module. | `GET /me`, `GET /me/modules` |
 | `/modules` | **Manage modules.** A card per available module (icon, name, description from the API) with an on/off switch. Turning one on for the first time runs its setup on the API side (e.g. seeding default budget categories). | `GET /me/modules`, `PUT /me/modules/{key}` (on), `DELETE /me/modules/{key}` (off) |
-| `/settings` | **Settings.** Email (read-only), display name, timezone (a native select of every IANA zone from `Intl.supportedValuesOf`, plus a "Use this device's timezone" shortcut when it differs), week start. | `GET /me`, `PUT /me` |
-| `/<module>/...` | Everything else belongs to a module, e.g. `/finance` (redirects to `/finance/budgets`; see [finance-ui.md](finance-ui.md)). | Module endpoints |
+| `/settings` | **Settings.** Email (read-only), display name, timezone (a native select of every IANA zone from `Intl.supportedValuesOf`, plus a "Use this device's timezone" shortcut when it differs), week start. Below that, one card per **enabled** module that has a `SettingsPanel` (§4), e.g. Nutrition's tracked nutrients; then Sign out (Cognito only). | `GET /me`, `PUT /me`, `GET /me/modules`, plus each panel's own endpoints |
+| `/<module>/...` | Everything else belongs to a module, e.g. `/finance` (redirects to `/finance/budgets`; see [finance-ui.md](finance-ui.md)) or `/nutrition` (redirects to `/nutrition/daily`; see [nutrition-ui.md](nutrition-ui.md)). | Module endpoints |
 | anything else | **Not found** page with a "Go home" button. | |
 
 **Disabled-module gate.** The shell checks the first URL segment: if it matches a registered module that the user has turned **off**, it shows a "<Module> is turned off" card with a "Turn on <Module>" button instead of the page (and hides the sub-nav). No error, and the data is kept.
@@ -73,6 +74,7 @@ Each module folder (`web/src/modules/<key>/`) exports a **manifest** (`ModuleMan
 | `route` | `financeRoute`: the TanStack Router tree under `/finance` (`routes.tsx`) | Added to the router's route tree |
 | `subNav` | Budgets, Checklist, Recurring, Inbox, Categories (`/finance/budgets`, `/finance/checklist`, ...) | Module sub-nav (shown only when > 1 entry) |
 | `HomeCard` | `FinanceHomeCard` component | Home page |
+| `SettingsPanel` (optional) | Nutrition's `NutritionSettings` (finance has none) | A section on the Settings page, rendered below the user's settings while the module is **enabled**. Each module's panel is its own card and saves through its own endpoints. |
 
 **Name and description are not in the web manifest.** They come from the API (`GET /me/modules`), so they are defined once, in the API's module registry (see [api-overview.md](../api/api-overview.md)).
 

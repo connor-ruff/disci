@@ -14,7 +14,7 @@ def finance_enabled(client: TestClient, headers: dict[str, str]) -> bool:
 def test_new_user_has_no_modules_enabled(client: TestClient) -> None:
     modules = client.get("/me/modules", headers=ALICE).json()
 
-    assert [m["key"] for m in modules] == ["finance"]
+    assert [m["key"] for m in modules] == ["finance", "nutrition"]
     assert not any(m["enabled"] for m in modules)
 
 

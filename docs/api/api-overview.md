@@ -1,6 +1,6 @@
 # API Overview
 
-*Status: **skeleton implemented and deployed** to AWS Lambda behind API Gateway (https://molrqp0ch5.execute-api.us-east-2.amazonaws.com). Core endpoints (`/me`, `/me/modules`) work, and so does the **finance module** (categories, budgets, budget items, transactions, reordering, recurring transactions with approvals, the inbox and the monthly checklist). The first scheduled job (hourly recurring-transaction generation, `app/jobs/recurring.py`) runs as the `disci-jobs` Lambda. Cognito auth works in production. Deploying and operating it: [deployment.md](../ops/deployment.md).*
+*Status: **skeleton implemented and deployed** to AWS Lambda behind API Gateway (https://molrqp0ch5.execute-api.us-east-2.amazonaws.com). Core endpoints (`/me`, `/me/modules`) work, and so do the **finance module** (categories, budgets, budget items, transactions, reordering, recurring transactions with approvals, the inbox and the monthly checklist) and the **nutrition module** (tracked nutrients, the food repo, the daily food log and history, and macro goals). The first scheduled job (hourly recurring-transaction generation, `app/jobs/recurring.py`) runs as the `disci-jobs` Lambda. Cognito auth works in production. Deploying and operating it: [deployment.md](../ops/deployment.md).*
 
 The API is the only thing that talks to the database. The web app and the MCP server go through it over HTTP; scheduled jobs (`app/jobs/`) are part of the same codebase and zip, run in their own Lambda, and use the same database role, queries and row-level security (see §9 and [disci-infrastructure.md](../project_plans/disci-infrastructure.md)). It is **FastAPI** on Python 3.13, with plain SQL through **psycopg 3** (no ORM), managed with **uv**.
 
@@ -45,10 +45,24 @@ api/
 │           ├── recurring.py       # Schedule, occurrences, next_occurrence, generate_for_user
 │           ├── sql.py             # `queries = Queries(__file__)`, shared by routes, services and jobs
 │           └── queries/           # one .sql per query
+│       └── nutrition/             # mounted at /nutrition
+│           ├── __init__.py        # `module` + `setup` (writes the default tracked nutrients on first enable)
+│           ├── routes/
+│           │   ├── __init__.py    # `router`: composes the area routers
+│           │   ├── _common.py     # not_found, unique_errors (unique violation → 409), today_for (user's timezone)
+│           │   ├── preferences.py # tracked nutrients
+│           │   ├── foods.py       # the food repo
+│           │   ├── logs.py        # days (sheet + history) and log entries
+│           │   └── goals.py       # macro goals (effective-dated)
+│           ├── schemas.py         # Pydantic models (NutrientKey, nutrient amounts as Decimal, 2 places)
+│           ├── service.py         # NUTRIENTS registry, DEFAULT_TRACKED, entry_nutrients, day_totals
+│           ├── sql.py             # `queries = Queries(__file__)`
+│           └── queries/           # one .sql per query
 └── tests/                         # pytest, against the disci_test database
     ├── conftest.py
     ├── core/                      # test_users.py, test_user_modules.py, test_aws.py
-    └── modules/finance/           # test_finance.py, test_recurring.py
+    ├── modules/finance/           # test_finance.py, test_recurring.py
+    └── modules/nutrition/         # test_nutrition.py
 ```
 
 A small module has `router.py` (thin HTTP routes), `schemas.py` (Pydantic models), `service.py` (business rules that don't belong in SQL) and `queries/` (one `.sql` per query); `core/users/` is a minimal example (no service).
@@ -145,6 +159,7 @@ Interactive docs: http://localhost:8000/docs while `make api` is running.
 | PUT | `/me/modules/{key}` | Enable a module. Idempotent. First enable runs the module's `setup`. Unknown key → 404. |
 | DELETE | `/me/modules/{key}` | Disable a module. Its data is kept and comes back on re-enable. Unknown key → 404. |
 | * | `/finance/...` | Finance module, see §7.1. |
+| * | `/nutrition/...` | Nutrition module, see §7.2. |
 
 ### 7.1 Finance (`/finance`)
 
@@ -188,6 +203,37 @@ Data model: [finance.md](../db/finance.md). **Money** is a `Decimal` with two pl
 
 Constraint violations are caught inside a savepoint (`constraint_errors` in `routes/_common.py`), so the request's transaction stays usable and the client gets a 4xx instead of a 500.
 
+### 7.2 Nutrition (`/nutrition`)
+
+Data model: [nutrition.md](../db/nutrition.md). **Nutrient amounts** are `Decimal`s with two places, quantities and servings three, all serialized as **strings** (e.g. `"34.00"`). A nutrient is one of eleven keys (`calories`, `protein_g`, `total_fat_g`, `saturated_fat_g`, `trans_fat_g`, `cholesterol_mg`, `sodium_mg`, `total_carbs_g`, `fiber_g`, `total_sugars_g`, `added_sugars_g`), which are also the `food_items` column names. A nutrient value of **`null` means unknown**, never 0.
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/nutrition/preferences` | `{tracked_nutrients, nutrients}`: the keys the user tracks, **in display order**, and every nutrient the app knows (`{key, label, unit}`, in display order). Falls back to the defaults if the user has no row. |
+| PUT | `/nutrition/preferences` | Replace `{tracked_nutrients}`. Duplicates are dropped and the list is stored in display order; may be empty. An unknown key → 422. Returns the same shape as GET. |
+| GET | `/nutrition/foods` | The food repo (`FoodOut`), by name (case-insensitive): `id`, `name`, `description`, `standard_quantity`, `standard_unit`, the eleven nutrients (per one standard quantity, each nullable) and `last_logged_on` (latest day it was logged, or null). Deleted foods are left out. |
+| POST | `/nutrition/foods` | Create (`FoodIn`): `name` (1–100 chars), `description?` (≤500), `standard_quantity` (> 0), `standard_unit` (1–30 chars), and any nutrients (≥ 0; omitted or null = unknown). Name and unit are trimmed. A name already in the repo (case-insensitive) → **409**. 201. |
+| PUT | `/nutrition/foods/{id}` | Replace a food (same body, sent in full). Past days that logged it are recalculated with the new values. Duplicate name → 409. |
+| DELETE | `/nutrition/foods/{id}` | Soft-delete. Days that logged it still show it (`food_deleted: true`), but it can't be logged again; its name can be reused. 204. |
+| GET | `/nutrition/days` | Days with something logged (`DaySummary`: `date`, `entry_count`, `totals`), newest first. Query: `limit` (1–100, default 30) and `before` (a date; pass the last date seen to get the next page). |
+| GET | `/nutrition/days/{date}` | One day's sheet (`DayOut`): `date`, `entries` (oldest logged first) and `totals`. A day with nothing logged returns empty entries and totals of `"0.00"`. |
+| POST | `/nutrition/logs` | Log `{food_item_id, eaten_on, servings, notes?}`. `servings` (> 0) is a multiple of the food's standard quantity. A food that doesn't exist, is deleted or is another user's → 404. Returns the entry (`LogOut`). 201. |
+| PUT | `/nutrition/logs/{id}` | Replace `{eaten_on, servings, notes}` (sent in full). The food can't change. Returns `LogOut`. |
+| DELETE | `/nutrition/logs/{id}` | Soft-delete the entry. 204. |
+| GET | `/nutrition/goals` | Goals in effect on a day (`GoalOut`: `id`, `nutrient`, `kind`, `amount`, `starts_on`, `ends_on`), targets first, then by nutrient key. Query `on` (a date) defaults to today in the user's timezone. |
+| POST | `/nutrition/goals` | Create `{nutrient, kind, amount}`: `kind` is `target` (reach at least) or `limit` (stay under), `amount` > 0. Starts today (user's timezone). There's already an active goal of that kind for the nutrient → **409**. 201. |
+| PUT | `/nutrition/goals/{id}` | Change `{amount}` from today on. A goal that started today is changed in place; otherwise the old one ends yesterday and a **new goal (new `id`)** starts today, so earlier days keep the old amount. Nutrient and kind can't change. Only active goals; else 404. |
+| DELETE | `/nutrition/goals/{id}` | Remove from today on: a goal that started today is soft-deleted, otherwise it ends yesterday and still covers earlier days. 204. |
+
+**Log entries** (`LogOut`): `id`, `food_item_id`, `food_name`, `food_deleted`, the food's `standard_quantity` and `standard_unit`, `eaten_on`, `servings`, `notes`, and `nutrients`: each of the food's values × `servings` (rounded to cents), `null` where the food has no value.
+
+**Totals** (`NutrientTotal`, one per nutrient, all eleven): `amount` is the sum of the **known** values (`null` when entries exist but none has a value) and `missing_foods` lists the foods logged that day with no value for it. The rules live in `service.day_totals`.
+
+**Errors:**
+- **404**: the food, log entry or goal doesn't exist, is deleted (for goals: isn't active), or belongs to another user. Logging a deleted or unknown food is also 404.
+- **409**: a duplicate food name, or a second active goal of the same kind for a nutrient (`unique_errors` in `routes/_common.py` catches the unique violation inside a savepoint).
+- **422**: request validation (Pydantic): unknown nutrient keys, negative nutrients, `servings` / `standard_quantity` / goal `amount` not above 0, too many decimal places, over-long text.
+
 ---
 
 ## 8. Run, test, lint
@@ -202,7 +248,7 @@ Requires Docker (for Postgres) and **uv**.
 | `make api-lint` | `ruff check` and `ruff format --check`. |
 | `make jobs-recurring` | Applies pending migrations, then runs the recurring-transactions job once against the local database, as `disci_api` (AWS runs it hourly; see §9.1). |
 
-**Tests** run against `disci_test`, a separate database in the same local Postgres, so your dev data is untouched. Each test starts with empty tables (an autouse fixture truncates them as the owner). Use `as_user("<sub>")` from `tests/conftest.py` to send requests as a given dev user. **68 tests** in total. The **21 core tests** cover user creation, settings validation, per-user isolation, RLS (as `disci_api` with no `app.user_id`, no rows are visible), module enable/disable, the prod dev-auth guard and the AWS code paths below. The **21 finance tests** (`tests/modules/finance/test_finance.py`) cover period bounds and default names, category seeding on enable, per-kind custom categories, uncategorizing on category delete, multiple budgets per period, Uncategorized items, the item/category kind check, opposite-kind netting, the per-budget allocation cap, counting the same dollars in two budgets, transaction delete, editing a transaction (`GET` shows its allocations; `PUT` changes its fields and moves / adds allocations, rejects an allocation over the amount, and 404s for another user), cross-user isolation, and copying a budget (items carried over without transactions, same period type required, no copying another user's budget). The **26 recurring tests** (`tests/modules/finance/test_recurring.py`) cover occurrence dates for every frequency (including the yearly Feb 29 clamp and `ends_on`), rule validation, `next_occurrence`, auto-apply (creating the item planned for every occurrence in the period, matching an existing item by name, hitting every covering budget, idempotency), landing unassigned without auto-apply, the approve/reject flow and a rejected occurrence never coming back, the job running for every user, the checklist (monthly budgets only; done only once the confirmed actual reaches the plan, partial payments not enough; pending transactions ignored and refunds netted; a $0-planned item needs something logged; a recurring payment meeting the plan completes it), reordering categories and items, and category descriptions and transaction notes.
+**Tests** run against `disci_test`, a separate database in the same local Postgres, so your dev data is untouched. Each test starts with empty tables (an autouse fixture truncates them as the owner). Use `as_user("<sub>")` from `tests/conftest.py` to send requests as a given dev user. **79 tests** in total. The **21 core tests** cover user creation, settings validation, per-user isolation, RLS (as `disci_api` with no `app.user_id`, no rows are visible), module enable/disable, the prod dev-auth guard and the AWS code paths below. The **21 finance tests** (`tests/modules/finance/test_finance.py`) cover period bounds and default names, category seeding on enable, per-kind custom categories, uncategorizing on category delete, multiple budgets per period, Uncategorized items, the item/category kind check, opposite-kind netting, the per-budget allocation cap, counting the same dollars in two budgets, transaction delete, editing a transaction (`GET` shows its allocations; `PUT` changes its fields and moves / adds allocations, rejects an allocation over the amount, and 404s for another user), cross-user isolation, and copying a budget (items carried over without transactions, same period type required, no copying another user's budget). The **26 recurring tests** (`tests/modules/finance/test_recurring.py`) cover occurrence dates for every frequency (including the yearly Feb 29 clamp and `ends_on`), rule validation, `next_occurrence`, auto-apply (creating the item planned for every occurrence in the period, matching an existing item by name, hitting every covering budget, idempotency), landing unassigned without auto-apply, the approve/reject flow and a rejected occurrence never coming back, the job running for every user, the checklist (monthly budgets only; done only once the confirmed actual reaches the plan, partial payments not enough; pending transactions ignored and refunds netted; a $0-planned item needs something logged; a recurring payment meeting the plan completes it), reordering categories and items, and category descriptions and transaction notes. The **11 nutrition tests** (`tests/modules/nutrition/test_nutrition.py`) cover the default tracked nutrients on enable, saving tracked nutrients de-duplicated in display order (unknown key → 422), food names unique per user ignoring case (a deleted food's name reusable) and unknown nutrients staying null, editing a food recalculating past days, day totals (servings multiplied, known values summed, `missing_foods` listed, null when nothing is known, 0 on an empty day), editing and deleting log entries, a deleted food staying on past days but not loggable, history newest first with the `before` cursor, cross-user isolation (foods, days, logging, goals), goal targets and limits (one active of each kind per nutrient) and changing / removing a goal while past days keep the old one.
 
 `tests/core/test_aws.py` exercises the production-only code paths locally:
 - **Cognito mode** builds requests the way Mangum does from an API Gateway event: verified ID-token claims → `Identity`; no claims, an access token (`token_use: access`) or a missing email → 401; the `X-Dev-User` header is ignored.

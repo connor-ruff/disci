@@ -1,0 +1,1 @@
+SELECT tracked_nutrients FROM nutrition.preferences

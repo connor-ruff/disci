@@ -14,3 +14,21 @@ export function formatShortDate(isoDate: string): string {
 export function formatDateRange(start: string, end: string): string {
   return `${formatShortDate(start)} – ${formatShortDate(end)}, ${end.slice(0, 4)}`
 }
+
+/** "2026-10-18" plus n days, as YYYY-MM-DD (calendar math, no timezone shift). */
+export function addDays(isoDate: string, days: number): string {
+  const [y, m, d] = isoDate.split('-').map(Number)
+  const date = new Date(Date.UTC(y, m - 1, d + days))
+  return date.toISOString().slice(0, 10)
+}
+
+/** "2026-10-18" → "Sunday, Oct 18, 2026". */
+export function formatLongDate(isoDate: string): string {
+  const [y, m, d] = isoDate.split('-').map(Number)
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
+}
