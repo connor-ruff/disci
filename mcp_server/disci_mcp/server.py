@@ -5,6 +5,7 @@ from starlette.applications import Starlette
 
 from disci_mcp import finance
 from disci_mcp.auth import CognitoVerifier
+from disci_mcp.request_log import RequestLog
 from disci_mcp.settings import Settings, get_settings
 
 INSTRUCTIONS = """\
@@ -44,4 +45,6 @@ def build_mcp(settings: Settings) -> FastMCP:
 def create_app() -> Starlette:
     """A fresh ASGI app. Its lifespan runs the MCP session manager, which can only be
     started once, so Lambda builds a new app per invocation (cheap: no I/O)."""
-    return build_mcp(get_settings()).streamable_http_app()
+    app = build_mcp(get_settings()).streamable_http_app()
+    app.add_middleware(RequestLog)
+    return app
