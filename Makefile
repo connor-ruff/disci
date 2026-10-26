@@ -14,6 +14,7 @@ API_ENV := DISCI_ENV=local DISCI_AUTH_MODE=dev \
 .DEFAULT_GOAL := help
 .PHONY: help db-up db-down db-roles db-migrate db-rollback db-status db-new db-seed db-reset \
 	db-psql db-test-prepare api-install api api-test api-lint \
+	mcp-install mcp mcp-test mcp-lint \
 	web-install web web-api-types web-check jobs-recurring
 
 help: ## List available commands
@@ -73,6 +74,25 @@ api-lint: ## Lint and format-check the API
 
 jobs-recurring: db-migrate ## Run the recurring-transactions job once (AWS runs it hourly)
 	cd api && $(API_ENV) uv run python -m app.jobs.recurring
+
+# --- MCP server ----------------------------------------------------------------
+
+# Dev auth: no OAuth, acts as the API's dev user. Point an MCP client (e.g. MCP Inspector)
+# at http://localhost:8001/mcp.
+MCP_ENV := DISCI_MCP_ENV=local DISCI_MCP_AUTH_MODE=dev \
+	DISCI_MCP_PUBLIC_URL=http://localhost:8001 DISCI_MCP_API_URL=http://localhost:8000
+
+mcp-install: ## Install MCP server dependencies
+	cd mcp_server && uv sync
+
+mcp: ## Run the MCP server locally (http://localhost:8001/mcp); needs `make api` running
+	cd mcp_server && $(MCP_ENV) uv run uvicorn disci_mcp.server:create_app --factory --reload --port 8001
+
+mcp-test: ## Run MCP server tests (no database or API needed)
+	cd mcp_server && uv run pytest
+
+mcp-lint: ## Lint and format-check the MCP server
+	cd mcp_server && uv run ruff check . && uv run ruff format --check .
 
 # --- Web -----------------------------------------------------------------------
 

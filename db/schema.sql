@@ -80,6 +80,18 @@ $$;
 
 
 --
+-- Name: find_user(text); Type: FUNCTION; Schema: core; Owner: -
+--
+
+CREATE FUNCTION core.find_user(p_cognito_sub text) RETURNS uuid
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'core'
+    AS $$
+    SELECT id FROM core.users WHERE cognito_sub = p_cognito_sub AND deleted_at IS NULL
+$$;
+
+
+--
 -- Name: set_updated_at(); Type: FUNCTION; Schema: core; Owner: -
 --
 
@@ -1076,4 +1088,5 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('20261025155734'),
     ('20261025170608'),
     ('20261025190000'),
-    ('20261026001500');
+    ('20261026001500'),
+    ('20261026170000');

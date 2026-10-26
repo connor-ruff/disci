@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Deploys Disci to AWS: migrate the database, ship the API, publish the web app.
+# Deploys Disci to AWS: migrate the database, ship the API and the MCP server, publish
+# the web app.
 # The infrastructure must already exist (aws_iac_mngr/controlled_resources/disci).
 #
 #   From a laptop:  AWS_PROFILE=connor-ruff-dev-acct scripts/deploy.sh
@@ -15,6 +16,7 @@ echo "==> Reading deploy config from SSM"
 API_FN=$(cfg lambda_api_name)
 MIGRATOR_FN=$(cfg lambda_migrator_name)
 JOBS_FN=$(cfg lambda_jobs_name)
+MCP_FN=$(cfg lambda_mcp_name)
 API_URL=$(cfg api_url)
 WEB_URL=$(cfg web_url)
 WEB_BUCKET=$(cfg web_bucket)
@@ -23,12 +25,14 @@ COGNITO_POOL_ID=$(cfg cognito_user_pool_id)
 COGNITO_CLIENT_ID=$(cfg cognito_client_id)
 COGNITO_DOMAIN=$(cfg cognito_domain)
 
-echo "==> Building API package"
+echo "==> Building API and MCP packages"
 "$ROOT/scripts/build-api-zip.sh"
+"$ROOT/scripts/build-mcp-zip.sh"
 
+# update_code <function> [zip], default zip: the API's.
 update_code() {
   aws lambda update-function-code --function-name "$1" \
-    --zip-file "fileb://$ROOT/build/api.zip" --output text --query LastUpdateStatus >/dev/null
+    --zip-file "fileb://$ROOT/build/${2:-api.zip}" --output text --query LastUpdateStatus >/dev/null
   aws lambda wait function-updated-v2 --function-name "$1"
 }
 
@@ -48,6 +52,10 @@ fi
 echo "==> Updating API and jobs"
 update_code "$API_FN"
 update_code "$JOBS_FN"
+
+# After the API: the MCP server's tools rely on the API accepting its access tokens.
+echo "==> Updating MCP server"
+update_code "$MCP_FN" mcp.zip
 
 echo "==> Building web"
 (

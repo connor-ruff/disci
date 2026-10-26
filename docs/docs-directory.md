@@ -10,8 +10,8 @@ docs/
 │   └── project-inspiration.md
 ├── ops/                           # Running the app in production (AWS)
 │   └── deployment.md              # Start here: architecture as built, resources, deploys, DB access, security, cost
-├── mcp/                           # MCP server (Claude connector) build notes
-│   └── mcp-overview.md            # Start here: status, auth test findings, how to repeat it, SDK notes, build checklist, stub source
+├── mcp/                           # MCP server (Claude connector, mcp_server/ folder)
+│   └── mcp-overview.md            # Start here: status, auth test findings, server layout/settings/tools, local dev, Lambda, connecting Claude, checklist
 ├── api/                           # Back-end API docs (FastAPI, api/ folder)
 │   └── api-overview.md            # Start here: layout, settings, auth, request flow, modules, endpoints
 ├── db/                            # Postgres data model docs (one file per module)
@@ -38,7 +38,7 @@ Contains documentation about running Disci in production on AWS. Start with `ops
 
 ## mcp
 
-Contains notes for building the MCP server (so Claude can act on Disci data). Start with `mcp/mcp-overview.md`: status, what the throwaway Cognito auth test proved, how to repeat it, Python SDK notes, the build checklist (decided vs open) and the stub server source. Auth detail lives in `ops/deployment.md` §9.
+Contains documentation for the MCP server (`mcp_server/`, so Claude can act on Disci data). Start with `mcp/mcp-overview.md`: status, what the Cognito auth test proved and how to repeat it, Python SDK notes, the server's layout, settings, auth and tools, local dev and tests, the Lambda (and its Mangum lifespan gotcha), how to connect Claude, the checklist (decided vs open) and the historical stub source. Infrastructure lives in `ops/deployment.md` §2.2 and auth detail in §9.
 
 ## api
 

@@ -20,12 +20,12 @@ api/
 │   │   └── recurring.py           # hourly: create due recurring transactions (handler + `python -m`)
 │   ├── core/                      # cross-module plumbing
 │   │   ├── settings.py            # Settings from DISCI_* env vars
-│   │   ├── auth.py                # request → Identity (sub, email)
-│   │   ├── db.py                  # connection pool, per-request transaction (DbDep)
+│   │   ├── auth.py                # request → Identity (sub, email; email None for MCP access tokens)
+│   │   ├── db.py                  # connection pool, per-request transaction (DbDep), sub → user
 │   │   ├── rds_iam.py             # IamAuthConnection: logs in with an RDS IAM token
 │   │   ├── sql.py                 # Queries: loads queries/<name>.sql
 │   │   ├── module.py              # Module dataclass (what a module registers)
-│   │   ├── queries/               # ensure_user.sql, set_user.sql
+│   │   ├── queries/               # ensure_user.sql, find_user.sql, set_user.sql
 │   │   ├── users/                 # GET/PUT /me (router, schemas, queries/)
 │   │   └── user_modules/          # GET /me/modules, PUT/DELETE /me/modules/{key}
 │   └── modules/
@@ -87,6 +87,7 @@ Read from environment variables with the `DISCI_` prefix (`core/settings.py`).
 | `DISCI_AUTH_MODE` | `dev`, `cognito` | none | `dev` is **refused when `DISCI_ENV=prod`** (startup fails). |
 | `DISCI_CORS_ORIGINS` | JSON list | `["http://localhost:5173"]` | The Vite dev server. In production, the CloudFront origin. |
 | `DISCI_DB_IAM_AUTH` | `true`, `false` | `false` | `true` makes the pool use `IamAuthConnection`: no password in the URL, each new connection signs an RDS IAM auth token (§4). Production only. |
+| `DISCI_MCP_CLIENT_ID` | Cognito app client id | unset | The `disci-mcp` client. In cognito mode, access tokens issued to it (forwarded by the MCP server) are accepted (§3). Unset: only web ID tokens are. |
 
 The first three have **no defaults on purpose**: a misconfigured deploy fails at startup instead of quietly running with local values. `make api` and the tests set them for you. In production, all of them are Lambda environment variables set by OpenTofu (`compute.tf` in the IaC repo), not read from SSM: the Lambda has no internet access.
 
@@ -97,11 +98,11 @@ The first three have **no defaults on purpose**: a misconfigured deploy fails at
 | Mode | Who the request acts as |
 |---|---|
 | `dev` | `local-dev-user` (the user seeded by `db/seeds/dev.sql`), or whatever `sub` is in the **`X-Dev-User`** header. Email becomes `<sub>@disci.local`. Lets you test as several users locally. |
-| `cognito` | The user from a Cognito **ID token**. The API does **not** verify the JWT itself: API Gateway's JWT authorizer already checked signature, expiry, issuer and audience before invoking the Lambda. The API reads the verified claims from the raw Lambda event, which Mangum exposes as `request.scope["aws.event"]` (`requestContext.authorizer.jwt.claims`), and requires `token_use == "id"` and an `email` claim. Missing or unusable claims → **401**. The `X-Dev-User` header is ignored. |
+| `cognito` | The user from a verified Cognito token. The API does **not** verify the JWT itself: API Gateway's JWT authorizer already checked signature, expiry, issuer and audience (`aud` for ID tokens, `client_id` for access tokens; the audience list is the web and `disci-mcp` clients) before invoking the Lambda. The API reads the verified claims from the raw Lambda event, which Mangum exposes as `request.scope["aws.event"]` (`requestContext.authorizer.jwt.claims`), and accepts either an **ID token** (`token_use == "id"` with an `email` claim; the web app) or an **access token** (`token_use == "access"` with `client_id == DISCI_MCP_CLIENT_ID`; the MCP server forwarding Claude's token), which yields an identity with no email. Anything else (no claims, no `sub`, another client's access token, `DISCI_MCP_CLIENT_ID` unset) → **401**. The `X-Dev-User` header is ignored. |
 
-Auth produces an `Identity(sub, email)`; it never touches the database itself.
+Auth produces an `Identity(sub, email)` (`email` is `None` for MCP access tokens); it never touches the database itself.
 
-The claims can't be forged because the Lambda can only be invoked by API Gateway, and every route except `GET /health` goes through the authorizer. Only **ID tokens** are accepted because Cognito's access token has no `email`. That's a deliberate v1 choice; an MCP client will likely send access tokens, so revisit it then. The MCP plan is to key on the access token's `sub` rather than `email` (see [deployment.md §9](../ops/deployment.md)).
+The claims can't be forged because the Lambda can only be invoked by API Gateway, and every `disci-api` route except `GET /health` goes through the authorizer (the MCP server's own routes, `/mcp` and `/.well-known/*`, go to the `disci-mcp` Lambda instead). Cognito access tokens carry no `email`, so an MCP request can only act as a user that **already exists** (looked up by `sub`, §4); only a web sign-in creates the user. See [mcp-overview.md](../mcp/mcp-overview.md).
 
 ---
 
@@ -110,7 +111,7 @@ The claims can't be forged because the Lambda can only be invoked by API Gateway
 Endpoints that need the database take `db: DbDep` (`core/db.py`). For each request it:
 
 1. Takes a connection from the pool and opens **one transaction**.
-2. Calls `core.ensure_user(sub, email)`, creating the `core.users` row on first sign-in.
+2. Maps the identity to a user: with an email (web), `core.ensure_user(sub, email)`, creating the `core.users` row on first sign-in; without one (MCP), `core.find_user(sub)`, which only looks the user up, and no user → **403** "Sign in to the Disci web app once first".
 3. Runs `set_config('app.user_id', <id>, true)` (same as `SET LOCAL`, but takes a bound parameter), so row-level security exposes only that user's rows.
 4. Hands the endpoint `Db(conn, user_id)`.
 5. **Commits** if the endpoint returns, **rolls back** if it raises.
@@ -153,7 +154,7 @@ Interactive docs: http://localhost:8000/docs while `make api` is running.
 | Method | Path | What it does |
 |---|---|---|
 | GET | `/health` | `{"status": "ok"}`. No auth, no database. In production this is the only route API Gateway leaves open. |
-| GET | `/me` | The current user (`id`, `email`, `display_name`, `timezone`, `week_starts_on`). Creates the user on first call. |
+| GET | `/me` | The current user (`id`, `email`, `display_name`, `timezone`, `week_starts_on`). Creates the user on first call (web sign-ins only; an MCP request with no user yet → 403). |
 | PUT | `/me` | Replace the user's settings: `display_name` (≤100 chars, nullable), `timezone` (IANA name), `week_starts_on` (1–7). Invalid values → 422. |
 | GET | `/me/modules` | Every registered module (`key`, `name`, `description`, `enabled`). |
 | PUT | `/me/modules/{key}` | Enable a module. Idempotent. First enable runs the module's `setup`. Unknown key → 404. |
@@ -248,10 +249,10 @@ Requires Docker (for Postgres) and **uv**.
 | `make api-lint` | `ruff check` and `ruff format --check`. |
 | `make jobs-recurring` | Applies pending migrations, then runs the recurring-transactions job once against the local database, as `disci_api` (AWS runs it hourly; see §9.1). |
 
-**Tests** run against `disci_test`, a separate database in the same local Postgres, so your dev data is untouched. Each test starts with empty tables (an autouse fixture truncates them as the owner). Use `as_user("<sub>")` from `tests/conftest.py` to send requests as a given dev user. **80 tests** in total. The **21 core tests** cover user creation, settings validation, per-user isolation, RLS (as `disci_api` with no `app.user_id`, no rows are visible), module enable/disable, the prod dev-auth guard and the AWS code paths below. The **21 finance tests** (`tests/modules/finance/test_finance.py`) cover period bounds and default names, category seeding on enable, per-kind custom categories, uncategorizing on category delete, multiple budgets per period, Uncategorized items, the item/category kind check, opposite-kind netting, the per-budget allocation cap, counting the same dollars in two budgets, transaction delete, editing a transaction (`GET` shows its allocations; `PUT` changes its fields and moves / adds allocations, rejects an allocation over the amount, and 404s for another user), cross-user isolation, and copying a budget (items carried over without transactions, same period type required, no copying another user's budget). The **26 recurring tests** (`tests/modules/finance/test_recurring.py`) cover occurrence dates for every frequency (including the yearly Feb 29 clamp and `ends_on`), rule validation, `next_occurrence`, auto-apply (creating the item planned for every occurrence in the period, matching an existing item by name, hitting every covering budget, idempotency), landing unassigned without auto-apply, the approve/reject flow and a rejected occurrence never coming back, the job running for every user, the checklist (monthly budgets only; done only once the confirmed actual reaches the plan, partial payments not enough; pending transactions ignored and refunds netted; a $0-planned item needs something logged; a recurring payment meeting the plan completes it), reordering categories and items, and category descriptions and transaction notes. The **12 nutrition tests** (`tests/modules/nutrition/test_nutrition.py`) cover the default tracked nutrients on enable, saving tracked nutrients de-duplicated in display order (unknown key → 422), food names unique per user ignoring case (a deleted food's name reusable) and unknown nutrients staying null, editing a food recalculating past days, day totals (servings multiplied, known values summed, `missing_foods` listed, null when nothing is known, 0 on an empty day), food values keeping 6 decimal places (a 7th place → 422), editing and deleting log entries, a deleted food staying on past days but not loggable, history newest first with the `before` cursor, cross-user isolation (foods, days, logging, goals), goal targets and limits (one active of each kind per nutrient) and changing / removing a goal while past days keep the old one.
+**Tests** run against `disci_test`, a separate database in the same local Postgres, so your dev data is untouched. Each test starts with empty tables (an autouse fixture truncates them as the owner). Use `as_user("<sub>")` from `tests/conftest.py` to send requests as a given dev user. **84 tests** in total. The **25 core tests** cover user creation, settings validation, per-user isolation, an email-less (MCP) identity getting 403 until a web sign-in creates the user and then finding it, RLS (as `disci_api` with no `app.user_id`, no rows are visible), module enable/disable, the prod dev-auth guard and the AWS code paths below. The **21 finance tests** (`tests/modules/finance/test_finance.py`) cover period bounds and default names, category seeding on enable, per-kind custom categories, uncategorizing on category delete, multiple budgets per period, Uncategorized items, the item/category kind check, opposite-kind netting, the per-budget allocation cap, counting the same dollars in two budgets, transaction delete, editing a transaction (`GET` shows its allocations; `PUT` changes its fields and moves / adds allocations, rejects an allocation over the amount, and 404s for another user), cross-user isolation, and copying a budget (items carried over without transactions, same period type required, no copying another user's budget). The **26 recurring tests** (`tests/modules/finance/test_recurring.py`) cover occurrence dates for every frequency (including the yearly Feb 29 clamp and `ends_on`), rule validation, `next_occurrence`, auto-apply (creating the item planned for every occurrence in the period, matching an existing item by name, hitting every covering budget, idempotency), landing unassigned without auto-apply, the approve/reject flow and a rejected occurrence never coming back, the job running for every user, the checklist (monthly budgets only; done only once the confirmed actual reaches the plan, partial payments not enough; pending transactions ignored and refunds netted; a $0-planned item needs something logged; a recurring payment meeting the plan completes it), reordering categories and items, and category descriptions and transaction notes. The **12 nutrition tests** (`tests/modules/nutrition/test_nutrition.py`) cover the default tracked nutrients on enable, saving tracked nutrients de-duplicated in display order (unknown key → 422), food names unique per user ignoring case (a deleted food's name reusable) and unknown nutrients staying null, editing a food recalculating past days, day totals (servings multiplied, known values summed, `missing_foods` listed, null when nothing is known, 0 on an empty day), food values keeping 6 decimal places (a 7th place → 422), editing and deleting log entries, a deleted food staying on past days but not loggable, history newest first with the `before` cursor, cross-user isolation (foods, days, logging, goals), goal targets and limits (one active of each kind per nutrient) and changing / removing a goal while past days keep the old one.
 
 `tests/core/test_aws.py` exercises the production-only code paths locally:
-- **Cognito mode** builds requests the way Mangum does from an API Gateway event: verified ID-token claims → `Identity`; no claims, an access token (`token_use: access`) or a missing email → 401; the `X-Dev-User` header is ignored.
+- **Cognito mode** builds requests the way Mangum does from an API Gateway event: verified ID-token claims → `Identity`; an MCP-client access token → `Identity` with no email; that access token is rejected (401) when `mcp_client_id` is unset; no claims, another client's access token, an access token without `client_id` or an ID token without email → 401; the `X-Dev-User` header is ignored.
 - **`IamAuthConnection`** with `rds_auth_token` monkeypatched: the token is used as the password (the local `disci_api` password stands in for a signed token) and is requested for the right host/port/user; a wrong token fails to connect.
 
 ---
@@ -265,6 +266,8 @@ Built into one zip by `scripts/build-api-zip.sh` (no Docker) and shipped by `scr
 | `disci-api` | `app.lambda_handler.handler` | `Mangum(app, lifespan="auto")`: turns API Gateway HTTP API (payload v2) events into ASGI requests for the FastAPI app. |
 | `disci-migrator` | `app.migrator.handler` | Connects as the RDS master user (`DISCI_MIGRATOR_DATABASE_URL`), runs `db/aws/roles.sql` (idempotent: ensures `disci_app`, `disci_api`, `rds_iam` grant), then the bundled `bin/dbmate --no-dump-schema --migrations-dir db/migrations up`. Raises if dbmate fails, which stops the deploy before the API is updated. Returns dbmate's output. |
 | `disci-jobs` | `app.jobs.recurring.handler` | Scheduled work, triggered hourly by EventBridge Scheduler. Today it only creates due recurring transactions (§9.1). Same environment variables as `disci-api`. |
+
+The MCP server (`disci-mcp`) is a separate project and zip (`mcp_server/`, [mcp-overview.md](../mcp/mcp-overview.md)) that calls this API over HTTP.
 
 The deploy runs the migrator **before** updating the API, so migrations must be backward compatible with the live API (expand/contract). `disci-jobs` gets the same zip right after `disci-api`.
 

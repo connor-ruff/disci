@@ -23,9 +23,9 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - run: make api-install web-install
-      - run: make api-lint
-      - run: make api-test
+      - run: make api-install mcp-install web-install
+      - run: make api-lint mcp-lint
+      - run: make api-test mcp-test
       - run: make web-check
 
   deploy:

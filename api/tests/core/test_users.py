@@ -3,7 +3,9 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
+from app.core.auth import Identity, get_identity
 from app.core.settings import Settings
+from app.main import app
 from tests.conftest import OWNER_URL, as_user
 
 SETTINGS = {"display_name": "Connor", "timezone": "America/Chicago", "week_starts_on": 7}
@@ -46,6 +48,19 @@ def test_users_only_see_themselves(client: TestClient) -> None:
 
     assert bob["display_name"] is None
     assert bob["email"] == "bob@disci.local"
+
+
+def test_identity_without_email_only_finds_existing_users(client: TestClient) -> None:
+    """MCP requests (access tokens, no email) can't create a user, only act as one."""
+    app.dependency_overrides[get_identity] = lambda: Identity(sub="alice", email=None)
+    try:
+        assert client.get("/me").status_code == 403
+        del app.dependency_overrides[get_identity]
+        alice = client.get("/me", headers=as_user("alice")).json()  # first web sign-in
+        app.dependency_overrides[get_identity] = lambda: Identity(sub="alice", email=None)
+        assert client.get("/me").json()["id"] == alice["id"]
+    finally:
+        app.dependency_overrides.pop(get_identity, None)
 
 
 def test_rls_hides_other_users_rows() -> None:
