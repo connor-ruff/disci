@@ -32,7 +32,7 @@ Contains initial planning / architecture docs.
 
 ## ops
 
-Contains documentation about running Disci in production on AWS. Start with `ops/deployment.md`, the ops entry point and source of truth for what was built: the architecture and resources (OpenTofu in the `aws_iac_mngr` repo), how a deploy works from a laptop or CI, infrastructure changes and Cognito users, database access through the EC2 Instance Connect tunnel, the security model, cost and the budget, and known follow-ups.
+Contains documentation about running Disci in production on AWS. Start with `ops/deployment.md`, the ops entry point and source of truth for what was built: the architecture and resources (OpenTofu in the `aws_iac_mngr` repo), how a deploy works from a laptop or CI, infrastructure changes and Cognito users (invite-only: inviting and removing people), database access through the EC2 Instance Connect tunnel, the security model, cost and the budget, and known follow-ups.
 
 ## api
 

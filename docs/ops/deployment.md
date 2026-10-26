@@ -53,7 +53,7 @@ All infrastructure is **OpenTofu** in the IaC repo, root `aws_iac_mngr/controlle
 |---|---|
 | `network.tf` | Private-only VPC (10.42.0.0/16, 2 subnets, no IGW/NAT), security groups (Lambda → RDS :5432, EICE → RDS :5432), EC2 Instance Connect Endpoint |
 | `database.tf` | RDS Postgres 18, db.t4g.micro, 20 GB gp3, encrypted, IAM auth on, 7-day backups, deletion protection, final snapshot. Master password from `random_password` |
-| `auth.tf` | Cognito user pool (email usernames, **self-signup off**, deletion protection), hosted login domain, public web client (code + PKCE, no secret; ID/access tokens 60 min, refresh 30 days), the first (admin) user |
+| `auth.tf` | Cognito user pool (email usernames, **self-signup off: invite-only**, deletion protection), hosted login domain, public web client (code + PKCE, no secret; ID/access tokens 60 min, refresh 30 days), the admin user (`admin_email`) and one user per address in `invited_emails` |
 | `compute.tf` | `disci-api`, `disci-migrator` and `disci-jobs` Lambdas (arm64, Python 3.13, zip, 512 MB; 15 s / 300 s / 120 s timeouts), their IAM roles, 14-day log groups. Created with **placeholder code**; `ignore_changes = [filename, source_code_hash]` so app deploys never show as drift |
 | `schedules.tf` | EventBridge Scheduler: the hourly `disci-recurring-transactions` schedule targeting `disci-jobs`, and the `disci-scheduler` role it assumes (may only `lambda:InvokeFunction` on `disci-jobs`) |
 | `api.tf` | HTTP API, CORS for the web origin, Cognito JWT authorizer on `$default`, open `GET /health`, throttle 10 rps / burst 20 |
@@ -133,7 +133,7 @@ tofu plan -out=tfplan
 tofu apply tfplan
 ```
 
-- `terraform.tfvars` (gitignored) holds `admin_email`; copy from `terraform.tfvars.example` on a new machine.
+- `terraform.tfvars` (gitignored) holds `admin_email` and `invited_emails`; copy from `terraform.tfvars.example` on a new machine. The IaC repo is public, so email addresses only ever go in this file, never in committed files.
 - Lambda **code** never shows as drift (ignored), but Lambda **configuration** (env vars, memory, timeout) is owned by tofu. A new `DISCI_*` setting the API needs must be added in `compute.tf` and applied **before** the code that requires it is deployed.
 - New deploy config for the script goes in `outputs.tf`'s `deploy_config` map (→ SSM). Nothing secret goes in SSM.
 - If the deploy script needs a new AWS permission, add it to `ci.tf` (the deploy role is deliberately code-only).
@@ -141,8 +141,15 @@ tofu apply tfplan
 
 ### Cognito users
 
-- Self-signup is off. The first user is created by `auth.tf` from `admin_email`; Cognito emails a **temporary password** (valid 7 days), and you set a real one at first sign-in on the hosted login page. Passwords: at least 12 chars with upper, lower and a number.
-- To add another user, either add a `aws_cognito_user` resource in `auth.tf` or use the console / `aws cognito-idp admin-create-user` (the pool id is in SSM at `/disci/prod/cognito_user_pool_id`).
+- Self-signup is off; the pool is **invite-only**. `auth.tf` creates the admin user from `admin_email` plus one user per address in `invited_emails` (a list, default empty), both set in the gitignored `terraform.tfvars`. `invited_emails` is not marked `sensitive` because OpenTofu can't `for_each` over sensitive values; it still only lives in that file.
+- Each user gets an emailed **temporary password** (valid 7 days) and sets a real one at first sign-in on the hosted login page. Passwords: at least 12 chars with upper, lower and a number.
+- **To invite someone**: add their email to `invited_emails` in `terraform.tfvars`, then `tofu plan -out=tfplan` and `tofu apply tfplan`.
+- **If the temporary password expires** before they sign in, resend it (the pool id is in SSM at `/disci/prod/cognito_user_pool_id`). This is the only time to create users outside tofu:
+  ```bash
+  aws cognito-idp admin-create-user --user-pool-id <pool> --username <email> --message-action RESEND
+  ```
+- **Removing an email** from `invited_emails` and applying deletes that Cognito user, so they can no longer sign in. Their app data stays in Postgres.
+- A new user starts with **no modules turned on**; they enable what they want from Manage modules.
 - The API creates the `core.users` row on a user's first request, keyed by the Cognito `sub`.
 - The web client's callback and logout URLs are only the CloudFront origin, so Cognito login does not work from `localhost`. Local development uses dev auth (no login).
 
@@ -183,7 +190,7 @@ Tunnels last up to 1 hour. The master user `disci` owns the schema and **bypasse
 |---|---|---|
 | Anyone on the internet | Load the static web app; call `GET /health` | CloudFront; API Gateway route without authorizer |
 | A signed-in Cognito user | Call any other API route, seeing only their own rows | API Gateway JWT authorizer (signature, expiry, issuer, audience = web client), then the API (requires `token_use == "id"` and an `email` claim), then Postgres RLS on `app.user_id` |
-| New people | Cannot sign up | Cognito self-signup off; users created by the admin |
+| New people | Cannot sign up; only invited emails get an account | Cognito self-signup off (invite-only); users created by tofu from `admin_email` and `invited_emails` |
 | S3 bucket | Not public; readable only by this CloudFront distribution | Public access block + bucket policy on OAC `AWS:SourceArn` |
 | API Lambda | Invoked only by this API Gateway; connects to RDS only as `disci_api` | Lambda permission scoped to the API's execution ARN; IAM `rds-db:connect` on `disci_api` |
 | Jobs Lambda | Invoked by the scheduler role (also invokable by the deploy role and admins); connects to RDS only as `disci_api`, under RLS per user | `disci-scheduler` role may only invoke `disci-jobs`; IAM `rds-db:connect` on `disci_api`; the only cross-user read is `finance.users_with_recurring()` (ids and timezones) |

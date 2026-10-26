@@ -116,7 +116,7 @@ Discussed and agreed with the user; details are in `disci-infrastructure.md`.
 | Budget | Keep it **~$15/mo**. Avoid NAT Gateways and public IPs | See the cost section of the infra doc. |
 | App repo | **This repo (`disci`) is the monorepo**: `docs/` plus app code | One place for code and docs. |
 | Build order | **Framework first, then finance.** Deploy a walking skeleton (infra, auth, user row, app shell with module nav) before features. Then a thin finance slice (budgets, categories, items, manual transactions), then recurring transactions and the bills checklist. | Shakes out infra and auth risk before feature code. Finance is the biggest current pain point. |
-| Auth | **Cognito Hosted UI**, self-signup **off** for now. The `core.users` row is created lazily on the first authenticated API request. | Simplest login. No Cognito trigger Lambda needed. |
+| Auth | **Cognito Hosted UI**, self-signup **off**: invite-only (users are created by tofu from an email list). The `core.users` row is created lazily on the first authenticated API request. | Simplest login. No Cognito trigger Lambda needed. |
 | Domain | **CloudFront default domain** for v1 | A custom domain can come later. |
 | Postgres | **Latest major version RDS offers (18)** | Native `uuidv7()`. |
 | DB access from the API | **Plain SQL via psycopg 3**, no ORM. Queries are always parameterized. | Full visibility into SQL. See the infra doc for the injection-safety rules. |

@@ -56,10 +56,10 @@ aws_iac_mngr/
     └── disci/                      # one root, ONE state: key = disci/terraform.tfstate
         ├── main.tf                 # backend; provider us-east-2; default_tags { project = "disci" }
         │                           #   (a us-east-1 alias for CloudFront's ACM cert comes with a custom domain)
-        ├── variables.tf            # admin_email (gitignored tfvars), github_repo, monthly budget
+        ├── variables.tf            # admin_email, invited_emails (gitignored tfvars), github_repo, monthly budget
         ├── network.tf              # VPC, private subnets, security groups, EC2 Instance Connect Endpoint
         ├── database.tf             # RDS Postgres
-        ├── auth.tf                 # Cognito user pool + app clients
+        ├── auth.tf                 # Cognito user pool (invite-only) + app clients + users
         ├── compute.tf              # Lambdas (api, migrator, jobs now; mcp later), zip packages, no ECR
         ├── api.tf                  # API Gateway HTTP API, routes
         ├── frontend.tf             # S3 bucket + CloudFront
