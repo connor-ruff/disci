@@ -10,6 +10,8 @@ docs/
 │   └── project-inspiration.md
 ├── ops/                           # Running the app in production (AWS)
 │   └── deployment.md              # Start here: architecture as built, resources, deploys, DB access, security, cost
+├── mcp/                           # MCP server (Claude connector) build notes
+│   └── mcp-overview.md            # Start here: status, auth test findings, how to repeat it, SDK notes, build checklist, stub source
 ├── api/                           # Back-end API docs (FastAPI, api/ folder)
 │   └── api-overview.md            # Start here: layout, settings, auth, request flow, modules, endpoints
 ├── db/                            # Postgres data model docs (one file per module)
@@ -33,6 +35,10 @@ Contains initial planning / architecture docs.
 ## ops
 
 Contains documentation about running Disci in production on AWS. Start with `ops/deployment.md`, the ops entry point and source of truth for what was built: the architecture and resources (OpenTofu in the `aws_iac_mngr` repo), how a deploy works from a laptop or CI, infrastructure changes and Cognito users (invite-only: inviting and removing people), database access through the EC2 Instance Connect tunnel, the security model, cost and the budget, and known follow-ups.
+
+## mcp
+
+Contains notes for building the MCP server (so Claude can act on Disci data). Start with `mcp/mcp-overview.md`: status, what the throwaway Cognito auth test proved, how to repeat it, Python SDK notes, the build checklist (decided vs open) and the stub server source. Auth detail lives in `ops/deployment.md` §9.
 
 ## api
 
