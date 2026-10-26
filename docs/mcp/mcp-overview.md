@@ -15,7 +15,7 @@ Details of the client, discovery and tokens are in [deployment.md §9](../ops/de
 - Claude lists tools, resources and prompts right after connecting (UA `Claude-User`; requests were also seen from `python-httpx`).
 - The access token has `sub` but no `email` and no `aud`.
 - With a 5-minute access token, Claude refreshed silently (new `jti`, no 401, no re-login).
-- One request returned HTTP 400 mid-handshake (followed by successful retries) and was never explained. Treat as unknown; see (g) in §6.
+- One request returned HTTP 400 mid-handshake (followed by successful retries). Explained on 2026-10-26: see (g) in §6.
 
 ---
 
@@ -148,9 +148,7 @@ Logs: `/aws/lambda/disci-mcp` (14 days). Request lines only: `aws logs tail /aws
 - (d) **Disci settings page** showing each user the MCP URL, client ID and shared secret. The secret is shared across invited users, which is acceptable now; Anthropic-held credentials (directory listing) or a DCR provider would remove the paste step later.
 - (e) **CloudWatch alarms / alerting.** None exist yet, including for `disci-jobs` and `disci-mcp` failures.
 - (f) **API Gateway limits.** 30 s HTTP API timeout and no streaming (fine for stateless tools; the Lambda times out at 25 s).
-- (g) **The mid-handshake 400** (§1). The first production connect (2026-10-26) worked, with no errors in the `disci-mcp` logs, and the Lambda didn't log status codes then. It now does (`RequestLog`, §4.2), so the next 400 shows up in the `disci-mcp` logs with its JSON-RPC method and user-agent; no API Gateway access logs needed.
-
-**Limits to design within**
+- (g) **The mid-h- (g) **The mid-handshake 400: explained, harmless, not yet fixed.** The request log (§4.2) showed it on 2026-10-26: Claude (`ua=Claude-User`) opens with a `server/discover` request, which mcp 1.30 doesn't know (its latest protocol version is 2025-11-25). The SDK fails to validate the message and answers HTTP 400 instead of a JSON-RPC "method not found" error. Claude then carries on (`notifications/initialized`, `tools/call`, both fine). Other clients don't send it: Instinct AI (`ua=python-requests`) does the standard `initialize` → `notifications/initialized` → `tools/call`. Likely fix: move to mcp 2.x (breaking API changes, so its own change), which may support `server/discover`.ign within**
 
 - About 150,000 chars max tool result and 240 s per tool call on claude.ai.
 - Claude's egress range is `160.79.104.0/21`.
