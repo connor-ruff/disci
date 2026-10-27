@@ -17,14 +17,14 @@ docs/
 ├── db/                            # Postgres data model docs (one file per module)
 │   ├── db-overview.md             # Start here: modules, conventions, open questions
 │   ├── shared.md                  # core schema: users, user_modules, helper functions
-│   ├── finance.md
+│   ├── finance.md                 # budgets, items, transactions, allocations, recurring rules, Inbox entries, preferences
 │   ├── tasks.md                   # four fixed task types, tasks + task_completions
 │   └── nutrition.md
 └── ui/                            # Front-end layout & UX docs
     ├── ui-overview.md             # General style guidelines
     ├── app-shell.md               # Shell, module menu, opt-in modules, Settings page, how modules plug in
     ├── web-overview.md            # Web app engineering: stack, layout, API client, theming, local dev
-    ├── finance-ui.md              # Finance screens: routes, budget page, forms, what the numbers mean, settings
+    ├── finance-ui.md              # Finance screens: routes, budget page, forms, Recurring, Inbox, what the numbers mean, settings
     ├── nutrition-ui.md            # Nutrition screens: daily sheet, quick adds, history, food repo, goals, unknown values
     └── tasks-ui.md                # Tasks screens: Today, All tasks, Kinds guide, check control, task sheet
 ```
@@ -39,7 +39,7 @@ Contains documentation about running Disci in production on AWS. Start with `ops
 
 ## mcp
 
-Contains documentation for the MCP server (`mcp_server/`, so Claude can act on Disci data). Start with `mcp/mcp-overview.md`: status, what the Cognito auth test proved and how to repeat it, Python SDK notes, the server's layout, settings and auth, its 19 tools (9 finance, 8 nutrition, 2 tasks; the 2 tasks tools not yet deployed) with the API endpoints behind each and design conventions, local dev and tests, the Lambda (and its Mangum lifespan gotcha), how to connect Claude, the checklist (decided vs open) and the historical stub source. Infrastructure lives in `ops/deployment.md` §2.2 and auth detail in §9.
+Contains documentation for the MCP server (`mcp_server/`, so Claude can act on Disci data). Start with `mcp/mcp-overview.md`: status, what the Cognito auth test proved and how to repeat it, Python SDK notes, the server's layout, settings and auth, its 19 tools (9 finance, 8 nutrition, 2 tasks; the 2 tasks tools and the reworked Finance Inbox tools not yet deployed) with the API endpoints behind each and design conventions, local dev and tests, the Lambda (and its Mangum lifespan gotcha), how to connect Claude, the checklist (decided vs open) and the historical stub source. Infrastructure lives in `ops/deployment.md` §2.2 and auth detail in §9.
 
 ## api
 

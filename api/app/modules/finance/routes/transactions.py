@@ -3,15 +3,11 @@ from uuid import UUID
 from fastapi import APIRouter, status
 
 from app.core.db import Db, DbDep
-from app.modules.finance import service
-from app.modules.finance.routes._common import invalid, not_found
+from app.modules.finance.routes._common import not_found, write_allocations
 from app.modules.finance.schemas import (
-    AllocationIn,
     AllocationsReplace,
     ApproveIn,
     BudgetTransactionOut,
-    Inbox,
-    InboxTransactionOut,
     TransactionCreate,
     TransactionDetail,
     TransactionOut,
@@ -22,23 +18,6 @@ from app.modules.finance.sql import queries
 router = APIRouter()
 
 
-def _write_allocations(db: Db, transaction_id: UUID, amount, allocations: list[AllocationIn]):
-    """Validates and inserts allocations for a transaction (replacing none)."""
-    item_ids = [a.budget_item_id for a in allocations]
-    rows = db.conn.execute(queries["get_item_budgets"], {"item_ids": item_ids}).fetchall()
-    error = service.allocation_errors(amount, allocations, {r["id"]: r["budget_id"] for r in rows})
-    if error:
-        raise invalid(error)
-    with db.conn.cursor() as cur:
-        cur.executemany(
-            queries["insert_allocation"],
-            [
-                {"user_id": db.user_id, "transaction_id": transaction_id, **a.model_dump()}
-                for a in allocations
-            ],
-        )
-
-
 @router.post("/transactions", status_code=status.HTTP_201_CREATED)
 def create_transaction(body: TransactionCreate, db: DbDep) -> TransactionOut:
     txn = db.conn.execute(
@@ -47,7 +26,7 @@ def create_transaction(body: TransactionCreate, db: DbDep) -> TransactionOut:
     ).fetchone()
     if txn is None:
         raise RuntimeError("INSERT ... RETURNING returned no row")
-    _write_allocations(db, txn["id"], body.amount, body.allocations)
+    write_allocations(db, txn["id"], body.amount, body.allocations)
     return TransactionOut.model_validate(txn)
 
 
@@ -78,7 +57,7 @@ def update_transaction(
     if txn is None:
         raise not_found("transaction")
     db.conn.execute(queries["delete_transaction_allocations"], {"transaction_id": transaction_id})
-    _write_allocations(db, transaction_id, body.amount, body.allocations)
+    write_allocations(db, transaction_id, body.amount, body.allocations)
     return _detail(db, txn)
 
 
@@ -91,7 +70,7 @@ def replace_allocations(
     if txn is None:
         raise not_found("transaction")
     db.conn.execute(queries["delete_transaction_allocations"], {"transaction_id": transaction_id})
-    _write_allocations(db, transaction_id, txn["amount"], body.allocations)
+    write_allocations(db, transaction_id, txn["amount"], body.allocations)
     return TransactionOut.model_validate(txn)
 
 
@@ -102,6 +81,8 @@ def approve_transaction(transaction_id: UUID, body: ApproveIn, db: DbDep) -> Tra
     ).fetchone()
     if row is None:
         raise not_found("pending transaction")
+    params = {"transaction_id": transaction_id, "resolution": "done"}
+    db.conn.execute(queries["resolve_place_entries"], params)
     return TransactionOut.model_validate(row)
 
 
@@ -112,6 +93,8 @@ def reject_transaction(transaction_id: UUID, db: DbDep) -> None:
     if txn is None or txn["status"] != "pending":
         raise not_found("pending transaction")
     db.conn.execute(queries["delete_transaction"], {"transaction_id": transaction_id})
+    params = {"transaction_id": transaction_id, "resolution": "rejected"}
+    db.conn.execute(queries["resolve_place_entries"], params)
 
 
 @router.delete("/transactions/{transaction_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -127,14 +110,3 @@ def list_budget_transactions(budget_id: UUID, db: DbDep) -> list[BudgetTransacti
         raise not_found("budget")
     rows = db.conn.execute(queries["list_budget_transactions"], {"budget_id": budget_id}).fetchall()
     return [BudgetTransactionOut.model_validate(r) for r in rows]
-
-
-@router.get("/inbox")
-def get_inbox(db: DbDep) -> Inbox:
-    """Transactions needing attention: awaiting approval, or not in any budget yet."""
-    pending = db.conn.execute(queries["list_pending"]).fetchall()
-    unassigned = db.conn.execute(queries["list_unassigned"]).fetchall()
-    return Inbox(
-        pending=[InboxTransactionOut.model_validate(r) for r in pending],
-        unassigned=[InboxTransactionOut.model_validate(r) for r in unassigned],
-    )

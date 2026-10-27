@@ -239,6 +239,30 @@ CREATE TABLE finance.budgets (
 
 
 --
+-- Name: inbox_entries; Type: TABLE; Schema: finance; Owner: -
+--
+
+CREATE TABLE finance.inbox_entries (
+    id uuid DEFAULT uuidv7() NOT NULL,
+    user_id uuid NOT NULL,
+    transaction_id uuid NOT NULL,
+    kind text NOT NULL,
+    budget_id uuid,
+    budget_item_id uuid,
+    resolution text,
+    resolved_at timestamp with time zone,
+    seen_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT inbox_entries_check CHECK (((kind = 'place'::text) = (budget_id IS NULL))),
+    CONSTRAINT inbox_entries_check1 CHECK (((kind <> 'applied'::text) OR ((budget_item_id IS NOT NULL) AND (resolution IS NULL)))),
+    CONSTRAINT inbox_entries_check2 CHECK (((resolution IS NULL) = (resolved_at IS NULL))),
+    CONSTRAINT inbox_entries_kind_check CHECK ((kind = ANY (ARRAY['applied'::text, 'pick_item'::text, 'place'::text]))),
+    CONSTRAINT inbox_entries_resolution_check CHECK ((resolution = ANY (ARRAY['done'::text, 'skipped'::text, 'rejected'::text])))
+);
+
+
+--
 -- Name: preferences; Type: TABLE; Schema: finance; Owner: -
 --
 
@@ -276,6 +300,7 @@ CREATE TABLE finance.recurring_transactions (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     deleted_at timestamp with time zone,
+    item_name text NOT NULL,
     CONSTRAINT recurring_transactions_amount_check CHECK ((amount > (0)::numeric)),
     CONSTRAINT recurring_transactions_check CHECK (((frequency = 'weekly'::text) = (day_of_week IS NOT NULL))),
     CONSTRAINT recurring_transactions_check1 CHECK (((frequency = 'monthly'::text) = (day_of_month IS NOT NULL))),
@@ -284,6 +309,7 @@ CREATE TABLE finance.recurring_transactions (
     CONSTRAINT recurring_transactions_day_of_month_check CHECK (((day_of_month >= 1) AND (day_of_month <= 28))),
     CONSTRAINT recurring_transactions_day_of_week_check CHECK (((day_of_week >= 1) AND (day_of_week <= 7))),
     CONSTRAINT recurring_transactions_frequency_check CHECK ((frequency = ANY (ARRAY['weekly'::text, 'monthly'::text, 'quarterly'::text, 'yearly'::text]))),
+    CONSTRAINT recurring_transactions_item_name_check CHECK ((length(TRIM(BOTH FROM item_name)) > 0)),
     CONSTRAINT recurring_transactions_kind_check CHECK ((kind = ANY (ARRAY['expense'::text, 'income'::text]))),
     CONSTRAINT recurring_transactions_name_check CHECK ((length(TRIM(BOTH FROM name)) > 0))
 );
@@ -572,6 +598,14 @@ ALTER TABLE ONLY finance.budgets
 
 
 --
+-- Name: inbox_entries inbox_entries_pkey; Type: CONSTRAINT; Schema: finance; Owner: -
+--
+
+ALTER TABLE ONLY finance.inbox_entries
+    ADD CONSTRAINT inbox_entries_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: preferences preferences_pkey; Type: CONSTRAINT; Schema: finance; Owner: -
 --
 
@@ -765,6 +799,27 @@ CREATE INDEX budgets_user_period_idx ON finance.budgets USING btree (user_id, pe
 
 
 --
+-- Name: inbox_entries_ledger_idx; Type: INDEX; Schema: finance; Owner: -
+--
+
+CREATE INDEX inbox_entries_ledger_idx ON finance.inbox_entries USING btree (user_id, created_at DESC) WHERE (kind = 'applied'::text);
+
+
+--
+-- Name: inbox_entries_open_idx; Type: INDEX; Schema: finance; Owner: -
+--
+
+CREATE INDEX inbox_entries_open_idx ON finance.inbox_entries USING btree (user_id, created_at) WHERE ((kind <> 'applied'::text) AND (resolution IS NULL));
+
+
+--
+-- Name: inbox_entries_transaction_idx; Type: INDEX; Schema: finance; Owner: -
+--
+
+CREATE INDEX inbox_entries_transaction_idx ON finance.inbox_entries USING btree (transaction_id);
+
+
+--
 -- Name: transaction_allocations_item_idx; Type: INDEX; Schema: finance; Owner: -
 --
 
@@ -874,6 +929,13 @@ CREATE TRIGGER set_updated_at BEFORE UPDATE ON finance.budget_items FOR EACH ROW
 --
 
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON finance.budgets FOR EACH ROW EXECUTE FUNCTION core.set_updated_at();
+
+
+--
+-- Name: inbox_entries set_updated_at; Type: TRIGGER; Schema: finance; Owner: -
+--
+
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON finance.inbox_entries FOR EACH ROW EXECUTE FUNCTION core.set_updated_at();
 
 
 --
@@ -992,6 +1054,38 @@ ALTER TABLE ONLY finance.budget_items
 
 ALTER TABLE ONLY finance.budgets
     ADD CONSTRAINT budgets_user_id_fkey FOREIGN KEY (user_id) REFERENCES core.users(id);
+
+
+--
+-- Name: inbox_entries inbox_entries_budget_id_user_id_fkey; Type: FK CONSTRAINT; Schema: finance; Owner: -
+--
+
+ALTER TABLE ONLY finance.inbox_entries
+    ADD CONSTRAINT inbox_entries_budget_id_user_id_fkey FOREIGN KEY (budget_id, user_id) REFERENCES finance.budgets(id, user_id);
+
+
+--
+-- Name: inbox_entries inbox_entries_budget_item_id_user_id_fkey; Type: FK CONSTRAINT; Schema: finance; Owner: -
+--
+
+ALTER TABLE ONLY finance.inbox_entries
+    ADD CONSTRAINT inbox_entries_budget_item_id_user_id_fkey FOREIGN KEY (budget_item_id, user_id) REFERENCES finance.budget_items(id, user_id);
+
+
+--
+-- Name: inbox_entries inbox_entries_transaction_id_user_id_fkey; Type: FK CONSTRAINT; Schema: finance; Owner: -
+--
+
+ALTER TABLE ONLY finance.inbox_entries
+    ADD CONSTRAINT inbox_entries_transaction_id_user_id_fkey FOREIGN KEY (transaction_id, user_id) REFERENCES finance.transactions(id, user_id);
+
+
+--
+-- Name: inbox_entries inbox_entries_user_id_fkey; Type: FK CONSTRAINT; Schema: finance; Owner: -
+--
+
+ALTER TABLE ONLY finance.inbox_entries
+    ADD CONSTRAINT inbox_entries_user_id_fkey FOREIGN KEY (user_id) REFERENCES core.users(id);
 
 
 --
@@ -1167,6 +1261,12 @@ ALTER TABLE finance.budget_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE finance.budgets ENABLE ROW LEVEL SECURITY;
 
 --
+-- Name: inbox_entries; Type: ROW SECURITY; Schema: finance; Owner: -
+--
+
+ALTER TABLE finance.inbox_entries ENABLE ROW LEVEL SECURITY;
+
+--
 -- Name: budget_categories owner; Type: POLICY; Schema: finance; Owner: -
 --
 
@@ -1185,6 +1285,13 @@ CREATE POLICY owner ON finance.budget_items TO disci_app USING ((user_id = core.
 --
 
 CREATE POLICY owner ON finance.budgets TO disci_app USING ((user_id = core.current_user_id())) WITH CHECK ((user_id = core.current_user_id()));
+
+
+--
+-- Name: inbox_entries owner; Type: POLICY; Schema: finance; Owner: -
+--
+
+CREATE POLICY owner ON finance.inbox_entries TO disci_app USING ((user_id = core.current_user_id())) WITH CHECK ((user_id = core.current_user_id()));
 
 
 --
@@ -1339,4 +1446,5 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('20261026170000'),
     ('20261027120000'),
     ('20261027150000'),
-    ('20261027150100');
+    ('20261027150100'),
+    ('20261027200000');

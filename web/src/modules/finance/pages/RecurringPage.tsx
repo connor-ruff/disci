@@ -1,4 +1,4 @@
-import { Plus, Repeat } from 'lucide-react'
+import { CircleHelp, Plus, Repeat } from 'lucide-react'
 import { useState } from 'react'
 
 import { cn } from '@/shared/lib/cn'
@@ -9,11 +9,13 @@ import { Card } from '@/shared/ui/card'
 import { ErrorState, LoadingState, PageHeader } from '@/shared/ui/page'
 
 import { type Recurring, useRecurring } from '../api'
+import { RecurringGuide } from '../components/RecurringGuide'
 import { describeSchedule, RecurringSheet } from '../components/RecurringSheet'
 
 export function RecurringPage() {
   const rules = useRecurring()
   const [sheet, setSheet] = useState<{ rule?: Recurring } | null>(null)
+  const [guide, setGuide] = useState(false)
 
   return (
     <>
@@ -22,10 +24,15 @@ export function RecurringPage() {
           title="Recurring"
           description="Subscriptions, bills and paychecks that repeat. Each is logged on its date."
         />
-        <Button onClick={() => setSheet({})}>
-          <Plus className="size-5" />
-          New
-        </Button>
+        <div className="flex shrink-0 items-center gap-1">
+          <Button variant="ghost" size="icon" aria-label="How recurring works" onClick={() => setGuide(true)}>
+            <CircleHelp className="size-5" />
+          </Button>
+          <Button onClick={() => setSheet({})}>
+            <Plus className="size-5" />
+            New
+          </Button>
+        </div>
       </div>
 
       {rules.isPending && <LoadingState />}
@@ -56,9 +63,10 @@ export function RecurringPage() {
                   : rule.next_occurrence && ` · Next ${formatShortDate(rule.next_occurrence)}`}
               </p>
               <div className="flex flex-wrap gap-1.5">
-                {rule.category_name && <Chip>{rule.category_name}</Chip>}
-                <Chip>{rule.auto_apply ? 'Applies to budgets' : 'Goes to Inbox'}</Chip>
-                {rule.requires_approval && <Chip>Needs approval</Chip>}
+                <Chip>
+                  {rule.item_name} · {rule.category_name ?? 'Uncategorized'}
+                </Chip>
+                <Chip>{rule.auto_apply ? 'Auto-applies' : 'Approve in Inbox'}</Chip>
               </div>
             </Card>
           </button>
@@ -66,6 +74,7 @@ export function RecurringPage() {
       </div>
 
       <RecurringSheet rule={sheet?.rule} open={sheet !== null} onOpenChange={(open) => !open && setSheet(null)} />
+      <RecurringGuide open={guide} onOpenChange={setGuide} />
     </>
   )
 }

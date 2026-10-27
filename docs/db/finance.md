@@ -1,6 +1,6 @@
 # Finance Module (`finance` schema)
 
-*Status: **first slice implemented** in `db/migrations/20261025150312_finance__init.sql` (`budget_categories`, `budgets`, `budget_items`, `transactions`, `transaction_allocations`), plus a one-time default-category backfill in `db/migrations/20261025153025_finance__backfill_default_categories.sql` (see the seed list under `budget_categories`). **Second slice implemented** in `db/migrations/20261025155734_finance__recurring_and_checklist.sql`: `recurring_transactions`, transaction status (approvals), the monthly checklist columns, category descriptions, and the `finance.users_with_recurring()` function for the hourly job. The deprecated `satisfies_checklist` columns were then dropped in `db/migrations/20261025170608_finance__drop_satisfies_checklist.sql`. `db/migrations/20261027150000_finance__checklist_mode_and_preferences.sql` added `budget_items.checklist_mode` and the `preferences` table. Every table and column below is built. See [db-overview.md](db-overview.md) for conventions (audit columns, soft deletes, RLS, money types) that apply to every table below. The API is in [api-overview.md](../api/api-overview.md) §7 and the screens in [finance-ui.md](../ui/finance-ui.md).*
+*Status: **first slice implemented** in `db/migrations/20261025150312_finance__init.sql` (`budget_categories`, `budgets`, `budget_items`, `transactions`, `transaction_allocations`), plus a one-time default-category backfill in `db/migrations/20261025153025_finance__backfill_default_categories.sql` (see the seed list under `budget_categories`). **Second slice implemented** in `db/migrations/20261025155734_finance__recurring_and_checklist.sql`: `recurring_transactions`, transaction status (approvals), the monthly checklist columns, category descriptions, and the `finance.users_with_recurring()` function for the hourly job. The deprecated `satisfies_checklist` columns were then dropped in `db/migrations/20261025170608_finance__drop_satisfies_checklist.sql`. `db/migrations/20261027150000_finance__checklist_mode_and_preferences.sql` added `budget_items.checklist_mode` and the `preferences` table. `db/migrations/20261027200000_finance__inbox_entries.sql` (expand-only) added `recurring_transactions.item_name` and the `inbox_entries` table, and retired (but kept) `requires_approval`. Every table and column below is built. See [db-overview.md](db-overview.md) for conventions (audit columns, soft deletes, RLS, money types) that apply to every table below. The API is in [api-overview.md](../api/api-overview.md) §7 and the screens in [finance-ui.md](../ui/finance-ui.md).*
 
 **Replaces:** EveryDollar (budget plus every logged expense) **and** the Google Sheet bills checklist.
 
@@ -36,13 +36,13 @@ Expenses
     └── Birthday gift
 ```
 - **Log actual transactions** (income or expense) and assign them to budget items. One transaction can count toward **more than one budget**, e.g. the October monthly budget *and* the 2026 annual budget. A transaction has optional **notes**.
-- **For manually logged transactions, the user always picks exactly which budget(s) a transaction applies to.** Nothing is added to a budget based on its date. In practice you usually add a transaction *from a budget's page*, so the item is pre-filled. The one exception is a recurring rule the user explicitly set to **"Automatically apply to all budgets"** (below).
+- **For manually logged transactions, the user always picks exactly which budget(s) a transaction applies to.** Nothing is added to a budget based on its date. In practice you usually add a transaction *from a budget's page*, so the item is pre-filled. The one exception is a recurring rule the user explicitly set to **"Auto-apply"** (below), and even then only toward the item the rule names.
 - ✱ **Split a transaction** across items (one Target run: $40 groceries + $25 household). This uses the same mechanism as the multi-budget case. (The API supports it; the UI doesn't yet.)
 - **Recurring transactions** (subscriptions, rent, bills, paychecks) are stored as rules and **auto-logged "on its date"**: one transaction per occurrence, created by an hourly job once the date arrives in the user's timezone. Built (§3 `recurring_transactions`).
-- **Optional approval**: a rule marked **"Requires approval"** creates its transactions as *pending*; the user approves them (adjusting the amount if, say, the electric bill came in different) or rejects them. Rules without it log confirmed transactions straight away.
+- **Auto-apply or approve**: a rule names the **budget item** it's meant for (`item_name` + category). With **auto-apply** on, each occurrence is logged confirmed and counted toward the matching item in every budget covering its date; a budget without a matching item asks the user (in the Inbox) which item to use. With auto-apply off, or when no budget covers the date, the occurrence is *pending* and waits in the Inbox for the user to approve it (adjusting the amount if, say, the electric bill came in different) and pick where it counts, or reject it. Items are never created automatically.
 - **Monthly checklist** (the old bills sheet): items in a monthly budget can be flagged as checklist items with a due day. An item is **done** once its confirmed net actual reaches its planned amount (and is more than 0), or, for items set to **"Any payment"** (bills that vary, like utilities), once anything confirmed has been paid. So paying the bill *is* ticking it off (inspiration doc principle #2); there is no separate "done" flag. A recurring rule's payment (e.g. an autopay bill with `auto_apply`) completes the item the same way, by bringing its actual up to plan (or, for an "Any payment" item, by being paid).
 - ✱ **Budget vs. actual** per item, per category and per budget.
-- ✱ **Inbox**: transactions awaiting approval, plus confirmed transactions that aren't allocated to any budget item yet ("Not in a budget"), with a way to assign them.
+- ✱ **Inbox**: decisions recurring rules need from the user ("Needs you": approve and place a pending occurrence, or pick an item in a budget that had no match), confirmed transactions that aren't allocated to any budget item yet ("Not in a budget", with a way to assign them), and a ledger of what rules applied automatically (with read state). Built (§3 `inbox_entries`).
 - ✱ **Copy a budget** to start a new one. **Built** as an option on budget creation (`copy_from_budget_id` on `POST /finance/budgets`): the source must be the user's own budget of the same period type. Items carry over (kind, category, name, planned amount, sort order, notes, checklist flag, day and mode; items whose category was deleted come across Uncategorized); transactions and allocations do not. No extra table.
 - **Display preferences**: per-user settings for the budget page, currently whether to show the "$x of $y" subtotals beside category headings and beside the Income / Expenses headings (both off by default). Built (§3 `preferences`).
 - ✱ **Fast entry helpers** (recent payees, last-used item for a payee), which come from querying `transactions` and need no extra table. *(Not built.)*
@@ -55,20 +55,22 @@ Expenses
 erDiagram
     budgets ||--o{ budget_items : contains
     budget_categories ||--o{ budget_items : categorizes
-    budget_categories ||--o{ recurring_transactions : "category for created items"
+    budget_categories ||--o{ recurring_transactions : "category of intended item"
     recurring_transactions ||--o{ transactions : generates
     transactions ||--o{ transaction_allocations : "allocated via"
     budget_items ||--o{ transaction_allocations : "receives"
+    transactions ||--o{ inbox_entries : "shown in Inbox as"
+    budgets ||--o{ inbox_entries : "about"
 ```
 
-(Every table also has `user_id → core.users`, omitted for readability.) A recurring rule has **no foreign key to budget items**: it finds its item in each budget by kind + name (§4).
+(Every table also has `user_id → core.users`, omitted for readability.) A recurring rule has **no foreign key to budget items**: it finds its item in each budget by kind + `item_name` + category (§4).
 
 ### Changes from the brainstorm notes
 - **Added `transaction_allocations`** (junction between `transactions` and `budget_items`). The notes say a transaction can be tied to multiple budgets, which needs a many-to-many link. Linking to the **budget item** rather than the budget itself is what makes item-level budget vs. actual possible, and it gives transaction splitting for free.
 - **Transactions have no `category_id`.** The category comes from the budget item a transaction is allocated to, which avoids two sources of truth disagreeing. Unallocated transactions show up in the inbox.
 - **Categories are optional and typed.** `budget_items.category_id` is nullable (NULL = Uncategorized; there is no "Uncategorized" row), and every category has a `kind`. A composite foreign key makes the database reject an expense item in an income category.
 - **No category groups.** An earlier idea of group/subgroup levels was dropped: the expense/income type is the top level, and categories sit directly under it.
-- **The "approved" flag lives on each generated transaction** (`status = pending | confirmed`). The rule's `requires_approval` decides which status its transactions start with; approval is opt-in (default off), not opt-out.
+- **The "approved" flag lives on each generated transaction** (`status = pending | confirmed`). An occurrence starts `pending` when its rule doesn't auto-apply (or no budget covers its date), and is approved from the Inbox. (A separate `requires_approval` flag on the rule was retired when the Inbox was reworked; see §3 `recurring_transactions`.)
 - **The checklist hangs off budget items, not recurring rules.** A checklist item is any monthly-budget item flagged `is_checklist_item`, so a bill doesn't need a recurring rule to be on the checklist.
 
 ---
@@ -123,17 +125,17 @@ A planned line in a specific budget.
 | `budget_id` | `uuid` | no | → `budgets` |
 | `kind` | `text` | no | `CHECK IN ('expense','income')` |
 | `category_id` | `uuid` | yes | → `budget_categories`. **NULL = Uncategorized.** |
-| `name` | `text` | no | Free text, e.g. "Uber Eats". Also how a recurring rule finds its item (kind + case-insensitive name). |
+| `name` | `text` | no | Free text, e.g. "Uber Eats". Also how a recurring rule finds its item (kind + name ignoring case and extra spaces + category; §4). |
 | `planned_amount` | `numeric(12,2)` | no | `>= 0` |
 | `sort_order` | `integer` | no | Default `0`. **Per budget.** New items go last; set by `PUT /finance/budgets/{id}/items/order`; copied with the budget. Items sort within their category group. |
 | `is_checklist_item` | `boolean` | no | Default `false`. On the monthly checklist. The API only allows it on items in **monthly** budgets (422 otherwise). |
 | `checklist_day` | `smallint` | yes | `CHECK BETWEEN 1 AND 28`. Day of the budget's month it's due. Set exactly when `is_checklist_item` (`budget_items_checklist_check`). |
-| `checklist_mode` | `text` | no | `CHECK IN ('full_amount','any_payment')`, default `'full_amount'`. When a checklist item counts as done: `full_amount` once the confirmed net actual reaches the plan, `any_payment` once anything confirmed has been paid (§4). Keeps its default on non-checklist items, where it means nothing. Items created by a recurring rule's auto-apply get `full_amount`. |
+| `checklist_mode` | `text` | no | `CHECK IN ('full_amount','any_payment')`, default `'full_amount'`. When a checklist item counts as done: `full_amount` once the confirmed net actual reaches the plan, `any_payment` once anything confirmed has been paid (§4). Keeps its default on non-checklist items, where it means nothing. |
 | `notes` | `text` | yes | |
 
 - `FOREIGN KEY (category_id, kind, user_id) REFERENCES budget_categories (id, kind, user_id)`: an item can only use a category of its own type (and its own user's). With `category_id` NULL the check is skipped (standard `MATCH SIMPLE`), which is exactly "Uncategorized".
 - `FOREIGN KEY (budget_id, user_id) REFERENCES budgets (id, user_id)`; unique `(id, user_id)` as the target for allocations.
-- **No link to recurring rules.** An earlier plan had `budget_items.recurring_transaction_id`; it was dropped because rules match items by name, which also works for items the user created by hand and survives copying a budget.
+- **No link to recurring rules.** An earlier plan had `budget_items.recurring_transaction_id`; it was dropped because rules match items by name and category, which also works for items the user created by hand and survives copying a budget.
 
 ### `transactions`
 Money that actually moved (or, while `pending`, is expected to).
@@ -147,15 +149,15 @@ Money that actually moved (or, while `pending`, is expected to).
 | `payee` | `text` | yes | Merchant or income source ("Kroger", "Employer"). Generated transactions copy the rule's. |
 | `description` | `text` | yes | |
 | `notes` | `text` | yes | Free text, entered in the transaction form (API cap 1,000 chars). Generated transactions copy the rule's notes. |
-| `status` | `text` | no | `CHECK IN ('pending','confirmed')`, default `'confirmed'`. Only rules with `requires_approval` create `pending` ones; everything else is confirmed on creation. |
+| `status` | `text` | no | `CHECK IN ('pending','confirmed')`, default `'confirmed'`. Occurrences from rules that don't auto-apply (or whose date no budget covers) are created `pending`, with a `place` Inbox entry; everything else is confirmed on creation. |
 | `recurring_transaction_id` | `uuid` | yes | → `recurring_transactions`. Set if generated from a rule. |
 | `scheduled_on` | `date` | yes | For generated rows: the occurrence date the rule produced. Set exactly when `recurring_transaction_id` is (`transactions_recurring_scheduled_check`). |
 
 - Unique `(id, user_id)`.
 - **Unique `(recurring_transaction_id, scheduled_on)` where `recurring_transaction_id IS NOT NULL`** (`transactions_recurring_occurrence_key`). Deliberately **not** limited to undeleted rows, so the generator is idempotent *and* a rejected or deleted occurrence is never generated again.
-- Partial index on `user_id` where `status = 'pending' AND deleted_at IS NULL`, for the inbox.
+- Partial index on `user_id` where `status = 'pending' AND deleted_at IS NULL`. (The Inbox now lists pending ones through their `inbox_entries` rows.)
 - **Actuals only count `confirmed` transactions.** Pending ones are reported separately as each item's `pending_amount` ("awaiting approval").
-- **Approve** sets `status = 'confirmed'` and, optionally, a corrected `amount`; the transaction's allocations are updated to the new amount (generated transactions are allocated in full to each budget). **Reject** soft-deletes it.
+- **Approve** sets `status = 'confirmed'` and, optionally, a corrected `amount`. Approving from the Inbox (`POST /finance/inbox/{id}/resolve` on a `place` entry) also replaces its allocations with the items the user picked, in full; the older `POST /finance/transactions/{id}/approve` keeps the allocations and updates them to the new amount. **Reject** soft-deletes it. Either way its open `place` entry is closed.
 
 ### `transaction_allocations`
 Links a transaction to the budget item(s) it counts toward.
@@ -183,8 +185,9 @@ A rule for money that moves on a schedule: subscriptions, rent, utilities, paych
 |---|---|---|---|
 | `id`, `user_id` | `uuid` | no | |
 | `kind` | `text` | no | `CHECK IN ('expense','income')` |
-| `name` | `text` | no | "Netflix", "Rent". Non-blank. Also the budget item it counts toward, matched by kind + case-insensitive name. |
-| `category_id` | `uuid` | yes | → `budget_categories` (same composite `(category_id, kind, user_id)` key as budget items). Used when `auto_apply` has to create the item; NULL = Uncategorized. |
+| `name` | `text` | no | "Netflix", "Rent". Non-blank. Just the rule's label. |
+| `item_name` | `text` | no | Non-blank (`recurring_transactions_item_name_check`). The **budget item it's meant for**, free text, matched in each budget by kind + name ignoring case and extra spaces + category (§4). Added by the Inbox migration, backfilled from `name` (with the `updated_at` trigger off, so existing rules kept their `updated_at`), since until then the name was the item. |
+| `category_id` | `uuid` | yes | → `budget_categories` (same composite `(category_id, kind, user_id)` key as budget items). The intended item's category, part of the match; NULL = Uncategorized (matches only Uncategorized items). |
 | `amount` | `numeric(12,2)` | no | `> 0`. Expected amount (the approval step can correct it per transaction). |
 | `payee` | `text` | yes | Copied onto generated transactions. |
 | `notes` | `text` | yes | Copied onto generated transactions. |
@@ -193,8 +196,8 @@ A rule for money that moves on a schedule: subscriptions, rent, utilities, paych
 | `day_of_month` | `smallint` | yes | 1–28, so it exists every month. Set **exactly** for monthly rules. |
 | `starts_on` | `date` | no | Earliest date for every frequency. **Quarterly and yearly repeat from it** (every 3 / 12 months on its day). Quarterly requires its day ≤ 28; yearly clamps Feb 29 to Feb 28 in other years. |
 | `ends_on` | `date` | yes | Optional, `>= starts_on`. For subscriptions that end, or loans paid off. |
-| `auto_apply` | `boolean` | no | Default `false`. **"Automatically apply to all budgets"** (§4). Off: the transaction is logged unassigned and shows in the inbox's "Not in a budget" list. |
-| `requires_approval` | `boolean` | no | Default `false`. Generated transactions start `pending` instead of `confirmed`. |
+| `auto_apply` | `boolean` | no | Default `false`. **"Auto-apply"** (§4): count each occurrence toward the matching item in every budget covering its date. Off: each occurrence is pending and waits in the Inbox to be approved and placed. |
+| `requires_approval` | `boolean` | no | Default `false`. **Retired, not yet dropped.** Reads treat `auto_apply AND NOT requires_approval` as the effective `auto_apply` (so an old rule with approval on now goes to the Inbox), and every insert and update writes `false`. A contract migration will fold it into `auto_apply` and drop it (§6 Follow-ups). |
 | `paused_at` | `timestamptz` | yes | Paused rules generate nothing. The API exposes it as a `paused` boolean. |
 
 - Unique `(id, user_id)`: target of `transactions`' composite FK.
@@ -214,6 +217,26 @@ Per-user display settings. **One row per user**, upserted on save (`PUT /finance
 
 RLS owner policy and the usual `updated_at` trigger.
 
+### `inbox_entries`
+What the Inbox shows about a transaction from a recurring rule (§4): a decision to make, or a ledger line for something applied automatically. Created by the generator, never by hand. **No `deleted_at`**: entries are resolved, not deleted.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `id`, `user_id` | `uuid` | no | |
+| `transaction_id` | `uuid` | no | → `transactions` |
+| `kind` | `text` | no | `CHECK IN ('applied','pick_item','place')`. `applied`: auto-applied to `budget_item_id` in `budget_id` (the ledger). `pick_item`: auto-apply found no matching item in `budget_id`; the user picks one. `place`: the transaction is pending (auto-apply off, or no budget covered the date); the user approves it and picks where it counts. |
+| `budget_id` | `uuid` | yes | → `budgets`. NULL **exactly** for `place`. |
+| `budget_item_id` | `uuid` | yes | → `budget_items`. `applied`: where it landed (required). `pick_item`: the item the user picked, once resolved. |
+| `resolution` | `text` | yes | `CHECK IN ('done','skipped','rejected')`. NULL = open. `applied` entries never have one. `done`: resolved (placed / item picked); `skipped`: a `pick_item` the user skipped; `rejected`: a `place` whose transaction was rejected. |
+| `resolved_at` | `timestamptz` | yes | Set exactly when `resolution` is. |
+| `seen_at` | `timestamptz` | yes | Ledger read state: when the user marked `applied` entries read. |
+
+- CHECKs: `(kind = 'place') = (budget_id IS NULL)`; `applied` needs `budget_item_id` and no `resolution`; `(resolution IS NULL) = (resolved_at IS NULL)`.
+- Indexes: `inbox_entries_open_idx` on `(user_id, created_at)` where `kind <> 'applied' AND resolution IS NULL` (Needs you); `inbox_entries_ledger_idx` on `(user_id, created_at DESC)` where `kind = 'applied'`; `inbox_entries_transaction_idx` on `transaction_id`.
+- RLS owner policy and the usual `updated_at` trigger.
+- **Pre-Inbox data:** the migration created a `place` entry for every undeleted pending transaction that existed then (its `created_at` copied); those transactions and their allocations were left untouched, which is why the API returns a `place` entry's current allocations.
+- Entries whose transaction or budget was later deleted drop out of the Inbox (the queries join them away); they aren't cleaned up.
+
 ### 3.1 Tenant guard: composite foreign keys
 
 RLS limits what a user can **see**, but foreign-key checks bypass RLS. Without a guard, a user who guessed another user's row id could point a row at it (e.g. allocate their transaction to someone else's budget item). So every parent table has a unique `(id, user_id)` (categories: `(id, kind, user_id)`), and **every child FK includes `user_id`**:
@@ -224,6 +247,7 @@ RLS limits what a user can **see**, but foreign-key checks bypass RLS. Without a
 | `budget_items` | `(category_id, kind, user_id) → budget_categories (id, kind, user_id)`, `MATCH SIMPLE`, so NULL = Uncategorized skips it |
 | `recurring_transactions` | `(category_id, kind, user_id) → budget_categories (id, kind, user_id)`, `MATCH SIMPLE` |
 | `transactions` | `(recurring_transaction_id, user_id) → recurring_transactions (id, user_id)` (`transactions_recurring_fk`), `MATCH SIMPLE` |
+| `inbox_entries` | `(transaction_id, user_id) → transactions`, `(budget_id, user_id) → budgets`, `(budget_item_id, user_id) → budget_items` (the last two `MATCH SIMPLE`, so NULLs skip them) |
 | `transaction_allocations` | `(transaction_id, user_id) → transactions (id, user_id)` |
 | `transaction_allocations` | `(budget_item_id, user_id) → budget_items (id, user_id)` |
 
@@ -233,10 +257,10 @@ Combined with RLS's `WITH CHECK (user_id = core.current_user_id())`, a row can o
 
 | Deleting | What happens |
 |---|---|
-| A category | Soft-deleted; its items' `category_id` is set to NULL (they become Uncategorized). Recurring rules using it are uncategorized too, so they don't keep creating items in a deleted category. |
+| A category | Soft-deleted; its items' `category_id` is set to NULL (they become Uncategorized). Recurring rules using it are uncategorized too (so they then match Uncategorized items). |
 | A budget item | Soft-deleted; its allocations are hard-deleted, so those transactions become unassigned. |
 | A budget | Soft-deleted along with its items; their allocations are hard-deleted (transactions become unassigned). |
-| A transaction (or rejecting a pending one) | Soft-deleted; its allocations are hard-deleted. A generated occurrence is never re-created (the unique index includes deleted rows). |
+| A transaction (or rejecting a pending one) | Soft-deleted; its allocations are hard-deleted. A generated occurrence is never re-created (the unique index includes deleted rows). Its Inbox entries stay but drop out of the Inbox; rejecting marks its `place` entry `rejected`. |
 | A recurring rule | Soft-deleted; nothing more is generated. Transactions it already created stay. |
 
 ### 3.3 Dev seed
@@ -250,9 +274,9 @@ Combined with RLS's `WITH CHECK (user_id = core.current_user_id())`, a row can o
 | Feature | How |
 |---|---|
 | **Auto-logging** | For each active rule, `generate_for_user` (`api/app/modules/finance/recurring.py`) computes its occurrences from the date the rule was **created** (in the user's timezone; never earlier) up to **today** in the user's timezone, and inserts one transaction per occurrence with `occurred_on = scheduled_on = ` that date, `ON CONFLICT DO NOTHING` on the occurrence index. It runs hourly for every user with active rules (`app/jobs/recurring.py`, the `disci-jobs` Lambda) and also immediately after a rule is created or updated, so a rule due today logs right away. |
-| **Auto-apply** | With `auto_apply`, each newly created transaction is allocated **in full** to every budget whose period covers its date, toward the item matched by kind + case-insensitive name. If a budget has no such item, one is created with the rule's category, planned at amount × the number of the rule's occurrences in that budget's period (at least 1). Without `auto_apply`, it is logged with no allocations. |
-| **Approvals** | `requires_approval` → `status = 'pending'`. Pending transactions don't count in actuals (each item's `pending_amount` shows them). Approve → `confirmed`, optionally with a corrected amount that its allocations follow; reject → soft-delete. |
-| **Inbox** | `GET /finance/inbox`: `pending` (status pending, oldest first) and `unassigned` (confirmed transactions with no allocation to an undeleted item, newest first). Assigning writes allocations with `PUT /finance/transactions/{id}/allocations`. |
+| **Auto-apply** | If the rule's effective `auto_apply` (`auto_apply AND NOT requires_approval`) is on **and** at least one budget covers the date, the transaction is `confirmed`. For each covering budget it looks for an item with the rule's kind, the same name ignoring case and extra whitespace, and the same category (`IS NOT DISTINCT FROM`, so Uncategorized matches Uncategorized; `queries/find_rule_item.sql`, oldest first). A match gets an allocation of the **full amount** and an `applied` ledger entry; no match gets a `pick_item` entry for that budget. **Items are never created automatically** (an earlier version created the missing item, planned at amount × occurrences). |
+| **Approvals** | Otherwise (auto-apply off, or no budget covers the date) the transaction is `pending` with no allocations and a single `place` entry. Pending transactions don't count in actuals (each item's `pending_amount` shows any that are allocated). Resolving the `place` entry approves it (optionally with a corrected amount) and replaces its allocations with the full amount on each picked item (at most one per budget, possibly none, which leaves it under "Not in a budget"); dismissing it rejects it (soft delete, the date never regenerates). |
+| **Inbox** | `GET /finance/inbox` (`api/app/modules/finance/routes/inbox.py`): `needs_you` (open `pick_item` / `place` entries, oldest transaction first, `queries/list_inbox_open.sql`), `unassigned` (confirmed transactions with no allocation to an undeleted item, newest first), `ledger` (last 50 `applied` entries, newest first) and `unseen`. Resolve a `pick_item` with exactly one item in its budget (422 if the transaction already counts there) or skip it; `POST /finance/inbox/seen` sets `seen_at` on the ledger. Assigning an unassigned transaction writes allocations with `PUT /finance/transactions/{id}/allocations`. |
 | **Monthly checklist** | `GET /finance/checklist`: items with `is_checklist_item` in the **monthly** budget(s) covering today (user's timezone), with `due_on = period_start + checklist_day - 1`, `actual_amount` (net over **confirmed** allocated transactions: same kind adds, opposite kind subtracts, so a refund can un-tick an item; pending ones don't count), `last_payment_on` (latest `occurred_on` among those confirmed transactions) `checklist_mode`, and `done` = `actual_amount > 0 AND (checklist_mode = 'any_payment' OR actual_amount >= planned_amount)` (`queries/list_checklist.sql`). So a $0-planned item still needs something logged, and an `any_payment` item ticks off on its first confirmed payment whatever the amount. Budget detail exposes the same rule as each item's `checklist_done` (`queries/list_budget_items.sql`). A rule with `auto_apply` completes the item when its payments bring the actual up to plan (or, for `any_payment`, on its first confirmed payment). |
 | **Display preferences** | `GET /finance/preferences` returns the user's `preferences` row, or both flags `false` if there is none; `PUT /finance/preferences` upserts both flags (sent in full). The web budget page hides the subtotals unless the matching flag is on. |
 | **Reorder** | `budget_categories.sort_order` (per user and kind) and `budget_items.sort_order` (per budget), each set from an ordered id list. Budget detail sorts items by kind, category `sort_order` (Uncategorized last), then item `sort_order`. |
@@ -277,9 +301,10 @@ Combined with RLS's `WITH CHECK (user_id = core.current_user_id())`, a row can o
 | Track accounts (checking, credit card)? | **Not in v1.** Can be added later as an `accounts` table plus a nullable `transactions.account_id` without disturbing anything. |
 | How is a recurring schedule stored? | **Explicit columns** (`frequency`, `day_of_week`, `day_of_month`, `starts_on`, `ends_on`), not an RRULE string. Four frequencies cover the real cases, are easy to validate with CHECKs and to edit in a form, and need no parser. |
 | When are recurring transactions created? | **"On its date"**: one per occurrence once the date arrives in the user's timezone (hourly job), and immediately when a rule is saved. Never backfilled before the rule was created. |
-| Where does a generated transaction go? | The user chooses per rule: **"Automatically apply to all budgets"** (allocated in full to every budget covering the date, item matched by name and created if missing) or **"Log it unassigned"** (shows in the inbox). |
-| Must the user verify generated transactions? | Only if the rule **"Requires approval"** (default off). Then it's pending until approved (amount editable) or rejected. |
-| How do rules find their budget item? | **By kind + case-insensitive name**, not a stored link, so `budget_items.recurring_transaction_id` was dropped. |
+| Where does a generated transaction go? | The user chooses per rule: **"Auto-apply"** (allocated in full to the matching item in every budget covering the date) or not (pending in the Inbox, to approve and place). *Earlier*: auto-apply created a missing item, and auto-apply off logged it unassigned. Changed so nothing lands somewhere the user didn't pick: a missing item becomes a `pick_item` decision instead. |
+| Must the user verify generated transactions? | Only rules **without auto-apply** (and occurrences no budget covers). *Earlier* a separate "Requires approval" flag did this; it was folded into auto-apply (off = approve in the Inbox), since an approved transaction still needed placing. Auto-applied ones show in the Inbox ledger so the user can see what happened. |
+| How do rules find their budget item? | **By kind + `item_name` (ignoring case and extra spaces) + category**, not a stored link, so `budget_items.recurring_transaction_id` was dropped. *Earlier* the rule's `name` was the item name and category wasn't matched; `item_name` separates the rule's label from its target. |
+| How is the Inbox stored? | **`inbox_entries` rows** created by the generator, one per decision or ledger line, resolved rather than deleted, so "needs you", "skipped" and the read state of the ledger are explicit instead of inferred from transaction state. |
 | What counts as a checklist item, and when is it done? | A flagged item in a **monthly** budget with a due day (1–28). The user chose **strict completion**: done once its confirmed net actual is **≥ its planned amount and > 0**. Pending transactions don't count, and opposite-kind credits net (a refund can un-tick it). No per-transaction "satisfies the checklist" flag (that earlier design was removed); a recurring rule's payment completes an item only by bringing its actual up to plan. **Later added per-item `checklist_mode`**: `full_amount` (that strict rule, the default, so existing items kept it) or `any_payment` (done once confirmed net actual > 0), because variable bills like utilities rarely match their plan exactly. |
 | Can a rejected or deleted occurrence come back? | **No.** The occurrence unique index includes deleted rows. |
 | Where do finance display settings live? | A **`finance.preferences`** row per user (upserted, no soft delete), the same pattern as `nutrition.preferences`. The budget page's subtotals are **off by default**; each kind is its own flag. |
@@ -293,3 +318,4 @@ Combined with RLS's `WITH CHECK (user_id = core.current_user_id())`, a row can o
 ### Follow-ups
 
 - ~~**Drop the unused `satisfies_checklist` columns** on `finance.transactions` and `finance.recurring_transactions`.~~ **Done** in `db/migrations/20261025170608_finance__drop_satisfies_checklist.sql`, the contract step of expand/contract (see [deployment.md](../ops/deployment.md)): the API stopped reading and writing them one release earlier, after the checklist moved to strict completion (§5).
+- **Fold `requires_approval` into `auto_apply` and drop it** on `finance.recurring_transactions` (pending). `db/migrations/20261027200000_finance__inbox_entries.sql` was the expand step: the code now reads `auto_apply AND NOT requires_approval` and always writes `false`. Once that release is deployed, a contract migration should run `UPDATE ... SET auto_apply = false WHERE requires_approval` (trigger off, as in the backfill) and drop the column, and the three read queries (`get_recurring.sql`, `list_recurring.sql`, `list_active_recurring.sql`) go back to plain `auto_apply`.

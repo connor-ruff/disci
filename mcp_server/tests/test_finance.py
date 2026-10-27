@@ -111,53 +111,87 @@ def test_update_transaction_keeps_what_isnt_passed(fake_api: FakeApi) -> None:
     ]
 
 
-def test_approve_reports_each_outcome(fake_api: FakeApi) -> None:
+def test_resolve_reports_each_outcome(fake_api: FakeApi) -> None:
     def missing(body: dict) -> None:
-        raise ToolError("Disci API error 404: pending transaction not found")
+        raise ToolError("Disci API error 404: open inbox entry not found")
 
-    fake_api.routes[("POST", "/finance/transactions/t1/approve")] = {**TXN, "amount": "1450.00"}
-    fake_api.routes[("POST", "/finance/transactions/t2/approve")] = missing
+    resolved = {**TXN, "amount": "170.00", "allocations": [
+        {"budget_item_id": "i1", "budget_item_name": "Electric", "budget_name": "October 2026",
+         "budget_item_kind": "expense", "budget_id": "b-oct", "amount": "170.00"}]}  # fmt: skip
+    fake_api.routes[("POST", "/finance/inbox/e1/resolve")] = resolved
+    fake_api.routes[("POST", "/finance/inbox/e2/resolve")] = missing
 
     result = call_tool(
-        "approve_transactions",
-        {"approvals": [{"transaction_id": "t1", "amount": 1450}, {"transaction_id": "t2"}]},
+        "resolve_inbox_entries",
+        {
+            "decisions": [
+                {"entry_id": "e1", "budget_item_ids": ["i1"], "amount": 170},
+                {"entry_id": "e2", "budget_item_ids": ["i9"]},
+            ]
+        },
     )
 
-    assert fake_api.sent("POST", "/finance/transactions/t1/approve") == [{"amount": "1450"}]
-    assert fake_api.sent("POST", "/finance/transactions/t2/approve") == [{"amount": None}]
+    assert fake_api.sent("POST", "/finance/inbox/e1/resolve") == [
+        {"budget_item_ids": ["i1"], "amount": "170"}
+    ]
     ok, failed = result["results"]
-    assert ok["ok"] and ok["result"]["amount"] == "1450.00"
-    assert failed["id"] == "t2" and not failed["ok"]
-    assert failed["error"] == "Disci API error 404: pending transaction not found"
+    assert ok["ok"] and ok["result"]["counts_toward"][0]["budget_item_name"] == "Electric"
+    assert failed == {"id": "e2", "ok": False,
+                      "error": "Disci API error 404: open inbox entry not found"}  # fmt: skip
 
 
-def test_reject_and_delete(fake_api: FakeApi) -> None:
-    fake_api.routes[("POST", "/finance/transactions/t1/reject")] = None
+def test_dismiss_and_delete(fake_api: FakeApi) -> None:
+    fake_api.routes[("POST", "/finance/inbox/e1/dismiss")] = None
     fake_api.routes[("DELETE", "/finance/transactions/t2")] = None
 
-    assert call_tool("reject_transactions", {"transaction_ids": ["t1"]}) == {
-        "results": [{"id": "t1", "ok": True}]
+    assert call_tool("dismiss_inbox_entries", {"entry_ids": ["e1"]}) == {
+        "results": [{"id": "e1", "ok": True}]
     }
     assert call_tool("delete_transaction", {"transaction_id": "t2"}) == {"deleted": "t2"}
 
 
 def test_inbox_and_checklist(fake_api: FakeApi) -> None:
-    pending = {**TXN, "status": "pending", "recurring_name": "Rent"}
-    fake_api.routes[("GET", "/finance/inbox")] = {"pending": [pending], "unassigned": []}
+    def entry(id_: str, kind: str, budget: bool, item: bool) -> dict:
+        return {
+            "id": id_, "kind": kind, "created_at": "2026-10-26T12:00:00Z", "seen": False,
+            "transaction": {**TXN, "status": "pending" if kind == "place" else "confirmed",
+                            "recurring_name": "Rent"},
+            "item_name": "Rent", "category_id": None, "category_name": None,
+            "budget_id": "b-oct" if budget else None,
+            "budget_name": "October 2026" if budget else None,
+            "budget_item_id": "i1" if item else None, "budget_item_name": "Rent" if item else None,
+            "allocations": [],
+        }  # fmt: skip
+
+    fake_api.routes[("GET", "/finance/inbox")] = {
+        "needs_you": [entry("e1", "place", False, False), entry("e2", "pick_item", True, False)],
+        "unassigned": [],
+        "ledger": [entry("e3", "applied", True, True)],
+        "unseen": 1,
+    }
     fake_api.routes[("GET", "/finance/checklist")] = [
         {"budget_id": "b-oct", "budget_name": "October 2026", "item_id": "i1",
          "item_name": "Rent", "kind": "expense", "checklist_day": 1,
+         "checklist_mode": "full_amount",
          "planned_amount": "1400.00", "actual_amount": "1400.00", "due_on": "2026-10-01",
          "done": True, "last_payment_on": "2026-10-01"},
         {"budget_id": "b-oct", "budget_name": "October 2026", "item_id": "i2",
          "item_name": "Phone", "kind": "expense", "checklist_day": 15,
+         "checklist_mode": "any_payment",
          "planned_amount": "60.00", "actual_amount": "0.00", "due_on": "2026-10-15",
          "done": False, "last_payment_on": None},
     ]  # fmt: skip
 
     inbox = call_tool("get_transaction_inbox", {})
-    assert inbox["pending"][0]["recurring_name"] == "Rent"
+    place, pick = inbox["needs_you"]
+    assert place["kind"] == "place"
+    assert place["meant_for"] == {"item": "Rent", "category": "Uncategorized"}
+    assert "budget" not in place
+    assert pick["budget"] == {"id": "b-oct", "name": "October 2026"}
+    assert inbox["applied"][0]["item"] == {"id": "i1", "name": "Rent"}
+    assert inbox["applied"][0]["seen"] is False
 
     checklist = call_tool("get_monthly_checklist", {})
     assert (checklist["done"], checklist["left"]) == (1, 1)
     assert [i["name"] for i in checklist["items"]] == ["Rent", "Phone"]
+    assert checklist["items"][1]["done_when"] == "any_payment"

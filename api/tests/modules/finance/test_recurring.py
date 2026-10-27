@@ -1,4 +1,4 @@
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, timedelta
 
 import psycopg
 import pytest
@@ -29,6 +29,7 @@ def make_rule(client: TestClient, headers=ALICE, **body) -> dict:
         "day_of_month": 12,
         "starts_on": TOMORROW,
     } | body
+    body.setdefault("item_name", body["name"])
     resp = client.post("/finance/recurring", json=body, headers=headers)
     assert resp.status_code == 201, resp.text
     return resp.json()
@@ -125,6 +126,7 @@ def test_rule_validation(client: TestClient, finance_on, bad) -> None:
     body = {
         "kind": "expense",
         "name": "X",
+        "item_name": "X",
         "amount": "1",
         "frequency": "monthly",
         "day_of_month": 12,
@@ -142,118 +144,208 @@ def test_rule_lists_next_occurrence(client: TestClient, finance_on) -> None:
 # --- Generation ---------------------------------------------------------------------------
 
 
-def test_auto_apply_creates_item_and_is_idempotent(client: TestClient, finance_on) -> None:
+def inbox(client: TestClient, headers=ALICE) -> dict:
+    return client.get("/finance/inbox", headers=headers).json()
+
+
+def resolve(client: TestClient, entry: dict, item_ids: list[str], amount: str | None = None):
+    return client.post(
+        f"/finance/inbox/{entry['id']}/resolve",
+        json={"budget_item_ids": item_ids, "amount": amount},
+        headers=ALICE,
+    )
+
+
+def test_auto_apply_matches_item_by_name_and_category(client: TestClient, finance_on) -> None:
     october = new_budget(client)
     personal = categories(client)["Personal"]
-    rule = make_rule(client, auto_apply=True, category_id=personal["id"])
+    item = add_item(
+        client,
+        october["id"],
+        kind="expense",
+        name="Streaming",
+        planned_amount="20",
+        category_id=personal["id"],
+    )
+    rule = make_rule(client, item_name="  streaming ", category_id=personal["id"], auto_apply=True)
     backdate(rule, starts_on="2026-01-01", created_on="2026-10-01")
 
     assert generate(client, "2026-10-20") == 1  # Oct 12 only: nothing before creation
-    netflix = item_named(budget(client, october["id"]), "Netflix")
-    assert netflix["category_name"] == "Personal"
-    assert (netflix["planned_amount"], netflix["actual_amount"]) == ("15.49", "15.49")
+    assert item_named(budget(client, october["id"]), "Streaming")["actual_amount"] == "15.49"
+    box = inbox(client)
+    assert box["needs_you"] == []
+    (applied,) = box["ledger"]
+    assert (applied["kind"], applied["budget_item_id"], applied["seen"]) == (
+        "applied",
+        item["id"],
+        False,
+    )
+    assert (applied["transaction"]["recurring_name"], box["unseen"]) == ("Netflix", 1)
 
     assert generate(client, "2026-10-20") == 0  # already done
+    assert client.post("/finance/inbox/seen", headers=ALICE).status_code == 204
+    assert inbox(client)["unseen"] == 0
 
 
-def test_auto_apply_plans_every_occurrence_in_the_budget(client: TestClient, finance_on) -> None:
-    october = new_budget(client)
-    # Saving logs anything due today (UTC, the user's timezone), so use a weekday that
-    # isn't today's. Oct 2026 has 4 Mondays (5th..26th) and 4 Tuesdays (6th..27th).
-    weekday = 2 if datetime.now(UTC).isoweekday() == 1 else 1
-    rule = make_rule(
-        client,
-        name="Lunch",
-        amount="20.00",
-        frequency="weekly",
-        day_of_month=None,
-        day_of_week=weekday,
-        auto_apply=True,
-    )
-    backdate(rule, starts_on="2026-10-01", created_on="2026-10-01")
-    generate(client, "2026-10-06")
-    lunch = item_named(budget(client, october["id"]), "Lunch")
-    assert lunch["planned_amount"] == "80.00"  # 4 occurrences in Oct 2026
-    assert lunch["actual_amount"] == "20.00"  # only Oct 5 (or 6) has happened
-
-
-def test_auto_apply_matches_existing_item_by_name(client: TestClient, finance_on) -> None:
-    october = new_budget(client)
-    add_item(client, october["id"], kind="expense", name="Rent", planned_amount="1650")
-    rule = make_rule(client, name="rent", amount="1650.00", day_of_month=1, auto_apply=True)
-    backdate(rule, starts_on="2026-10-01", created_on="2026-10-01")
-    generate(client, "2026-10-02")
-    items = budget(client, october["id"])["items"]
-    assert [(i["name"], i["actual_amount"]) for i in items] == [("Rent", "1650.00")]
-
-
-def test_auto_apply_hits_every_covering_budget(client: TestClient, finance_on) -> None:
+def test_auto_apply_never_creates_items_and_asks_per_budget(client: TestClient, finance_on) -> None:
     month, year = new_budget(client), new_budget(client, period_type="year")
+    add_item(client, month["id"], kind="expense", name="Netflix", planned_amount="16")
+    food = categories(client)["Food"]
+    # Same name but another category isn't a match.
+    add_item(
+        client,
+        year["id"],
+        kind="expense",
+        name="Netflix",
+        planned_amount="0",
+        category_id=food["id"],
+    )
     rule = make_rule(client, auto_apply=True)
     backdate(rule, starts_on="2026-10-01", created_on="2026-10-01")
     generate(client, "2026-10-20")
+
     assert item_named(budget(client, month["id"]), "Netflix")["actual_amount"] == "15.49"
-    yearly = item_named(budget(client, year["id"]), "Netflix")
-    assert (yearly["planned_amount"], yearly["actual_amount"]) == ("46.47", "15.49")  # Oct-Dec
+    assert [i["name"] for i in budget(client, year["id"])["items"]] == ["Netflix"]  # none added
+    box = inbox(client)
+    assert [e["kind"] for e in box["ledger"]] == ["applied"]
+    (pick,) = box["needs_you"]
+    assert (pick["kind"], pick["budget_id"], pick["item_name"]) == (
+        "pick_item",
+        year["id"],
+        "Netflix",
+    )
+    assert pick["transaction"]["status"] == "confirmed"
+
+    # The item has to be in that budget.
+    other = add_item(client, month["id"], kind="expense", name="Other", planned_amount="1")
+    assert resolve(client, pick, [other["id"]]).status_code == 422
+    new = add_item(client, year["id"], kind="expense", name="Subscriptions", planned_amount="180")
+    resolved = resolve(client, pick, [new["id"]])
+    assert resolved.status_code == 200, resolved.text
+    assert {a["budget_id"] for a in resolved.json()["allocations"]} == {month["id"], year["id"]}
+    assert item_named(budget(client, year["id"]), "Subscriptions")["actual_amount"] == "15.49"
+    assert inbox(client)["needs_you"] == []
 
 
-def test_without_auto_apply_it_lands_unassigned(client: TestClient, finance_on) -> None:
-    october = new_budget(client)
-    rule = make_rule(client)
+def test_skipping_a_budget_leaves_the_rest(client: TestClient, finance_on) -> None:
+    month, _ = new_budget(client), new_budget(client, period_type="year")
+    add_item(client, month["id"], kind="expense", name="Netflix", planned_amount="16")
+    rule = make_rule(client, auto_apply=True)
     backdate(rule, starts_on="2026-10-01", created_on="2026-10-01")
     generate(client, "2026-10-20")
 
-    unassigned = client.get("/finance/inbox", headers=ALICE).json()["unassigned"]
-    assert [t["recurring_name"] for t in unassigned] == ["Netflix"]
+    (pick,) = inbox(client)["needs_you"]
+    assert client.post(f"/finance/inbox/{pick['id']}/dismiss", headers=ALICE).status_code == 204
+    assert inbox(client)["needs_you"] == []
+    assert item_named(budget(client, month["id"]), "Netflix")["actual_amount"] == "15.49"
+    assert client.post(f"/finance/inbox/{pick['id']}/dismiss", headers=ALICE).status_code == 404
 
-    item = add_item(client, october["id"], kind="expense", name="Streaming", planned_amount="20")
-    resp = client.put(
-        f"/finance/transactions/{unassigned[0]['id']}/allocations",
-        json={"allocations": [{"budget_item_id": item["id"], "amount": "15.49"}]},
-        headers=ALICE,
+
+def test_without_auto_apply_one_entry_to_approve_and_place(client: TestClient, finance_on) -> None:
+    month, year = new_budget(client), new_budget(client, period_type="year")
+    electric = add_item(client, month["id"], kind="expense", name="Electric", planned_amount="250")
+    utilities = add_item(
+        client, year["id"], kind="expense", name="Utilities", planned_amount="3000"
     )
-    assert resp.status_code == 200
-    assert client.get("/finance/inbox", headers=ALICE).json()["unassigned"] == []
-    assert item_named(budget(client, october["id"]), "Streaming")["actual_amount"] == "15.49"
-
-
-def test_approval_flow(client: TestClient, finance_on) -> None:
-    october = new_budget(client)
-    rule = make_rule(
-        client,
-        name="Electric",
-        amount="90.00",
-        day_of_month=5,
-        auto_apply=True,
-        requires_approval=True,
-    )
+    rule = make_rule(client, name="Electric", amount="250.00", day_of_month=5)
     backdate(rule, starts_on="2026-10-01", created_on="2026-10-01")
     generate(client, "2026-10-06")
 
-    electric = item_named(budget(client, october["id"]), "Electric")
-    assert (electric["actual_amount"], electric["pending_amount"]) == ("0.00", "90.00")
-
-    pending = client.get("/finance/inbox", headers=ALICE).json()["pending"]
-    assert len(pending) == 1
-    approved = client.post(
-        f"/finance/transactions/{pending[0]['id']}/approve", json={"amount": "84.17"}, headers=ALICE
+    (place,) = inbox(client)["needs_you"]
+    assert (place["kind"], place["budget_id"], place["transaction"]["status"]) == (
+        "place",
+        None,
+        "pending",
     )
-    assert approved.json()["status"] == "confirmed"
-    electric = item_named(budget(client, october["id"]), "Electric")
-    assert (electric["actual_amount"], electric["pending_amount"]) == ("84.17", "0.00")
+    assert item_named(budget(client, month["id"]), "Electric")["actual_amount"] == "0.00"
+
+    # At most one item per budget.
+    other = add_item(client, month["id"], kind="expense", name="Gas", planned_amount="1")
+    assert resolve(client, place, [electric["id"], other["id"]]).status_code == 422
+
+    resolved = resolve(client, place, [electric["id"], utilities["id"]], amount="170.00")
+    assert resolved.status_code == 200, resolved.text
+    assert (resolved.json()["status"], resolved.json()["amount"]) == ("confirmed", "170.00")
+    assert item_named(budget(client, month["id"]), "Electric")["actual_amount"] == "170.00"
+    assert item_named(budget(client, year["id"]), "Utilities")["actual_amount"] == "170.00"
+    assert inbox(client)["needs_you"] == []
+
+
+def test_auto_apply_with_no_budget_waits_to_be_placed(client: TestClient, finance_on) -> None:
+    rule = make_rule(client, auto_apply=True)
+    backdate(rule, starts_on="2026-10-01", created_on="2026-10-01")
+    generate(client, "2026-10-20")
+    (place,) = inbox(client)["needs_you"]
+    assert (place["kind"], place["transaction"]["status"]) == ("place", "pending")
+
+    # Approving without picking anything leaves it confirmed but unassigned.
+    assert resolve(client, place, []).status_code == 200
+    box = inbox(client)
+    assert box["needs_you"] == []
+    assert [t["recurring_name"] for t in box["unassigned"]] == ["Netflix"]
 
 
 def test_rejected_occurrence_never_comes_back(client: TestClient, finance_on) -> None:
-    rule = make_rule(client, requires_approval=True)
+    rule = make_rule(client)
     backdate(rule, starts_on="2026-10-01", created_on="2026-10-01")
     generate(client, "2026-10-20")
-    pending = client.get("/finance/inbox", headers=ALICE).json()["pending"]
-    assert (
-        client.post(f"/finance/transactions/{pending[0]['id']}/reject", headers=ALICE).status_code
-        == 204
-    )
+    (place,) = inbox(client)["needs_you"]
+    assert client.post(f"/finance/inbox/{place['id']}/dismiss", headers=ALICE).status_code == 204
     assert generate(client, "2026-10-20") == 0
-    assert client.get("/finance/inbox", headers=ALICE).json()["pending"] == []
+    box = inbox(client)
+    assert (box["needs_you"], box["unassigned"]) == ([], [])
+
+
+def test_rules_from_before_the_inbox_keep_working(client: TestClient, finance_on) -> None:
+    """Data saved before the Inbox: requires_approval rules, and pending transactions that
+    already count toward an item (the migration gives each a "place" entry)."""
+    october = new_budget(client)
+    rule = make_rule(client, name="Electric", amount="90.00", day_of_month=5, auto_apply=True)
+    with psycopg.connect(OWNER_URL) as conn:
+        conn.execute(
+            "UPDATE finance.recurring_transactions SET requires_approval = true WHERE id = %s",
+            (rule["id"],),
+        )
+    listed = client.get("/finance/recurring", headers=ALICE).json()[0]
+    assert (listed["item_name"], listed["auto_apply"]) == ("Electric", False)
+
+    # A pending transaction with an allocation and its migrated "place" entry.
+    item = add_item(client, october["id"], kind="expense", name="Electric", planned_amount="90")
+    txn = client.post(
+        "/finance/transactions",
+        json={
+            "kind": "expense",
+            "amount": "90.00",
+            "occurred_on": "2026-10-05",
+            "allocations": [{"budget_item_id": item["id"], "amount": "90.00"}],
+        },
+        headers=ALICE,
+    ).json()
+    with psycopg.connect(OWNER_URL) as conn:
+        conn.execute(
+            "UPDATE finance.transactions SET status = 'pending' WHERE id = %s", (txn["id"],)
+        )
+        conn.execute(
+            "INSERT INTO finance.inbox_entries (user_id, transaction_id, kind)"
+            " SELECT user_id, id, 'place' FROM finance.transactions WHERE id = %s",
+            (txn["id"],),
+        )
+    (place,) = inbox(client)["needs_you"]
+    assert [a["budget_item_id"] for a in place["allocations"]] == [item["id"]]
+
+    # The old approve endpoint still works and closes the entry.
+    resp = client.post(
+        f"/finance/transactions/{txn['id']}/approve", json={"amount": "84.17"}, headers=ALICE
+    )
+    assert resp.json()["status"] == "confirmed"
+    assert inbox(client)["needs_you"] == []
+    assert item_named(budget(client, october["id"]), "Electric")["actual_amount"] == "84.17"
+
+    # Saving the rule retires requires_approval.
+    fields = ("kind", "name", "item_name", "amount", "frequency", "day_of_month", "starts_on")
+    body = {k: listed[k] for k in fields} | {"auto_apply": True}
+    client.put(f"/finance/recurring/{rule['id']}", json=body, headers=ALICE)
+    assert client.get("/finance/recurring", headers=ALICE).json()[0]["auto_apply"] is True
 
 
 def test_job_runs_for_every_user(client: TestClient, finance_on) -> None:
@@ -278,7 +370,7 @@ def test_job_runs_for_every_user(client: TestClient, finance_on) -> None:
     assert run() == {"users": 2, "created": 2}
     assert run() == {"users": 2, "created": 0}
     # Each user only sees their own.
-    assert len(client.get("/finance/inbox", headers=BOB).json()["unassigned"]) == 1
+    assert len(inbox(client, headers=BOB)["needs_you"]) == 1
 
 
 # --- Checklist ---------------------------------------------------------------------------

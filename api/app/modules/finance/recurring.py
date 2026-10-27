@@ -7,7 +7,6 @@ always for one user at a time under row-level security.
 import calendar
 from dataclasses import dataclass
 from datetime import date, timedelta
-from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -79,16 +78,20 @@ def next_occurrence(schedule: Schedule, today: date) -> date | None:
 def generate_for_user(
     conn: Connection[dict[str, Any]], user_id: UUID, timezone: str, today: date
 ) -> int:
-    """Creates any due occurrences (up to and including today) as transactions.
+    """Creates any due occurrences (up to and including today) as transactions, and the
+    Inbox entries that go with them.
 
     Idempotent: each rule/date pair is created at most once, ever. Returns how many were
     created. Must run with app.user_id set to `user_id`.
     """
     created = 0
     for rule in conn.execute(queries["list_active_recurring"], {"timezone": timezone}).fetchall():
-        schedule = Schedule.of(rule)
         # Never backfill dates from before the rule existed.
-        for day in occurrences(schedule, rule["created_on"], today):
+        for day in occurrences(Schedule.of(rule), rule["created_on"], today):
+            budgets = conn.execute(queries["list_budgets_covering"], {"day": day}).fetchall()
+            # Applied automatically only when asked to and there's somewhere to apply it;
+            # otherwise it waits in the Inbox, pending, for the user to place.
+            applying = rule["auto_apply"] and bool(budgets)
             row = conn.execute(
                 queries["insert_generated_transaction"],
                 {
@@ -98,15 +101,17 @@ def generate_for_user(
                     "scheduled_on": day,
                     "payee": rule["payee"],
                     "notes": rule["notes"],
-                    "status": "pending" if rule["requires_approval"] else "confirmed",
+                    "status": "confirmed" if applying else "pending",
                     "recurring_id": rule["id"],
                 },
             ).fetchone()
             if row is None:
                 continue  # already generated (or rejected/deleted) earlier
             created += 1
-            if rule["auto_apply"]:
-                _apply_to_budgets(conn, user_id, row["id"], rule, schedule, day)
+            if applying:
+                _apply_to_budgets(conn, user_id, row["id"], rule, budgets)
+            else:
+                _inbox(conn, user_id, row["id"], "place")
     return created
 
 
@@ -115,42 +120,54 @@ def _apply_to_budgets(
     user_id: UUID,
     transaction_id: UUID,
     rule: Any,
-    schedule: Schedule,
-    day: date,
+    budgets: list[Any],
 ) -> None:
-    """Counts the transaction toward the rule's item in every budget covering `day`,
-    creating the item (planned for all of the rule's occurrences in that budget) if the
-    budget doesn't have one with that name yet."""
-    for budget in conn.execute(queries["list_budgets_covering"], {"day": day}).fetchall():
+    """Counts the transaction toward the rule's item in each budget that has it (same
+    name and category), noting it in the Inbox ledger. A budget without one gets a
+    "pick an item" Inbox entry instead; items are never created here."""
+    for budget in budgets:
         item = conn.execute(
-            queries["find_item_by_name"],
-            {"budget_id": budget["id"], "kind": rule["kind"], "name": rule["name"]},
+            queries["find_rule_item"],
+            {
+                "budget_id": budget["id"],
+                "kind": rule["kind"],
+                "name": rule["item_name"],
+                "category_id": rule["category_id"],
+            },
         ).fetchone()
         if item is None:
-            count = len(occurrences(schedule, budget["period_start"], budget["period_end"]))
-            item = conn.execute(
-                queries["insert_budget_item"],
-                {
-                    "user_id": user_id,
-                    "budget_id": budget["id"],
-                    "kind": rule["kind"],
-                    "name": rule["name"],
-                    "category_id": rule["category_id"],
-                    "planned_amount": rule["amount"] * Decimal(max(count, 1)),
-                    "is_checklist_item": False,
-                    "checklist_day": None,
-                    "checklist_mode": "full_amount",
-                },
-            ).fetchone()
+            _inbox(conn, user_id, transaction_id, "pick_item", budget["id"])
+            continue
         conn.execute(
             queries["insert_allocation"],
             {
                 "user_id": user_id,
                 "transaction_id": transaction_id,
-                "budget_item_id": item["id"],  # type: ignore[index]
+                "budget_item_id": item["id"],
                 "amount": rule["amount"],
             },
         )
+        _inbox(conn, user_id, transaction_id, "applied", budget["id"], item["id"])
+
+
+def _inbox(
+    conn: Connection[dict[str, Any]],
+    user_id: UUID,
+    transaction_id: UUID,
+    kind: str,
+    budget_id: UUID | None = None,
+    budget_item_id: UUID | None = None,
+) -> None:
+    conn.execute(
+        queries["insert_inbox_entry"],
+        {
+            "user_id": user_id,
+            "transaction_id": transaction_id,
+            "kind": kind,
+            "budget_id": budget_id,
+            "budget_item_id": budget_item_id,
+        },
+    )
 
 
 def _months(y1: int, m1: int, y2: int, m2: int):

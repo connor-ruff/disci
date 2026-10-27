@@ -49,6 +49,9 @@ function RecurringForm({ rule, onDone }: { rule?: Recurring; onDone: () => void 
 
   const [kind, setKind] = useState<Kind>(rule?.kind ?? 'expense')
   const [name, setName] = useState(rule?.name ?? '')
+  // A new rule's item follows its name until the item is edited on its own.
+  const [itemName, setItemName] = useState(rule?.item_name ?? '')
+  const [itemTouched, setItemTouched] = useState(!!rule)
   const [amount, setAmount] = useState(rule ? String(Number(rule.amount)) : '')
   const [categoryId, setCategoryId] = useState(rule?.category_id ?? '')
   const [frequency, setFrequency] = useState<Frequency>(rule?.frequency ?? 'monthly')
@@ -57,7 +60,6 @@ function RecurringForm({ rule, onDone }: { rule?: Recurring; onDone: () => void 
   const [startsOn, setStartsOn] = useState(rule?.starts_on ?? today)
   const [endsOn, setEndsOn] = useState(rule?.ends_on ?? '')
   const [autoApply, setAutoApply] = useState(rule?.auto_apply ?? true)
-  const [requiresApproval, setRequiresApproval] = useState(rule?.requires_approval ?? false)
   const [payee, setPayee] = useState(rule?.payee ?? '')
   const [notes, setNotes] = useState(rule?.notes ?? '')
   const [paused, setPaused] = useState(rule?.paused ?? false)
@@ -79,6 +81,7 @@ function RecurringForm({ rule, onDone }: { rule?: Recurring; onDone: () => void 
         id: rule?.id,
         kind,
         name: name.trim(),
+        item_name: itemName.trim(),
         amount: value,
         category_id: categoryId || null,
         frequency,
@@ -87,7 +90,6 @@ function RecurringForm({ rule, onDone }: { rule?: Recurring; onDone: () => void 
         starts_on: startsOn,
         ends_on: endsOn || null,
         auto_apply: autoApply,
-        requires_approval: requiresApproval,
         payee: payee.trim() || null,
         notes: notes.trim() || null,
         paused,
@@ -118,16 +120,38 @@ function RecurringForm({ rule, onDone }: { rule?: Recurring; onDone: () => void 
         ]}
       />
 
-      <Field label="Name" htmlFor="rec-name" hint="Counts toward the budget item with this name.">
+      <Field label="Name" htmlFor="rec-name">
         <input
           id="rec-name"
+          required
+          value={name}
+          onChange={(e) => {
+            setName(e.target.value)
+            if (!itemTouched) setItemName(e.target.value)
+          }}
+          maxLength={100}
+          placeholder={kind === 'income' ? 'e.g. Paycheck' : 'e.g. Netflix'}
+          className={inputClasses}
+        />
+      </Field>
+
+      <Field
+        label="Budget item"
+        htmlFor="rec-item"
+        hint="The item it counts toward in each budget: same name (any capitalization) and the category below."
+      >
+        <input
+          id="rec-item"
           list="rec-name-suggestions"
           autoComplete="off"
           required
-          value={name}
-          onChange={(e) => setName(e.target.value)}
+          value={itemName}
+          onChange={(e) => {
+            setItemName(e.target.value)
+            setItemTouched(true)
+          }}
           maxLength={100}
-          placeholder={kind === 'income' ? 'e.g. Paycheck' : 'e.g. Netflix'}
+          placeholder={kind === 'income' ? 'e.g. Paycheck' : 'e.g. Subscriptions'}
           className={inputClasses}
         />
         {/* Suggests existing item names so the rule matches them exactly. */}
@@ -248,15 +272,8 @@ function RecurringForm({ rule, onDone }: { rule?: Recurring; onDone: () => void 
           id="rec-auto"
           checked={autoApply}
           onChange={setAutoApply}
-          label="Automatically apply to all budgets"
-          hint="Counts it in every budget whose dates include it, under the item with this name (added if missing). Otherwise it lands in the Inbox to assign."
-        />
-        <Checkbox
-          id="rec-approval"
-          checked={requiresApproval}
-          onChange={setRequiresApproval}
-          label="Requires approval"
-          hint="Waits in the Inbox until you approve it (and can adjust the amount). Otherwise it's logged right away."
+          label="Auto-apply"
+          hint="Counts it toward the budget item in every budget whose dates include it, with no approval. A budget without that item asks you in the Inbox. Off: every one waits in the Inbox for you to approve (and fix the amount) and place."
         />
         {rule && (
           <Checkbox id="rec-paused" checked={paused} onChange={setPaused} label="Paused" hint="Creates nothing while paused." />
