@@ -1,57 +1,6 @@
-from typing import Any
-
 import pytest
 
-from disci_mcp import api
 from tests.conftest import MCP_HEADERS, gateway_event, invoke, rpc
-
-BUDGETS = [
-    {"id": "b-week", "name": "Week of Oct 26", "period_type": "week",
-     "period_start": "2026-10-26", "period_end": "2026-11-01", "notes": None},
-    {"id": "b-oct", "name": "October 2026", "period_type": "month",
-     "period_start": "2026-10-01", "period_end": "2026-10-31", "notes": None},
-    {"id": "b-sep", "name": "September 2026", "period_type": "month",
-     "period_start": "2026-09-01", "period_end": "2026-09-30", "notes": None},
-]  # fmt: skip
-
-
-def detail(budget: dict) -> dict:
-    item = {
-        "id": "i1", "kind": "expense", "name": "Groceries", "category_id": None,
-        "category_name": "Food", "planned_amount": "400.00", "actual_amount": "425.50",
-        "pending_amount": "0.00", "is_checklist_item": False, "checklist_day": None,
-        "checklist_done": False, "sort_order": 0,
-    }  # fmt: skip
-    return {
-        **budget,
-        "items": [item],
-        "income": {"planned": "5000.00", "actual": "2500.00"},
-        "expense": {"planned": "400.00", "actual": "425.50"},
-    }
-
-
-@pytest.fixture
-def fake_api(monkeypatch: pytest.MonkeyPatch) -> list[str]:
-    calls: list[str] = []
-
-    async def get(path: str, params: dict | None = None) -> Any:
-        calls.append(path)
-        if path == "/me":
-            return {"timezone": "America/Chicago"}
-        if path == "/finance/budgets":
-            return BUDGETS
-        return detail(next(b for b in BUDGETS if path.endswith(b["id"])))
-
-    monkeypatch.setattr(api, "get", get)
-    return calls
-
-
-def call_tool(name: str, arguments: dict) -> dict:
-    status, _, body = invoke(
-        gateway_event("POST", "/mcp", rpc("tools/call", {"name": name, "arguments": arguments}))
-    )
-    assert status == 200
-    return body["result"]
 
 
 def test_handler_serves_repeated_invocations() -> None:
@@ -59,28 +8,8 @@ def test_handler_serves_repeated_invocations() -> None:
     for _ in range(2):
         status, _, body = invoke(gateway_event("POST", "/mcp", rpc("tools/list")))
         assert status == 200
-        assert [t["name"] for t in body["result"]["tools"]] == ["get_budget_summary"]
-
-
-def test_budget_summary_returns_every_covering_budget(fake_api: list[str]) -> None:
-    result = call_tool("get_budget_summary", {"on_date": "2026-10-27"})["structuredContent"]
-
-    assert [b["name"] for b in result["budgets"]] == ["Week of Oct 26", "October 2026"]
-    october = result["budgets"][1]
-    assert october["income"] == {"planned": "5000.00", "actual": "2500.00", "remaining": "2500.00"}
-    assert october["items"][0]["remaining"] == "-25.50"  # over budget
-    assert "/me" not in fake_api  # a date was given, so no timezone lookup
-
-
-def test_budget_summary_defaults_to_today_and_notes_gaps(fake_api: list[str]) -> None:
-    result = call_tool("get_budget_summary", {"on_date": "2027-03-01"})["structuredContent"]
-    assert result["budgets"] == []
-    assert result["note"] == "No budget covers this date."
-    assert len(result["recent_budgets"]) == 3
-
-    fake_api.clear()
-    call_tool("get_budget_summary", {})
-    assert fake_api[:2] == ["/me", "/finance/budgets"]  # today comes from the user's timezone
+        names = {t["name"] for t in body["result"]["tools"]}
+        assert {"get_budget_summary", "log_foods"} <= names
 
 
 def test_cognito_mode_requires_a_token(monkeypatch: pytest.MonkeyPatch) -> None:

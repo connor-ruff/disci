@@ -51,3 +51,45 @@ def invoke(event: dict) -> tuple[int, dict, Any]:
 
 def rpc(method: str, params: dict | None = None) -> dict:
     return {"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}}
+
+
+class FakeApi:
+    """Stands in for the Disci API: canned answers by (method, path), recording calls.
+
+    An answer may be a callable taking the request body; raising ToolError in it plays
+    an API error.
+    """
+
+    def __init__(self) -> None:
+        self.routes: dict[tuple[str, str], Any] = {("GET", "/me"): {"timezone": "UTC"}}
+        self.calls: list[tuple[str, str, Any]] = []
+
+    async def request(self, method: str, path: str, params: Any = None, body: Any = None) -> Any:
+        self.calls.append((method, path, body))
+        answer = self.routes[(method, path)]
+        return answer(body) if callable(answer) else answer
+
+    def sent(self, method: str, path: str) -> list[Any]:
+        """Bodies sent to one route, in order."""
+        return [b for m, p, b in self.calls if (m, p) == (method, path)]
+
+
+@pytest.fixture
+def fake_api(monkeypatch: pytest.MonkeyPatch) -> FakeApi:
+    from disci_mcp import api
+
+    fake = FakeApi()
+    monkeypatch.setattr(api, "request", fake.request)
+    return fake
+
+
+def call_tool(name: str, arguments: dict) -> Any:
+    """Calls a tool over MCP; returns its structured result, or raises with its error text."""
+    status, _, body = invoke(
+        gateway_event("POST", "/mcp", rpc("tools/call", {"name": name, "arguments": arguments}))
+    )
+    assert status == 200
+    result = body["result"]
+    if result.get("isError"):
+        raise AssertionError(result["content"][0]["text"])
+    return result["structuredContent"]
