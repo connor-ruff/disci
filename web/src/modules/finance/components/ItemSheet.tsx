@@ -163,7 +163,6 @@ function ItemFacts({
                   <Clock className="size-4 text-muted" />
                 )}
                 Due the {ordinal(item.checklist_day)}
-                {item.checklist_mode === 'any_payment' && <span className="text-muted">· any payment</span>}
                 {item.checklist_done && <span className="text-muted">· done</span>}
               </span>
             ) : (
