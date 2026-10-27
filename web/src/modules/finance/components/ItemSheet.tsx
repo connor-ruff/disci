@@ -170,6 +170,9 @@ function ItemFacts({
             )}
           </Fact>
         )}
+        {isMonthly && item.is_checklist_item && (
+          <Fact label="Done when">{CHECKLIST_MODES[item.checklist_mode].label}</Fact>
+        )}
       </dl>
 
       <div className="grid grid-cols-3 gap-2">

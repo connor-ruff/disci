@@ -144,7 +144,7 @@ Opened by "Add income" / "Add expense" (new item of that kind, straight to the f
 **View** (title: the item's name):
 
 - **Progress**: the actual, large, then "spent" (expense) or "received" (income) "of $planned", a progress bar (amber with an amber actual when an expense is over plan), and "$X awaiting approval" (amber) when pending transactions are allocated to it.
-- **Facts list**: Name, Planned amount, Category (or Uncategorized) and, in **monthly budgets only**, Monthly checklist: "Due the Nth" with a teal check (plus "· done") or a clock icon, or "Not on the checklist". The checklist mode isn't shown here; it's in the edit form.
+- **Facts list**: Name, Planned amount, Category (or Uncategorized) and, in **monthly budgets only**, Monthly checklist: "Due the Nth" with a teal check (plus "· done") or a clock icon, or "Not on the checklist". Checklist items also get a **Done when** row: "Full amount" or "Any payment" (the edit form's labels).
 - Three buttons side by side, icon over label, in order: **Edit**, **View transactions**, **Log transaction** (primary). Below them, **Delete item** (red; confirms: "Its transactions stay but won't count toward this budget").
   - **Edit** switches to the form (title "Edit <name>") with **Save** and **Cancel**; both return to the view.
   - **View transactions** (title "<name> transactions") shows a "Back to <name>" link and the item's rows from the budget's transactions (`TransactionList`, filtered client-side by `budget_item_id`, item name hidden), or "Nothing logged to <name> yet." Tapping a row opens the transaction view (§4.5) **on top** of the item sheet.
