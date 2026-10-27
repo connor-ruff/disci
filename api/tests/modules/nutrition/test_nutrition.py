@@ -172,6 +172,58 @@ def test_history_lists_logged_days_newest_first(client: TestClient, nutrition_on
     assert [d["date"] for d in rest] == ["2026-10-18"]
 
 
+def quick_add(client: TestClient, day: str = DAY, headers=ALICE, **body):
+    body = {"name": "Burrito", "eaten_on": day} | body
+    return client.post("/nutrition/quick-logs", json=body, headers=headers)
+
+
+def test_quick_add_counts_toward_the_day_but_not_the_repo(client: TestClient, nutrition_on) -> None:
+    rice = add_food(client, name="Rice", calories="130", protein_g="3")
+    log(client, rice["id"], "2")
+    resp = quick_add(client, name="  Burrito  ", calories="600")
+    assert resp.status_code == 201, resp.text
+    entry = resp.json()
+    assert (entry["food_item_id"], entry["food_name"], entry["servings"]) == (
+        None,
+        "Burrito",
+        "1.000000",
+    )
+    assert (entry["standard_quantity"], entry["standard_unit"]) == (None, None)
+
+    day = client.get(f"/nutrition/days/{DAY}", headers=ALICE).json()
+    assert [e["food_name"] for e in day["entries"]] == ["Rice", "Burrito"]
+    assert totals(day)["calories"]["amount"] == "860.000000"
+    assert totals(day)["protein_g"]["missing_foods"] == ["Burrito"]  # unknown, not 0
+    assert [f["name"] for f in client.get("/nutrition/foods", headers=ALICE).json()] == ["Rice"]
+
+
+def test_edit_and_delete_quick_adds(client: TestClient, nutrition_on) -> None:
+    entry = quick_add(client, calories="600").json()
+    body = {"name": "Big burrito", "eaten_on": "2026-10-21", "calories": "800", "protein_g": "35"}
+    resp = client.put(f"/nutrition/quick-logs/{entry['id']}", json=body, headers=ALICE)
+    edited = resp.json()
+    assert (edited["food_name"], edited["eaten_on"]) == ("Big burrito", "2026-10-21")
+    assert edited["nutrients"]["protein_g"] == "35.000000"
+
+    # Each kind of entry is edited at its own endpoint.
+    servings = {"eaten_on": DAY, "servings": "2"}
+    assert (
+        client.put(f"/nutrition/logs/{entry['id']}", json=servings, headers=ALICE).status_code
+        == 404
+    )
+    rice = log(client, add_food(client, name="Rice")["id"], "1").json()
+    assert (
+        client.put(f"/nutrition/quick-logs/{rice['id']}", json=body, headers=ALICE).status_code
+        == 404
+    )
+
+    assert client.delete(f"/nutrition/logs/{entry['id']}", headers=ALICE).status_code == 204
+    assert client.get("/nutrition/days/2026-10-21", headers=ALICE).json()["entries"] == []
+    assert quick_add(client, name="").status_code == 422
+    assert quick_add(client, headers=BOB).status_code == 201  # each user's own
+    assert len(client.get(f"/nutrition/days/{DAY}", headers=ALICE).json()["entries"]) == 1
+
+
 def test_users_cant_see_or_log_each_others_foods(client: TestClient, nutrition_on) -> None:
     food = add_food(client, name="Secret sauce")
     log(client, food["id"], "1")

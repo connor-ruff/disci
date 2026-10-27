@@ -139,6 +139,7 @@ def _apply_to_budgets(
                     "planned_amount": rule["amount"] * Decimal(max(count, 1)),
                     "is_checklist_item": False,
                     "checklist_day": None,
+                    "checklist_mode": "full_amount",
                 },
             ).fetchone()
         conn.execute(

@@ -12,12 +12,9 @@ export function NutritionSettings() {
 
   return (
     <Card className="flex flex-col gap-3">
-      <div>
-        <h2 className="text-lg font-semibold">Nutrition</h2>
-        <p className="text-sm text-muted">
-          Nutrients you track. Only these show on your daily sheets, history and food repo.
-        </p>
-      </div>
+      <p className="text-sm text-muted">
+        Nutrients you track. Only these show on your daily sheets, history and food repo.
+      </p>
       <div className="grid gap-3 sm:grid-cols-2">
         {prefs.data.nutrients.map((n) => (
           <Checkbox

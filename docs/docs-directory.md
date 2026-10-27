@@ -22,10 +22,10 @@ docs/
 │   └── nutrition.md
 └── ui/                            # Front-end layout & UX docs
     ├── ui-overview.md             # General style guidelines
-    ├── app-shell.md               # Shell, module menu, opt-in modules, how modules plug in
+    ├── app-shell.md               # Shell, module menu, opt-in modules, Settings page, how modules plug in
     ├── web-overview.md            # Web app engineering: stack, layout, API client, theming, local dev
-    ├── finance-ui.md              # Finance screens: routes, budget page, forms, what the numbers mean
-    ├── nutrition-ui.md            # Nutrition screens: daily sheet, history, food repo, goals, unknown values
+    ├── finance-ui.md              # Finance screens: routes, budget page, forms, what the numbers mean, settings
+    ├── nutrition-ui.md            # Nutrition screens: daily sheet, quick adds, history, food repo, goals, unknown values
     └── tasks-ui.md                # Tasks screens: Today, All tasks, Kinds guide, check control, task sheet
 ```
 

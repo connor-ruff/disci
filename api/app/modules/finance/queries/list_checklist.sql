@@ -1,10 +1,12 @@
 -- Checklist items in the user's monthly budget(s) covering today. An item is done once
--- its confirmed net actual reaches the planned amount (and something has been logged).
-SELECT *, (actual_amount > 0 AND actual_amount >= planned_amount) AS done
+-- something confirmed has been logged and, in full_amount mode, its net actual reaches
+-- the planned amount.
+SELECT *, (actual_amount > 0 AND (checklist_mode = 'any_payment' OR actual_amount >= planned_amount))
+              AS done
 FROM (
     SELECT
         b.id AS budget_id, b.name AS budget_name, i.id AS item_id, i.name AS item_name, i.kind,
-        i.checklist_day, i.planned_amount,
+        i.checklist_day, i.checklist_mode, i.planned_amount,
         (b.period_start + (i.checklist_day - 1))::date AS due_on,
         coalesce(
             sum(CASE WHEN t.kind = i.kind THEN a.amount ELSE -a.amount END)

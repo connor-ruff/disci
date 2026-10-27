@@ -50,7 +50,7 @@ web/
     │   ├── Shell.tsx              # top bar, sub-nav, disabled-module gate
     │   ├── PullToRefresh.tsx      # pull-down-to-reload in the home-screen app (§7)
     │   ├── ModuleMenu.tsx         # ☰ drawer
-    │   └── pages/                 # Home, ManageModules, Settings (+ module SettingsPanels), NotFound
+    │   └── pages/                 # Home, ManageModules, Settings (Account + a section per module SettingsPanel), NotFound
     ├── shared/                    # used by the shell and every module
     │   ├── api/
     │   │   ├── client.ts          # typed `api` client, `unwrap`, `ApiError`, `errorMessage`, type aliases
@@ -65,20 +65,21 @@ web/
     │                              # dates.ts (todayIn, formatShortDate, formatDateRange, addDays, formatLongDate)
     └── modules/
         ├── finance/
-        │   ├── index.ts           # the module's ModuleManifest (sub-nav: Budgets, Checklist, Recurring, Inbox, Categories)
+        │   ├── index.ts           # the module's ModuleManifest (sub-nav: Budgets, Checklist, Recurring, Inbox, Categories; SettingsPanel)
         │   ├── routes.tsx         # route tree under /finance
         │   ├── api.ts             # TanStack Query hooks + financeKeys
         │   ├── pages/             # BudgetsPage, NewBudgetPage, BudgetPage, CategoriesPage,
         │   │                      # ChecklistPage, RecurringPage, InboxPage
         │   └── components/        # FinanceHomeCard, ActiveBadge, ItemSheet, TransactionSheet,
-        │                          # RecurringSheet, ReorderToggle
+        │                          # RecurringSheet, ReorderToggle, FinanceSettings
         ├── nutrition/
         │   ├── index.ts           # ModuleManifest (sub-nav: Daily, History, Food repo, Goals; SettingsPanel)
         │   ├── routes.tsx         # route tree under /nutrition
         │   ├── api.ts             # TanStack Query hooks + nutritionKeys
-        │   ├── format.ts          # formatNutrient, formatQuantity, describeServing, UNIT_SUGGESTIONS
+        │   ├── format.ts          # formatNutrient, formatQuantity, describeServing, describeEntry, UNIT_SUGGESTIONS
         │   ├── pages/             # DailyPage, DayPage, HistoryPage, FoodsPage, GoalsPage
-        │   └── components/        # DaySheet, LogSheet, FoodForm, NutritionSettings, NutritionHomeCard
+        │   └── components/        # DaySheet, LogSheet, FoodForm (+ NutrientFields), QuickAddForm,
+        │                          # NutritionSettings, NutritionHomeCard
         └── tasks/
             ├── index.ts           # ModuleManifest (sub-nav: Today, All tasks, Kinds)
             ├── routes.tsx         # route tree under /tasks

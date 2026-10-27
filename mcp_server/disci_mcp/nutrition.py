@@ -4,11 +4,11 @@
 import asyncio
 from datetime import date
 from decimal import Decimal
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, Self
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from disci_mcp import api
 from disci_mcp.common import DESTRUCTIVE, READ, WRITE, each, num
@@ -64,10 +64,12 @@ async def _day(day: date) -> dict[str, Any]:
         "entries": [
             {
                 "id": e["id"],
-                "food_id": e["food_item_id"],
+                "food_id": e["food_item_id"],  # None for a quick add
                 "food_name": e["food_name"],
                 "servings": num(e["servings"]),
-                "serving": f"{num(e['standard_quantity'])} {e['standard_unit']}",
+                "serving": None
+                if e["food_item_id"] is None
+                else f"{num(e['standard_quantity'])} {e['standard_unit']}",
                 "notes": e["notes"],
                 "nutrients": {k: num(e["nutrients"][k]) for k in tracked},
             }
@@ -78,12 +80,55 @@ async def _day(day: date) -> dict[str, Any]:
 
 
 class FoodEntry(BaseModel):
-    food_id: str
-    servings: Servings = Field(
-        description="Multiples of the food's standard quantity, e.g. 6 oz of a 170 g food "
-        "is 170.1/170 = 1.0006; 2 of a '1 medium' apple is 2."
+    """A repo food (food_id + servings), or a quick add (name + nutrients)."""
+
+    food_id: str | None = Field(default=None, description="A repo food, from search_foods.")
+    servings: Servings | None = Field(
+        default=None,
+        description="Repo foods only: multiples of the food's standard quantity, e.g. 6 oz "
+        "of a 170 g food is 170.1/170 = 1.0006; 2 of a '1 medium' apple is 2.",
+    )
+    name: str | None = Field(
+        default=None,
+        description="Quick add only: a one-off food logged without saving it to the repo, "
+        "e.g. a rough estimate of a restaurant meal.",
+    )
+    nutrients: (
+        dict[NutrientKey, Annotated[Decimal, Field(ge=0, max_digits=16, decimal_places=6)]] | None
+    ) = Field(
+        default=None,
+        description="Quick add only: totals for what was eaten (not per serving). Leave out "
+        "what isn't known (unknown is not 0).",
     )
     notes: str | None = None
+
+    @model_validator(mode="after")
+    def _food_or_quick_add(self) -> Self:
+        if self.food_id is not None:
+            if self.servings is None or self.name is not None or self.nutrients is not None:
+                raise ValueError("a repo food entry takes food_id and servings only")
+        elif self.name is None or self.servings is not None:
+            raise ValueError("give food_id + servings, or a quick add's name (+ nutrients)")
+        return self
+
+    @property
+    def label(self) -> str:
+        return self.food_id or f"quick add: {self.name}"
+
+
+def _log_call(e: FoodEntry, day: date):
+    if e.food_id is not None:
+        body = {"food_item_id": e.food_id, "eaten_on": day.isoformat(),
+                "servings": str(e.servings), "notes": e.notes}  # fmt: skip
+        return api.post("/nutrition/logs", body)
+    values = e.nutrients or {}
+    body = {
+        "name": e.name,
+        "eaten_on": day.isoformat(),
+        "notes": e.notes,
+        **{k: str(values[k]) if k in values else None for k in NUTRIENT_KEYS},
+    }
+    return api.post("/nutrition/quick-logs", body)
 
 
 def register(mcp: FastMCP) -> None:
@@ -177,38 +222,30 @@ def register(mcp: FastMCP) -> None:
         """Log foods the user ate, one entry per food, then report the day.
 
         Find each food with search_foods first; offer to add_food any that's missing.
+        For a one-off the user won't eat again (a restaurant meal, a rough estimate), log
+        a quick add instead: a name and the nutrients for what was eaten, nothing saved
+        to the repo. Ask which they'd prefer when unsure.
 
         Args:
-            entries: Foods and servings (multiples of each food's standard quantity).
+            entries: Repo foods (food_id + servings, in multiples of the food's standard
+                quantity), or quick adds (name + nutrients).
             eaten_on: YYYY-MM-DD. Defaults to today in the user's timezone.
 
         Returns each entry's outcome, then the day: every entry, and per tracked nutrient
         the day's total next to its target/limit.
         """
         day = eaten_on or await api.today()
-        logged = await each(
-            [e.food_id for e in entries],
-            [
-                api.post(
-                    "/nutrition/logs",
-                    {
-                        "food_item_id": e.food_id,
-                        "eaten_on": day.isoformat(),
-                        "servings": str(e.servings),
-                        "notes": e.notes,
-                    },
-                )
-                for e in entries
-            ],
-        )
+        logged = await each([e.label for e in entries], [_log_call(e, day) for e in entries])
         results = []
-        for r in logged:
+        for e, r in zip(entries, logged, strict=True):
+            # Quick adds have no food_id; they're named instead.
+            which = {"food_id": e.food_id} if e.food_id else {"quick_add": e.name}
             if r["ok"]:
                 log = r["result"]
-                results.append({"food_id": r["id"], "ok": True, "log_id": log["id"],
+                results.append({**which, "ok": True, "log_id": log["id"],
                                 "food_name": log["food_name"]})  # fmt: skip
             else:
-                results.append({"food_id": r["id"], "ok": False, "error": r["error"]})
+                results.append({**which, "ok": False, "error": r["error"]})
         return {"results": results, "day": await _day(day)}
 
     @mcp.tool(annotations=READ)
@@ -229,7 +266,8 @@ def register(mcp: FastMCP) -> None:
         notes: str | None = None,
     ) -> dict[str, Any]:
         """Fix a food log entry: change its servings, move it to another day, or set notes.
-        To change the food itself, delete the entry and log the right food.
+        To change the food itself, delete the entry and log the right food. A quick add
+        (no food_id) has no servings; to change its nutrients, delete it and log it again.
 
         Args:
             log_id: From get_food_day or log_foods.
@@ -244,10 +282,17 @@ def register(mcp: FastMCP) -> None:
             raise ToolError(f"No log entry {log_id} on {eaten_on}. Check get_food_day.")
         body = {
             "eaten_on": (move_to or eaten_on).isoformat(),
-            "servings": str(servings) if servings is not None else entry["servings"],
             "notes": entry["notes"] if notes is None else notes,
         }
-        await api.put(f"/nutrition/logs/{log_id}", body)
+        if entry["food_item_id"] is None:
+            if servings is not None:
+                raise ToolError("A quick add has no servings. Delete it and log it again.")
+            # Quick adds are sent in full: keep their name and nutrients.
+            body |= {"name": entry["food_name"], **entry["nutrients"]}
+            await api.put(f"/nutrition/quick-logs/{log_id}", body)
+        else:
+            body["servings"] = str(servings) if servings is not None else entry["servings"]
+            await api.put(f"/nutrition/logs/{log_id}", body)
         return await _day(move_to or eaten_on)
 
     @mcp.tool(annotations=DESTRUCTIVE)

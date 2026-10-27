@@ -360,6 +360,60 @@ def test_zero_planned_checklist_item_needs_something_logged(client: TestClient, 
     assert client.get("/finance/checklist", headers=ALICE).json()[0]["done"] is True
 
 
+def test_any_payment_checklist_item_is_done_on_first_payment(
+    client: TestClient, finance_on
+) -> None:
+    current = new_budget(client, period_date=date.today().isoformat())
+    power = add_item(
+        client,
+        current["id"],
+        kind="expense",
+        name="Electric",
+        planned_amount="200",
+        is_checklist_item=True,
+        checklist_day=10,
+        checklist_mode="any_payment",
+    )
+    assert power["checklist_mode"] == "any_payment"
+    assert client.get("/finance/checklist", headers=ALICE).json()[0]["done"] is False
+
+    pay(client, power["id"], "170.00")  # under plan, but any payment counts
+    (entry,) = client.get("/finance/checklist", headers=ALICE).json()
+    assert (entry["done"], entry["checklist_mode"]) == (True, "any_payment")
+    assert item_named(budget(client, current["id"]), "Electric")["checklist_done"] is True
+
+    pay(client, power["id"], "170.00", kind="income")  # fully refunded: nothing paid
+    assert client.get("/finance/checklist", headers=ALICE).json()[0]["done"] is False
+
+
+def test_checklist_mode_defaults_to_full_amount_and_is_copied(
+    client: TestClient, finance_on
+) -> None:
+    october = new_budget(client)
+    rent = add_item(
+        client,
+        october["id"],
+        kind="expense",
+        name="Rent",
+        planned_amount="1650",
+        is_checklist_item=True,
+        checklist_day=1,
+    )
+    assert rent["checklist_mode"] == "full_amount"
+    body = {
+        "name": "Water",
+        "planned_amount": "40",
+        "is_checklist_item": True,
+        "checklist_day": 3,
+        "checklist_mode": "any_payment",
+    }
+    resp = client.put(f"/finance/items/{rent['id']}", json=body, headers=ALICE)
+    assert item_named(resp.json(), "Water")["checklist_mode"] == "any_payment"
+
+    november = new_budget(client, period_date="2026-11-03", copy_from_budget_id=october["id"])
+    assert item_named(budget(client, november["id"]), "Water")["checklist_mode"] == "any_payment"
+
+
 def test_checklist_items_only_in_monthly_budgets(client: TestClient, finance_on) -> None:
     week = new_budget(client, period_type="week")
     resp = client.post(

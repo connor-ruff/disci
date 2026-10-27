@@ -1,5 +1,5 @@
-import { LogOut } from 'lucide-react'
-import { type FormEvent, useState } from 'react'
+import { type LucideIcon, LogOut, UserRound } from 'lucide-react'
+import { type FormEvent, type ReactNode, useState } from 'react'
 
 import type { User } from '@/shared/api/client'
 import { useMe, useModules, useUpdateMe } from '@/shared/api/hooks'
@@ -17,29 +17,49 @@ const DEVICE_TIMEZONE = Intl.DateTimeFormat().resolvedOptions().timeZone
 export function SettingsPage() {
   const me = useMe()
   const modules = useModules()
-  // Modules can add their own section, shown while they're turned on.
-  const panels = MODULES.filter(
-    (m) => m.SettingsPanel && modules.data?.some((i) => i.key === m.key && i.enabled),
-  )
+  // Modules can add their own section, shown while they're turned on, in menu order.
+  const panels = (modules.data ?? []).flatMap((info) => {
+    const manifest = MODULES.find((m) => m.key === info.key)
+    return info.enabled && manifest?.SettingsPanel
+      ? [{ key: info.key, name: info.name, icon: manifest.icon, Panel: manifest.SettingsPanel }]
+      : []
+  })
   return (
     <>
       <PageHeader title="Settings" />
-      {me.isPending && <LoadingState />}
-      {me.isError && <ErrorState error={me.error} />}
-      {/* Keyed so the form's fields reset if the user changes. */}
-      {me.data && <SettingsForm key={me.data.id} user={me.data} />}
-      {panels.map(({ key, SettingsPanel }) => SettingsPanel && (
-        <div key={key} className="mt-4">
-          <SettingsPanel />
-        </div>
-      ))}
-      {authMode === 'cognito' && (
-        <Button variant="outline" onClick={() => signOut()} className="mt-4 w-full sm:w-auto">
-          <LogOut className="size-5" />
-          Sign out
-        </Button>
-      )}
+      <div className="flex flex-col gap-8">
+        <SettingsSection title="Account" icon={UserRound}>
+          {me.isPending && <LoadingState />}
+          {me.isError && <ErrorState error={me.error} />}
+          {/* Keyed so the form's fields reset if the user changes. */}
+          {me.data && <SettingsForm key={me.data.id} user={me.data} />}
+        </SettingsSection>
+        {panels.map(({ key, name, icon, Panel }) => (
+          <SettingsSection key={key} title={name} icon={icon}>
+            <Panel />
+          </SettingsSection>
+        ))}
+        {authMode === 'cognito' && (
+          <Button variant="outline" onClick={() => signOut()} className="w-full sm:w-auto sm:self-start">
+            <LogOut className="size-5" />
+            Sign out
+          </Button>
+        )}
+      </div>
     </>
+  )
+}
+
+/** One area of Settings (the account, or a module) under its own heading. */
+function SettingsSection({ title, icon: Icon, children }: { title: string; icon: LucideIcon; children: ReactNode }) {
+  return (
+    <section className="flex flex-col gap-2">
+      <h2 className="flex items-center gap-2 px-1 text-sm font-semibold tracking-wide text-muted uppercase">
+        <Icon className="size-4 text-accent" />
+        {title}
+      </h2>
+      {children}
+    </section>
   )
 }
 

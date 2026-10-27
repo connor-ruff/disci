@@ -16,6 +16,8 @@ export type BudgetItemUpdate = Schemas['BudgetItemUpdate']
 export type TransactionCreate = Schemas['TransactionCreate']
 export type TransactionUpdate = Schemas['TransactionUpdate']
 export type TransactionDetail = Schemas['TransactionDetail']
+export type ChecklistMode = Schemas['BudgetItemOut']['checklist_mode']
+export type Preferences = Schemas['FinancePreferencesOut']
 
 export const financeKeys = {
   all: ['finance'] as const,
@@ -27,6 +29,24 @@ export const financeKeys = {
   inbox: ['finance', 'inbox'] as const,
   recurring: ['finance', 'recurring'] as const,
   checklist: ['finance', 'checklist'] as const,
+  preferences: ['finance', 'preferences'] as const,
+}
+
+// --- Preferences ---------------------------------------------------------------------
+
+export function usePreferences() {
+  return useQuery({
+    queryKey: financeKeys.preferences,
+    queryFn: async () => unwrap(await api.GET('/finance/preferences')),
+  })
+}
+
+export function useUpdatePreferences() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (body: Preferences) => unwrap(await api.PUT('/finance/preferences', { body })),
+    onSuccess: (prefs) => queryClient.setQueryData(financeKeys.preferences, prefs),
+  })
 }
 
 // --- Categories --------------------------------------------------------------------

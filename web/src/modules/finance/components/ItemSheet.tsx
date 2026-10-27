@@ -7,11 +7,13 @@ import { formatMoney, parseMoneyInput } from '@/shared/lib/money'
 import { Button } from '@/shared/ui/button'
 import { Checkbox } from '@/shared/ui/checkbox'
 import { Field, inputClasses } from '@/shared/ui/field'
+import { Segmented } from '@/shared/ui/segmented'
 import { Sheet } from '@/shared/ui/sheet'
 
 import {
   type BudgetItem,
   type BudgetTransaction,
+  type ChecklistMode,
   type Kind,
   useBudgetTransactions,
   useCategories,
@@ -161,6 +163,7 @@ function ItemFacts({
                   <Clock className="size-4 text-muted" />
                 )}
                 Due the {ordinal(item.checklist_day)}
+                {item.checklist_mode === 'any_payment' && <span className="text-muted">· any payment</span>}
                 {item.checklist_done && <span className="text-muted">· done</span>}
               </span>
             ) : (
@@ -270,6 +273,7 @@ function ItemForm({
   const [planned, setPlanned] = useState(item ? String(Number(item.planned_amount)) : '')
   const [isChecklist, setIsChecklist] = useState(item?.is_checklist_item ?? false)
   const [checklistDay, setChecklistDay] = useState(item?.checklist_day ?? 1)
+  const [checklistMode, setChecklistMode] = useState<ChecklistMode>(item?.checklist_mode ?? 'full_amount')
   const [invalid, setInvalid] = useState<string | null>(null)
 
   const options = (categories.data ?? []).filter((c) => c.kind === kind)
@@ -286,6 +290,7 @@ function ItemForm({
       planned_amount: amount,
       is_checklist_item: isChecklist,
       checklist_day: isChecklist ? checklistDay : null,
+      checklist_mode: checklistMode,
     }
     if (item) update.mutate({ id: item.id, ...body }, { onSuccess: onDone })
     else create.mutate({ kind, ...body }, { onSuccess: onDone })
@@ -339,8 +344,21 @@ function ItemForm({
             checked={isChecklist}
             onChange={setIsChecklist}
             label="On the monthly checklist"
-            hint="Shows on the Checklist tab, and is done once what's logged here reaches the planned amount."
+            hint="Shows on the Checklist tab with the day it's due."
           />
+          {isChecklist && (
+            <Field label="Done when" hint={CHECKLIST_MODES[checklistMode].hint}>
+              <Segmented
+                label="Done when"
+                value={checklistMode}
+                onChange={setChecklistMode}
+                options={(['full_amount', 'any_payment'] as const).map((m) => ({
+                  value: m,
+                  label: CHECKLIST_MODES[m].label,
+                }))}
+              />
+            </Field>
+          )}
           {isChecklist && (
             <Field label="Due on day" htmlFor="item-checklist-day">
               <select
@@ -376,6 +394,12 @@ function ItemForm({
       </div>
     </form>
   )
+}
+
+/** How a checklist item counts as done, as the item form shows it. */
+const CHECKLIST_MODES: Record<ChecklistMode, { label: string; hint: string }> = {
+  full_amount: { label: 'Full amount', hint: 'Checked off once payments reach the planned amount.' },
+  any_payment: { label: 'Any payment', hint: 'Checked off by the first payment, whatever it comes to. For bills that vary.' },
 }
 
 export function ordinal(n: number): string {

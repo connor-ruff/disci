@@ -1,5 +1,7 @@
-import { Apple, Plus, Search } from 'lucide-react'
-import { useState } from 'react'
+import { Apple, Pencil, Plus, Search } from 'lucide-react'
+import { type ReactNode, useState } from 'react'
+
+import { formatLongDate } from '@/shared/lib/dates'
 
 import { Button } from '@/shared/ui/button'
 import { Card } from '@/shared/ui/card'
@@ -7,7 +9,7 @@ import { inputClasses } from '@/shared/ui/field'
 import { ErrorState, LoadingState, PageHeader } from '@/shared/ui/page'
 import { Sheet } from '@/shared/ui/sheet'
 
-import { type Food, useDeleteFood, useFoods, useTrackedNutrients } from '../api'
+import { type Food, useDeleteFood, useFoods, usePreferences, useTrackedNutrients } from '../api'
 import { FoodForm } from '../components/FoodForm'
 import { formatNutrient, formatQuantity } from '../format'
 
@@ -15,10 +17,12 @@ export function FoodsPage() {
   const foods = useFoods()
   const tracked = useTrackedNutrients()
   const [query, setQuery] = useState('')
-  const [sheet, setSheet] = useState<{ food?: Food } | null>(null)
+  const [sheet, setSheet] = useState<{ foodId?: string } | null>(null)
 
   const q = query.trim().toLowerCase()
   const shown = (foods.data ?? []).filter((f) => `${f.name} ${f.description ?? ''}`.toLowerCase().includes(q))
+  // Looked up by id so the sheet shows fresh values after an edit.
+  const openFood = foods.data?.find((f) => f.id === sheet?.foodId)
 
   return (
     <>
@@ -63,7 +67,7 @@ export function FoodsPage() {
                 <li key={f.id}>
                   <button
                     type="button"
-                    onClick={() => setSheet({ food: f })}
+                    onClick={() => setSheet({ foodId: f.id })}
                     className="flex w-full flex-col gap-0.5 px-4 py-3 text-left transition hover:bg-highlight"
                   >
                     <span className="flex w-full items-baseline justify-between gap-3">
@@ -94,11 +98,12 @@ export function FoodsPage() {
         </>
       )}
 
-      <FoodSheet food={sheet?.food} open={sheet !== null} onOpenChange={(open) => !open && setSheet(null)} />
+      <FoodSheet food={openFood} open={sheet !== null} onOpenChange={(open) => !open && setSheet(null)} />
     </>
   )
 }
 
+/** A food's facts with Edit and Delete; or the form for a new food. */
 function FoodSheet({
   food,
   open,
@@ -108,23 +113,76 @@ function FoodSheet({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const remove = useDeleteFood()
+  const [editing, setEditing] = useState(false)
+
+  function onOpenChangeAndReset(next: boolean) {
+    if (!next) setEditing(false)
+    onOpenChange(next)
+  }
+
+  const title = food ? (editing ? 'Edit food' : food.name) : 'New food'
   return (
-    <Sheet open={open} onOpenChange={onOpenChange} title={food ? food.name : 'New food'}>
-      <FoodForm key={food?.id ?? 'new'} food={food} onSaved={() => onOpenChange(false)} />
-      {food && (
-        <Button
-          variant="ghost"
-          className="mt-2 w-full text-red-700"
-          disabled={remove.isPending}
-          onClick={() =>
-            window.confirm(`Delete "${food.name}"? Days you logged it on keep it.`) &&
-            remove.mutate(food.id, { onSuccess: () => onOpenChange(false) })
-          }
-        >
-          Delete food
-        </Button>
+    <Sheet open={open} onOpenChange={onOpenChangeAndReset} title={title}>
+      {!food ? (
+        <FoodForm key={String(open)} onSaved={() => onOpenChangeAndReset(false)} />
+      ) : editing ? (
+        <FoodForm key={food.id} food={food} onSaved={() => setEditing(false)} onCancel={() => setEditing(false)} />
+      ) : (
+        <FoodFacts food={food} onEdit={() => setEditing(true)} onDeleted={() => onOpenChangeAndReset(false)} />
       )}
     </Sheet>
+  )
+}
+
+function FoodFacts({ food, onEdit, onDeleted }: { food: Food; onEdit: () => void; onDeleted: () => void }) {
+  const prefs = usePreferences()
+  const remove = useDeleteFood()
+  const tracked = prefs.data?.tracked_nutrients ?? []
+  // Tracked nutrients always; others only when the food has a value for them.
+  const shown = (prefs.data?.nutrients ?? []).filter((n) => tracked.includes(n.key) || food[n.key] != null)
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-center text-sm text-muted">
+        Nutrition per {formatQuantity(food.standard_quantity, food.standard_unit)}
+      </p>
+
+      <dl className="divide-y divide-border rounded-lg border border-border">
+        {food.description && <Fact label="Description">{food.description}</Fact>}
+        {shown.map((n) => (
+          <Fact key={n.key} label={n.label}>
+            {food[n.key] == null ? <span className="text-amber-700">unknown</span> : formatNutrient(food[n.key]!, n)}
+          </Fact>
+        ))}
+        <Fact label="Last logged">
+          {food.last_logged_on ? formatLongDate(food.last_logged_on) : <span className="text-muted">Never</span>}
+        </Fact>
+      </dl>
+
+      <Button onClick={onEdit}>
+        <Pencil className="size-4" />
+        Edit
+      </Button>
+      <Button
+        variant="ghost"
+        className="text-red-700"
+        disabled={remove.isPending}
+        onClick={() =>
+          window.confirm(`Delete "${food.name}"? Days you logged it on keep it.`) &&
+          remove.mutate(food.id, { onSuccess: onDeleted })
+        }
+      >
+        Delete food
+      </Button>
+    </div>
+  )
+}
+
+function Fact({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex items-start gap-3 px-3 py-2.5">
+      <dt className="w-28 shrink-0 text-sm text-muted">{label}</dt>
+      <dd className="min-w-0 flex-1 text-sm font-medium">{children}</dd>
+    </div>
   )
 }

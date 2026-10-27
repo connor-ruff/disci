@@ -9,6 +9,7 @@ export type Nutrient = Schemas['NutrientOut']
 export type Food = Schemas['FoodOut']
 export type FoodIn = Schemas['FoodIn']
 export type LogEntry = Schemas['LogOut']
+export type QuickLogIn = Schemas['QuickLogIn']
 export type NutrientTotal = Schemas['NutrientTotal']
 export type Day = Schemas['DayOut']
 export type DaySummary = Schemas['DaySummary']
@@ -127,6 +128,20 @@ export function useUpdateLog() {
   return useMutation({
     mutationFn: async ({ id, ...body }: Schemas['LogUpdate'] & { id: string }) =>
       unwrap(await api.PUT('/nutrition/logs/{log_id}', { params: { path: { log_id: id } }, body })),
+    onSuccess: invalidate,
+  })
+}
+
+/** Logs a quick add (a one-off food, not saved to the repo), or edits one given its `id`. */
+export function useSaveQuickLog() {
+  const invalidate = useInvalidateNutrition()
+  return useMutation({
+    mutationFn: async ({ id, ...body }: QuickLogIn & { id?: string }) =>
+      unwrap(
+        id
+          ? await api.PUT('/nutrition/quick-logs/{log_id}', { params: { path: { log_id: id } }, body })
+          : await api.POST('/nutrition/quick-logs', { body }),
+      ),
     onSuccess: invalidate,
   })
 }

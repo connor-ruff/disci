@@ -1,6 +1,6 @@
 # Nutrition Module (`nutrition` schema)
 
-*Status: **implemented** in `db/migrations/20261025190000_nutrition__init.sql` (`food_items`, `food_item_logs`, `macro_goals`, `preferences`), with food values widened to 6 decimal places in `db/migrations/20261026001500_nutrition__more_precision.sql`. Every table and column below is built. See [db-overview.md](db-overview.md) for conventions (audit columns, soft deletes, RLS) that apply to every table below. The API is in [api-overview.md](../api/api-overview.md) §7.2 and the screens in [nutrition-ui.md](../ui/nutrition-ui.md).*
+*Status: **implemented** in `db/migrations/20261025190000_nutrition__init.sql` (`food_items`, `food_item_logs`, `macro_goals`, `preferences`), with food values widened to 6 decimal places in `db/migrations/20261026001500_nutrition__more_precision.sql` and quick adds (log entries with their own name and nutrients) added in `db/migrations/20261027150100_nutrition__quick_add_logs.sql`. Every table and column below is built. See [db-overview.md](db-overview.md) for conventions (audit columns, soft deletes, RLS) that apply to every table below. The API is in [api-overview.md](../api/api-overview.md) §7.2 and the screens in [nutrition-ui.md](../ui/nutrition-ui.md).*
 
 **Replaces:** the Google Sheet food repo plus its daily log tab.
 
@@ -10,7 +10,8 @@
 
 - **Food repo:** a reusable list of the user's foods. Each food has a name, an optional description and a **standard quantity** (`100 g`, `1 tbsp`, `1 egg`), and its nutrition facts are **per one standard quantity**.
 - **Food log:** each entry records *which food, how many standard quantities ("servings"), which day*, plus optional notes. 1.2 servings of a food whose standard is 100 g is 120 g.
-- **Daily sheet:** a day's entries and the day's total of each nutrient, computed live from the log joined to the repo (never stored).
+- **Quick adds:** a one-off log entry with its **own name and nutrients** (totals for what was eaten) instead of a repo food, for estimates like "slice of birthday cake" that shouldn't clutter the repo. A quick add never appears in the repo or the log picker; it shows on its day and counts in totals like any entry.
+- **Daily sheet:** a day's entries and the day's total of each nutrient, computed live from the log joined to the repo (never stored); quick adds bring their own values.
 - **Eleven nutrients**, in a US nutrition label's order: calories, protein, total fat, saturated fat, trans fat, cholesterol, sodium, total carbs, fiber, total sugars, added sugars.
 - **Tracked nutrients:** each user picks which nutrients they care about (Settings). Only tracked nutrients are shown anywhere; the rest are still stored if entered. Default: calories, protein, saturated fat, sodium and added sugars.
 - **Unknown is not zero.** A food can leave any nutrient blank (NULL = unknown). Day totals add up the known values and say **which foods were missing a value**, rather than silently counting them as 0.
@@ -27,7 +28,7 @@ erDiagram
     preferences
 ```
 
-(Every table also has `user_id → core.users`, omitted for readability. `macro_goals` and `preferences` stand alone: goals are matched to a day by date, not by a foreign key, and `preferences` is one row per user.)
+(Every table also has `user_id → core.users`, omitted for readability. The `food_items → food_item_logs` link is optional: a quick add has no food. `macro_goals` and `preferences` stand alone: goals are matched to a day by date, not by a foreign key, and `preferences` is one row per user.)
 
 ### Changes from the planning draft
 - **No unit conversion.** The draft logged a `quantity` + `unit` ("150 g", "2 cups") and resolved it to servings through `serving_size` / `serving_grams`. Built: every entry is just a multiple of the food's standard quantity (`servings`), and the UI shows the resulting amount ("1.2 × 100 g = 120 g"). So `quantity`, `unit` and `serving_grams` are gone, and `serving_size` / `serving_unit` became `standard_quantity` / `standard_unit`.
@@ -36,6 +37,7 @@ erDiagram
 - **Nutrients are all nullable** and there are eleven of them (the full label set) instead of four required macros plus three optional ones. `carbs_g` / `fat_g` / `sugar_g` became `total_carbs_g` / `total_fat_g` / `total_sugars_g`.
 - **Goals are one row per nutrient and kind**, with `starts_on` / `ends_on`, instead of one row per effective date holding every macro. That allows a target *and* a limit for the same nutrient, and lets each goal change independently.
 - **Added `preferences`** for the tracked nutrients.
+- **Added quick adds** to `food_item_logs` (nullable `food_item_id` plus its own `name` and nutrient columns) rather than a separate table (§5).
 
 ---
 
@@ -71,17 +73,20 @@ The food repo. All nutrient values are **per one standard quantity**.
 - **Deleting is soft.** A deleted food disappears from the repo and can't be logged again, but days that logged it keep showing it (and counting it).
 
 ### `food_item_logs`
-One row per thing eaten.
+One row per thing eaten: either a **repo entry** (a food from `food_items` × servings) or a **quick add** (its own name and nutrient totals).
 
 | Column | Type | Null | Notes |
 |---|---|---|---|
 | `id`, `user_id` | `uuid` | no | |
-| `food_item_id` | `uuid` | no | → `food_items`. Can't be changed after logging (log a new entry instead). |
+| `food_item_id` | `uuid` | yes | → `food_items`. Set for a repo entry, NULL for a quick add. Can't be changed after logging (log a new entry instead). |
 | `eaten_on` | `date` | no | The day it counts toward, in the user's timezone. Editable. |
-| `servings` | `numeric(16,6)` | no | `> 0`. Up to 6 decimal places. Multiples of the food's standard quantity: 1.2 × (100 g) = 120 g. |
+| `servings` | `numeric(16,6)` | no | `> 0`. Up to 6 decimal places. Multiples of the food's standard quantity: 1.2 × (100 g) = 120 g. Always `1` for a quick add, so entry math (value × servings) is the same for both kinds. |
 | `notes` | `text` | yes | API cap 500 chars. |
+| `name` | `text` | yes | Quick adds only (NULL on repo entries). Non-blank; API cap 100 chars, trimmed. Not unique, and never added to the repo. |
+| `calories` … `added_sugars_g` | `numeric(16,6)` | yes | Quick adds only: the same eleven nutrient columns as `food_items`, `>= 0`, NULL = unknown. **Totals for what was eaten**, not per standard quantity. All NULL on repo entries, which read their values from the food. |
 
 - `FOREIGN KEY (food_item_id, user_id) REFERENCES food_items (id, user_id)` (`food_item_logs_food_item_id_user_id_fkey`). It points at soft-deleted foods too, which is how past days keep them. **Logging a deleted food is refused by the API** (the insert only selects undeleted foods, so it's a 404), since the FK alone would accept it.
+- **Repo entry or quick add** (`food_item_logs_food_or_quick_check`): either `food_item_id` is set with `name` and every nutrient column NULL, or `food_item_id` is NULL with `name` set and `servings = 1`.
 - Partial index `food_item_logs_user_day_idx` on `(user_id, eaten_on DESC) WHERE deleted_at IS NULL` for a day's sheet and the history list; plain index `food_item_logs_food_idx` on `food_item_id` for a food's "last logged" date.
 - Deleting an entry is a soft delete.
 
@@ -125,7 +130,7 @@ One row per user: which nutrients they track.
 | Deleting | What happens |
 |---|---|
 | A food | Soft-deleted. Gone from the repo and the log picker; can't be logged again. Past entries keep it (the API marks them `food_deleted`) and still count it. Its name can be reused. |
-| A log entry | Soft-deleted. |
+| A log entry (repo entry or quick add) | Soft-deleted. |
 | A goal | If it **started today**: soft-deleted (it never applied to an earlier day). Otherwise: **ended yesterday** (`ends_on`), so it still covers the days it applied to. |
 
 ---
@@ -135,9 +140,10 @@ One row per user: which nutrients they track.
 | Feature | How |
 |---|---|
 | **Nutrient registry** | `NUTRIENTS` in `api/app/modules/nutrition/service.py`: key (= `food_items` column), label and unit, in display order. The same eleven keys are in the migration's CHECKs and the `NutrientKey` type in `schemas.py`; adding a nutrient means a migration plus those two. |
-| **An entry's nutrients** | `service.entry_nutrients`: each of the food's per-standard values × `servings`, rounded to 6 decimal places (`PRECISION`). NULL stays NULL. Computed on read, so editing a food changes past days. |
+| **An entry's nutrients** | `service.entry_nutrients`: each of the food's per-standard values (a quick add: its own values) × `servings`, rounded to 6 decimal places (`PRECISION`). NULL stays NULL. Computed on read, so editing a food changes past days. |
 | **Day totals** | `service.day_totals`, per nutrient over the day's entries: `amount` = sum of the **known** values; `missing_foods` = names of the foods logged that day with no value (sorted, case-insensitive). `amount` is NULL when entries exist but **none** has a value; a day with **no entries** totals 0 (`"0.000000"`). Totals are returned for all eleven nutrients; the web app shows the tracked ones. |
-| **Daily sheet** | `GET /nutrition/days/{date}`: the day's undeleted entries (oldest logged first) joined to their food (deleted or not), plus totals. |
+| **Daily sheet** | `GET /nutrition/days/{date}`: the day's undeleted entries (oldest logged first) **left-joined** to their food (deleted or not), plus totals. `get_log.sql` and `list_logs_for_days.sql` take the name and each nutrient from the food, falling back to the log row's own (`coalesce(f.x, l.x)`), so a quick add reads the same way as a repo entry. |
+| **Quick adds** | `POST /nutrition/quick-logs` inserts a row with no `food_item_id`, `servings = 1` and the given name and nutrients; `PUT /nutrition/quick-logs/{id}` replaces them (only matches quick adds, as `PUT /nutrition/logs/{id}` only matches repo entries). They're read and deleted like any entry, and count in `missing_foods` by their own name. |
 | **History** | `GET /nutrition/days`: distinct `eaten_on` with undeleted entries, newest first, paged by a `before` date cursor (`queries/list_logged_days.sql`), each with its entry count and totals. |
 | **Recent foods** | Each food's `last_logged_on` = latest `eaten_on` among its undeleted entries (a subquery in `list_foods.sql`). The log picker shows the five most recent. |
 | **Goals on a day** | `GET /nutrition/goals?on=<date>` (default today in the user's timezone): rows whose `starts_on`..`ends_on` covers the day, targets first. |
@@ -159,6 +165,7 @@ Goals aren't compared with day totals anywhere yet (see §6).
 | A nutrient the label doesn't give? | **NULL = unknown, never 0.** Totals sum what's known and list the foods missing a value. |
 | Editing a food's nutrition? | **Updates history (v1).** Past days are recalculated. Versioning would mean an edit creates a new row and soft-deletes the old one. |
 | Deleting a food that was logged? | **Soft delete**; past days keep it, it can't be logged again, the name is free to reuse. |
+| Log something without adding it to the repo? | **Quick adds**: columns on `food_item_logs` (nullable `food_item_id`, plus `name` and the eleven nutrients), not a separate table, and **never expired**. Rows are tiny and NULL columns cost almost nothing in Postgres; a second table would split every day query in two; and deleting old quick adds would silently change past days' totals. The goal (not cluttering the repo) is met because quick adds never appear there. A quick add's nutrients are totals, with `servings` fixed at 1. |
 | Change the food on a log entry? | **No.** Delete the entry and log the other food. Servings, day and notes are editable. |
 | Goal shape | **One row per nutrient + kind** (`target` = reach at least, `limit` = stay under), at most one active of each. |
 | Goals over time | **Effective-dated** (`starts_on` / `ends_on`). Changes start today; past days keep the goals they had. |
@@ -172,4 +179,5 @@ Goals aren't compared with day totals anywhere yet (see §6).
 4. **Versioning foods**, if recalculating history on edit turns out to be wrong (§5).
 5. **Day-dependent goals** (training vs. rest days) would need a day-type dimension on `macro_goals`.
 6. **Other logs:** body weight, water intake.
-7. **Importing the food repo** from the Google Sheet, and **Claude/MCP logging** ("I had an apple": look up the food by name, propose nutrients if missing, then log it).
+7. **Importing the food repo** from the Google Sheet. (~~Claude/MCP logging~~: built. `log_foods` logs repo foods by id or quick adds by name + nutrients; see [mcp-overview.md](../mcp/mcp-overview.md).)
+8. **Turning a quick add into a repo food** ("save this to my repo") isn't built; for now, create the food and log it instead.

@@ -127,6 +127,46 @@ def test_log_foods_reports_each_entry_and_the_day(nutrition: FakeApi) -> None:
     assert result["day"]["entries"][0]["serving"] == "170 g"
 
 
+def test_log_foods_quick_adds_skip_the_repo(nutrition: FakeApi) -> None:
+    def create(body: dict) -> dict:
+        return {**entry("l3", None, body["name"], "1.000000", body["calories"]),
+                "standard_quantity": None, "standard_unit": None}  # fmt: skip
+
+    nutrition.routes[("POST", "/nutrition/quick-logs")] = create
+    result = call_tool(
+        "log_foods",
+        {
+            "eaten_on": "2026-10-26",
+            "entries": [{"name": "Stadium burrito", "nutrients": {"calories": 900}}],
+        },
+    )
+    sent = nutrition.sent("POST", "/nutrition/quick-logs")[0]
+    assert (sent["name"], sent["calories"], sent["protein_g"]) == ("Stadium burrito", "900", None)
+    assert "servings" not in sent
+    assert result["results"] == [
+        {"quick_add": "Stadium burrito", "ok": True, "log_id": "l3", "food_name": "Stadium burrito"}
+    ]
+
+    with pytest.raises(AssertionError, match="food_id \\+ servings"):
+        call_tool("log_foods", {"entries": [{"servings": 1}]})
+
+
+def test_update_food_log_keeps_a_quick_adds_values(nutrition: FakeApi) -> None:
+    quick = {**entry("q1", None, "Burrito", "1.000000", "600.000000"),
+             "standard_quantity": None, "standard_unit": None}  # fmt: skip
+    nutrition.routes[("GET", "/nutrition/days/2026-10-26")]["entries"].append(quick)
+    nutrition.routes[("PUT", "/nutrition/quick-logs/q1")] = {}
+
+    call_tool("update_food_log", {"log_id": "q1", "eaten_on": "2026-10-26", "notes": "lunch"})
+    sent = nutrition.sent("PUT", "/nutrition/quick-logs/q1")[0]
+    assert (sent["name"], sent["calories"], sent["notes"]) == ("Burrito", "600.000000", "lunch")
+
+    day = call_tool("get_food_day", {"day": "2026-10-26"})
+    assert (day["entries"][1]["food_id"], day["entries"][1]["serving"]) == (None, None)
+    with pytest.raises(AssertionError, match="no servings"):
+        call_tool("update_food_log", {"log_id": "q1", "eaten_on": "2026-10-26", "servings": 2})
+
+
 def test_update_food_log_keeps_what_isnt_passed(nutrition: FakeApi) -> None:
     nutrition.routes[("PUT", "/nutrition/logs/l1")] = {}
     call_tool("update_food_log", {"log_id": "l1", "eaten_on": "2026-10-26", "servings": 2})

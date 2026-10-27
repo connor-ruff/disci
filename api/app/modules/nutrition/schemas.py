@@ -47,7 +47,7 @@ class PreferencesIn(BaseModel):
 
 
 class _Nutrients(BaseModel):
-    """Per one standard quantity. None = unknown (not 0)."""
+    """Per one standard quantity (a quick add: for what was eaten). None = unknown (not 0)."""
 
     calories: Amount | None = None
     protein_g: Amount | None = None
@@ -94,15 +94,26 @@ class LogUpdate(BaseModel):
     notes: Annotated[str, Field(max_length=500)] | None = None
 
 
+class QuickLogIn(_Nutrients):
+    """A quick add: a one-off entry with its own name and nutrients, not saved to the repo.
+
+    Nutrients are totals for what was eaten. All editable fields, sent in full.
+    """
+
+    name: Name
+    eaten_on: date
+    notes: Annotated[str, Field(max_length=500)] | None = None
+
+
 class LogOut(BaseModel):
     id: UUID
-    food_item_id: UUID
-    food_name: str
+    food_item_id: UUID | None = Field(description="None for a quick add.")
+    food_name: str = Field(description="The repo food's name, or the quick add's own.")
     food_deleted: bool = Field(description="The food was removed from the repo since.")
-    standard_quantity: Decimal
-    standard_unit: str
+    standard_quantity: Decimal | None = Field(description="None for a quick add.")
+    standard_unit: str | None = Field(description="None for a quick add.")
     eaten_on: date
-    servings: Decimal
+    servings: Decimal = Field(description="Always 1 for a quick add.")
     notes: str | None
     nutrients: dict[NutrientKey, Decimal | None] = Field(
         description="The food's values times servings; None where the food has no value."

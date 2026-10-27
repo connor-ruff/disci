@@ -20,6 +20,7 @@ import {
   useCategories,
   useDeleteBudget,
   useInbox,
+  usePreferences,
   useReorderCategories,
   useReorderItems,
 } from '../api'
@@ -184,6 +185,10 @@ function ItemSection({
   const categories = useCategories()
   const reorderCategories = useReorderCategories()
   const reorderItems = useReorderItems(budget.id)
+  // Subtotals are opt-in (Settings), and stay hidden while the setting loads.
+  const prefs = usePreferences()
+  const showCategoryTotals = !reordering && prefs.data?.show_category_totals
+  const showKindTotals = !reordering && prefs.data?.show_kind_totals
 
   /** Category order is global: shown categories in their new order, then the rest. */
   function onReorderGroups(ordered: Group[]) {
@@ -213,7 +218,7 @@ function ItemSection({
         <h3 className="flex-1 truncate py-1 text-xs font-semibold tracking-wide text-muted uppercase">
           {group.name}
         </h3>
-        {!reordering && <Totals items={group.items} className="text-xs" />}
+        {showCategoryTotals && <Totals items={group.items} className="text-xs" />}
       </div>
       {reordering ? (
         <SortableList
@@ -245,7 +250,7 @@ function ItemSection({
     <Card className="p-0">
       <div className="flex items-baseline justify-between gap-3 px-4 pt-4 pb-1">
         <h2 className="text-lg font-semibold">{title}</h2>
-        {!reordering && items.length > 0 && <Totals items={items} className="text-sm" />}
+        {showKindTotals && items.length > 0 && <Totals items={items} className="text-sm" />}
       </div>
       {reordering ? (
         <>
