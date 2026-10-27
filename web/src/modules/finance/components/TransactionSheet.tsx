@@ -175,7 +175,6 @@ export function TransactionForm({
         <input
           id="txn-amount"
           inputMode="decimal"
-          autoFocus
           required
           value={amount}
           onChange={(e) => setAmount(e.target.value)}

@@ -202,7 +202,6 @@ function GoalForm({
         <input
           id="goal-amount"
           inputMode="decimal"
-          autoFocus
           required
           value={amount}
           onChange={(e) => setAmount(e.target.value)}

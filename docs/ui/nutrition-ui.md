@@ -60,7 +60,7 @@ Sunday, Oct 25, 2026
 - **Totals card:** each tracked nutrient's total for the day in a 2-column grid (3 from `sm` up). A total with no known value shows "—"; on a day with nothing logged, the numbers are muted.
   - When any logged food has no value for a tracked nutrient, that total gets a small **amber alert icon**, and an **amber callout** below the grid reads "Some foods have no value for these, so the totals may be low:" and lists, per nutrient, the foods missing it ("Protein: Banana, Broccoli").
   - Tracking **no** nutrients: the card instead says "You aren't tracking any nutrients. Choose some in Settings." with a link.
-- **Food card:** the day's entries in the order they were logged. Each row shows the food name and its **first tracked nutrient** (e.g. calories) on the right, then the serving (`describeServing`: "120 g" for 1 serving of 120 g, "2 × 1 egg" when the standard is 1, "1.2 × 100 g = 120 g" otherwise) and the notes, then the other tracked nutrients in small text. An unknown value shows **"? unit"** in amber. Tapping a row opens the entry for editing (§5). With no entries: a "Nothing logged" empty state ("Tap Log food to add what you ate from your food repo.").
+- **Food card:** the day's entries in the order they were logged. Each row shows the food name and its **first tracked nutrient** (e.g. calories) on the right, then the serving (`describeServing`: "120 g" for 1 serving of 120 g, "2 × 1 egg" when the standard is 1, "1.2 × 100 g = 120 g" otherwise) and the notes, then the other tracked nutrients in small text. An unknown value shows **"? unit"** in amber. Tapping a row opens the entry's view (§5.1), with Edit and Delete. With no entries: a "Nothing logged" empty state ("Tap Log food to add what you ate from your food repo.").
 - **"Log food"** is a floating pill button fixed at the bottom-right (above the safe-area inset), like finance's Log transaction. It opens the log sheet (§5) for this day.
 - Daily is keyed by today's date, so a sheet left open across midnight starts over on the new day.
 
@@ -70,7 +70,7 @@ Sunday, Oct 25, 2026
 
 "Every day you've logged food, newest first."
 
-- **Go to a day:** a `type="date"` input (max today). Picking a date opens that day's sheet, logged or not.
+- **Go to a day:** a `type="date"` input (max today) and a **Go** button (disabled until a date is picked). Go opens that day's sheet, logged or not. It navigates on Go rather than on change because iOS fills an empty date input with today as soon as its picker opens, which would jump straight to the Daily tab.
 - **Day cards**, one per day with something logged, newest first: "Today" or the long date, "N foods", then each tracked nutrient's total (e.g. "1,820 kcal  96 g protein"). A card where any tracked total is missing values adds an amber **"missing values"** note. Tapping a card opens the day.
 - Pages of **30 days**; **Show older days** loads the next 30 (`before` = the last date shown) while there are more.
 - Empty state: "No days yet. Days show up here once you log food on them."
@@ -106,11 +106,11 @@ Used for New, editing, and adding a food from the log sheet (§5).
 
 ## 5. Log sheet (`LogSheet`)
 
-Opened by **Log food** (title "Log food") or by tapping an entry (title: the food's name).
+Opened by **Log food** (title "Log food") or by tapping an entry, which opens the entry's view (§5.1, title: the food's name).
 
 **Logging: pick a food** (`FoodPicker`)
 
-- A **search** box ("Search your foods", autofocused), filtering by name and description.
+- A **search** box ("Search your foods"), filtering by name and description.
 - An **"Add a new food"** button; while searching for a name that isn't in the repo it reads **Add "<query>" as a new food**. It swaps the sheet to the food form (§4.1), pre-filled with the query, with a Cancel button. Saving it goes straight on to the amount step with the new food.
 - Without a search: **Recent** (the 5 most recently logged foods, by `last_logged_on`), then **All foods**. With a search: **Matches**. Each row shows the name, "per <standard>" and the description.
 - An empty repo shows "Your food repo is empty. Add a food to log it."
@@ -120,14 +120,25 @@ Opened by **Log food** (title "Log food") or by tapping an entry (title: the foo
 | Field | Behaviour |
 |---|---|
 | (food) | New entries show the food's name, "Standard: 100 g" and description, with a back arrow to pick a different food. |
-| How many × <standard> | Autofocused, large text, default **1**. Must be more than 0, up to 6 decimal places ("Enter how many, like 1, 1.5 or 0.25 (up to 6 decimal places)"). Its hint shows the total amount ("= 120 g"). |
+| How many × <standard> | Large text, default **1**. Must be more than 0, up to 6 decimal places ("Enter how many, like 1, 1.5 or 0.25 (up to 6 decimal places)"). Its hint shows the total amount ("= 120 g"). |
 | (preview) | A live grid of the **tracked** nutrients for that amount, updating as you type; "unknown" in amber where the food has no value. |
 | Day | `type="date"`, defaults to the sheet's day. Changing it moves the entry to another day. |
 | Notes (optional) | Up to 500 characters. Shown next to the serving on the sheet. |
 
-- Buttons: **Log it** for a new entry; **Save** and **Delete entry** (red; confirms "Remove <food> from this day?") when editing.
+- Buttons: **Log it** for a new entry; **Save** when editing.
 - **The food can't be changed** on an existing entry; delete it and log the other food.
+
+### 5.1 Entry view
+
+Tapping an entry opens a view of it, like finance's transaction view (title: the food's name).
+
+- The **first tracked nutrient**, large ("? unit" in amber when unknown), then the serving (`describeServing`).
 - An entry whose food has since been deleted shows "This food was removed from your repo. You can still change or delete this entry."
+- **Facts list**: **Day** (long date), then each other tracked nutrient ("unknown" in amber).
+- **Notes**, when it has any.
+- Buttons: **Edit** and **Delete entry** (red; confirms "Remove <food> from this day?", then closes).
+
+**Edit** (title "Edit entry") shows the amount step's form pre-filled, with **Save** and **Cancel**; Cancel returns to the view. After saving, the view shows the saved values; if the Day was changed to another day, the sheet closes instead (the entry is no longer on this day).
 
 ---
 

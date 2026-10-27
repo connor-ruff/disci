@@ -1,5 +1,6 @@
 import { Link, useNavigate } from '@tanstack/react-router'
 import { ChevronRight, CircleAlert, History } from 'lucide-react'
+import { useState } from 'react'
 
 import { formatLongDate } from '@/shared/lib/dates'
 import { Button } from '@/shared/ui/button'
@@ -16,21 +17,37 @@ export function HistoryPage() {
   const tracked = useTrackedNutrients()
   const today = useToday()
   const navigate = useNavigate()
+  const [goTo, setGoTo] = useState('')
   const all = days.data?.pages.flat() ?? []
 
   return (
     <>
       <PageHeader title="History" description="Every day you've logged food, newest first." />
 
-      <label className="mb-4 flex items-center gap-3 text-sm font-medium">
-        Go to a day
+      {/* Navigates on Go, not on change: iOS fills an empty date input with today as soon as
+          its picker opens, which would jump straight to the Daily tab. */}
+      <form
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (goTo) navigate(dayPath(goTo, today))
+        }}
+        className="mb-4 flex items-center gap-3"
+      >
+        <label htmlFor="history-go-to" className="shrink-0 text-sm font-medium">
+          Go to a day
+        </label>
         <input
+          id="history-go-to"
           type="date"
           max={today}
-          onChange={(e) => e.target.value && navigate(dayPath(e.target.value, today))}
-          className={inputClasses + ' w-auto flex-1'}
+          value={goTo}
+          onChange={(e) => setGoTo(e.target.value)}
+          className={inputClasses + ' w-auto min-w-0 flex-1'}
         />
-      </label>
+        <Button type="submit" variant="outline" disabled={!goTo}>
+          Go
+        </Button>
+      </form>
 
       {days.isPending && <LoadingState />}
       {days.isError && <ErrorState error={days.error} />}

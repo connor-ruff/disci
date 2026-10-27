@@ -1,7 +1,8 @@
-import { ArrowLeft, ChevronRight, Plus, Search } from 'lucide-react'
-import { type FormEvent, useState } from 'react'
+import { ArrowLeft, CalendarDays, ChevronRight, Pencil, Plus, Search } from 'lucide-react'
+import { type FormEvent, type ReactNode, useState } from 'react'
 
 import { errorMessage } from '@/shared/api/client'
+import { formatLongDate } from '@/shared/lib/dates'
 import { Button } from '@/shared/ui/button'
 import { Field, inputClasses } from '@/shared/ui/field'
 import { Sheet } from '@/shared/ui/sheet'
@@ -9,13 +10,14 @@ import { Sheet } from '@/shared/ui/sheet'
 import {
   type Food,
   type LogEntry,
+  type NutrientKey,
   useDeleteLog,
   useFoods,
   useLogFood,
   useTrackedNutrients,
   useUpdateLog,
 } from '../api'
-import { formatNutrient, formatQuantity } from '../format'
+import { describeServing, formatNutrient, formatQuantity } from '../format'
 import { FoodForm } from './FoodForm'
 
 type LogSheetProps = {
@@ -27,16 +29,124 @@ type LogSheetProps = {
   onOpenChange: (open: boolean) => void
 }
 
-export function LogSheet({ date, entry, open, onOpenChange }: LogSheetProps) {
+/** Logging a new entry, or one entry's facts with Edit and Delete. */
+export function LogSheet({ date, entry: opened, open, onOpenChange }: LogSheetProps) {
+  const [editing, setEditing] = useState(false)
+  // The entry as last saved here, so the view shows the edit right away.
+  const [saved, setSaved] = useState<LogEntry | null>(null)
+  const entry = saved?.id === opened?.id ? saved! : opened
+
+  function onOpenChangeAndReset(next: boolean) {
+    if (!next) {
+      setEditing(false)
+      setSaved(null)
+    }
+    onOpenChange(next)
+  }
+
+  function onSaved(next: LogEntry) {
+    // Moved to another day: it's no longer on this sheet.
+    if (next.eaten_on !== entry!.eaten_on) return onOpenChangeAndReset(false)
+    setSaved(next)
+    setEditing(false)
+  }
+
+  const title = entry ? (editing ? 'Edit entry' : entry.food_name) : 'Log food'
   return (
-    <Sheet open={open} onOpenChange={onOpenChange} title={entry ? entry.food_name : 'Log food'}>
+    <Sheet open={open} onOpenChange={onOpenChangeAndReset} title={title}>
       {/* Keyed so it starts fresh each time it opens. */}
-      {entry ? (
-        <EntryForm key={entry.id} entry={entry} onDone={() => onOpenChange(false)} />
+      {!entry ? (
+        <NewEntry key={String(open)} date={date} onDone={() => onOpenChangeAndReset(false)} />
+      ) : editing ? (
+        <>
+          <EntryForm key={entry.id} entry={entry} onDone={onSaved} />
+          <Button variant="ghost" onClick={() => setEditing(false)} className="mt-2 w-full">
+            Cancel
+          </Button>
+        </>
       ) : (
-        <NewEntry key={String(open)} date={date} onDone={() => onOpenChange(false)} />
+        <EntryFacts entry={entry} onEdit={() => setEditing(true)} onDeleted={() => onOpenChangeAndReset(false)} />
       )}
     </Sheet>
+  )
+}
+
+function EntryFacts({ entry, onEdit, onDeleted }: { entry: LogEntry; onEdit: () => void; onDeleted: () => void }) {
+  const tracked = useTrackedNutrients()
+  const remove = useDeleteLog()
+  const [headline, ...rest] = tracked
+  const value = (key: NutrientKey) => entry.nutrients[key]
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="text-center">
+        {headline && (
+          <p className="text-3xl font-semibold">
+            {value(headline.key) == null ? (
+              <span className="text-amber-700">? {headline.unit}</span>
+            ) : (
+              formatNutrient(value(headline.key)!, headline)
+            )}
+          </p>
+        )}
+        <p className="mt-1 text-sm text-muted">
+          {describeServing(entry.servings, entry.standard_quantity, entry.standard_unit)}
+        </p>
+      </div>
+
+      {entry.food_deleted && (
+        <p className="rounded-lg bg-background p-3 text-sm text-muted">
+          This food was removed from your repo. You can still change or delete this entry.
+        </p>
+      )}
+
+      <dl className="divide-y divide-border rounded-lg border border-border">
+        <Fact icon={<CalendarDays className="size-4" />} label="Day">
+          {formatLongDate(entry.eaten_on)}
+        </Fact>
+        {rest.map((n) => (
+          <Fact key={n.key} label={n.label}>
+            {value(n.key) == null ? (
+              <span className="text-amber-700">unknown</span>
+            ) : (
+              formatNutrient(value(n.key)!, n)
+            )}
+          </Fact>
+        ))}
+      </dl>
+
+      {entry.notes && (
+        <div>
+          <p className="text-xs font-medium tracking-wide text-muted uppercase">Notes</p>
+          <p className="mt-1 whitespace-pre-wrap">{entry.notes}</p>
+        </div>
+      )}
+
+      <Button onClick={onEdit}>
+        <Pencil className="size-4" />
+        Edit
+      </Button>
+      <Button
+        variant="ghost"
+        className="text-red-700"
+        disabled={remove.isPending}
+        onClick={() =>
+          window.confirm(`Remove ${entry.food_name} from this day?`) && remove.mutate(entry.id, { onSuccess: onDeleted })
+        }
+      >
+        Delete entry
+      </Button>
+    </div>
+  )
+}
+
+function Fact({ icon, label, children }: { icon?: ReactNode; label: string; children: ReactNode }) {
+  return (
+    <div className="flex items-start gap-3 px-3 py-2.5">
+      <span className="mt-0.5 w-4 text-muted">{icon}</span>
+      <dt className="w-28 shrink-0 text-sm text-muted">{label}</dt>
+      <dd className="min-w-0 flex-1 text-sm font-medium">{children}</dd>
+    </div>
   )
 }
 
@@ -73,7 +183,6 @@ function FoodPicker({ onPick, onCreate }: { onPick: (food: Food) => void; onCrea
       <div className="relative">
         <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted" />
         <input
-          autoFocus
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -129,7 +238,7 @@ function FoodList({ title, foods, onPick }: { title: string; foods: Food[]; onPi
 }
 
 type EntryFormProps =
-  | { entry: LogEntry; onDone: () => void; food?: undefined; date?: undefined; onBack?: undefined }
+  | { entry: LogEntry; onDone: (saved: LogEntry) => void; food?: undefined; date?: undefined; onBack?: undefined }
   | { food: Food; date: string; onBack: () => void; onDone: () => void; entry?: undefined }
 
 /** How much (and when): for a new entry of `food`, or editing `entry`. */
@@ -137,7 +246,6 @@ function EntryForm({ entry, food, date, onBack, onDone }: EntryFormProps) {
   const tracked = useTrackedNutrients()
   const logFood = useLogFood()
   const update = useUpdateLog()
-  const remove = useDeleteLog()
   const mutation = entry ? update : logFood
 
   const [servings, setServings] = useState(entry ? String(Number(entry.servings)) : '1')
@@ -182,12 +290,6 @@ function EntryForm({ entry, food, date, onBack, onDone }: EntryFormProps) {
           </div>
         </div>
       )}
-      {entry?.food_deleted && (
-        <p className="rounded-lg bg-background p-3 text-sm text-muted">
-          This food was removed from your repo. You can still change or delete this entry.
-        </p>
-      )}
-
       <Field
         label={`How many × ${formatQuantity(standardQuantity, unit)}`}
         htmlFor="log-servings"
@@ -196,7 +298,6 @@ function EntryForm({ entry, food, date, onBack, onDone }: EntryFormProps) {
         <input
           id="log-servings"
           inputMode="decimal"
-          autoFocus
           required
           value={servings}
           onChange={(e) => setServings(e.target.value)}
@@ -254,16 +355,6 @@ function EntryForm({ entry, food, date, onBack, onDone }: EntryFormProps) {
       <Button type="submit" disabled={mutation.isPending}>
         {mutation.isPending ? 'Saving…' : entry ? 'Save' : 'Log it'}
       </Button>
-      {entry && (
-        <Button
-          variant="ghost"
-          className="text-red-700"
-          disabled={remove.isPending}
-          onClick={() => window.confirm(`Remove ${entry.food_name} from this day?`) && remove.mutate(entry.id, { onSuccess: onDone })}
-        >
-          Delete entry
-        </Button>
-      )}
     </form>
   )
 }
