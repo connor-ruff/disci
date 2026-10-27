@@ -174,7 +174,6 @@ function CategoryRow({ category }: { category: Category }) {
         <form onSubmit={onSave} className="flex flex-col gap-2">
           <input
             aria-label="Category name"
-            autoFocus
             value={name}
             onChange={(e) => setName(e.target.value)}
             maxLength={100}

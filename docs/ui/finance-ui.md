@@ -175,7 +175,7 @@ Takes a required `budget` prop (the budget being logged into: `id`, `name`, `per
 | Field | Behaviour |
 |---|---|
 | Type | Segmented **Expense** / **Income**. Defaults to the preselected item's kind, else Expense. |
-| Amount | Autofocused, large text. Must be more than 0. Pre-filled with what's left (planned − actual) when paying an open checklist item. |
+| Amount | Large text. Must be more than 0. Pre-filled with what's left (planned − actual) when paying an open checklist item. |
 | Budget item | Optional select, grouped into Income and Expenses optgroups, listing this budget's items; "Don't assign yet" leaves it unassigned. When the type is **opposite** to the item's kind, a hint says it **counts as a credit** against that item (e.g. a refund or rebate). |
 | Date | `type="date"`, defaults to **today in the user's timezone** (`todayIn(me.timezone)`). |
 | Payee (optional) | Free text, e.g. "Kroger" / "Employer". |

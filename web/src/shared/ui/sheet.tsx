@@ -19,6 +19,13 @@ export function Sheet({ open, onOpenChange, title, children }: SheetProps) {
         <Dialog.Overlay className="fixed inset-0 z-40 animate-fade-in bg-black/30" />
         <Dialog.Content
           aria-describedby={undefined}
+          // Focus the panel, not its first field. Focusing an input while the panel is still
+          // sliding up makes iOS raise the keyboard and scroll to where the input was
+          // mid-animation, so the field ends up hidden behind the keyboard.
+          onOpenAutoFocus={(event) => {
+            event.preventDefault()
+            ;(event.currentTarget as HTMLElement | null)?.focus()
+          }}
           className="fixed inset-x-0 bottom-0 z-50 flex max-h-[90dvh] animate-slide-up flex-col rounded-t-2xl bg-surface pb-[env(safe-area-inset-bottom)] shadow-xl outline-none sm:inset-x-auto sm:top-1/2 sm:bottom-auto sm:left-1/2 sm:w-full sm:max-w-md sm:-translate-x-1/2 sm:-translate-y-1/2 sm:animate-fade-in sm:rounded-2xl"
         >
           <div className="flex items-center justify-between px-4 pt-3">

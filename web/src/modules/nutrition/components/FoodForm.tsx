@@ -99,7 +99,6 @@ function FoodFields({
         <input
           id="food-name"
           required
-          autoFocus={!food}
           value={name}
           onChange={(e) => setName(e.target.value)}
           maxLength={100}
