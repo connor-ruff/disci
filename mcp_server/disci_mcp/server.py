@@ -3,7 +3,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 from starlette.applications import Starlette
 
-from disci_mcp import finance
+from disci_mcp import finance, nutrition
 from disci_mcp.auth import CognitoVerifier
 from disci_mcp.request_log import RequestLog
 from disci_mcp.settings import Settings, get_settings
@@ -11,7 +11,8 @@ from disci_mcp.settings import Settings, get_settings
 INSTRUCTIONS = """\
 Disci is the user's personal life manager. These tools read and change the user's own
 Disci data. Amounts of money are strings in dollars. Dates are YYYY-MM-DD; "today" means
-today in the user's timezone."""
+today in the user's timezone. Before changing anything, tell the user what you're about to
+write (e.g. which budget item a purchase counts toward) unless they already said so."""
 
 
 def build_mcp(settings: Settings) -> FastMCP:
@@ -39,6 +40,7 @@ def build_mcp(settings: Settings) -> FastMCP:
         **auth,
     )
     finance.register(mcp)
+    nutrition.register(mcp)
     return mcp
 
 
