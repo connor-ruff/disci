@@ -169,7 +169,7 @@ Logs: `/aws/lambda/disci-mcp` (14 days). Request lines only: `aws logs tail /aws
 - Identify users by Cognito `sub`.
 - (a) **Data access: forward the access token to the API.** The authorizer's audience now includes the `disci-mcp` client (API Gateway matches `client_id` for access tokens), and the API accepts access tokens whose `client_id` equals `DISCI_MCP_CLIENT_ID`.
 - (b) **Schema: resolved without a migration of the users table.** `core.users` already had `cognito_sub` (unique). A new lookup-only function `core.find_user(sub)` ([db/shared.md](../db/shared.md)) maps an MCP request to an existing user; it never creates one. The user must sign in to the web app once first (that creates the row via `core.ensure_user`); otherwise **403**.
-- (c) **Tool surface: 17 task-shaped tools** for finance and nutrition (§4.3), designed from how the user plans to talk to Claude (log a purchase, check the budget, approve recurring transactions, the monthly checklist, add a food from a label, log a meal, change a goal). No tasks tools yet.
+- (c) **Tool surface: 17 task-shaped tools** for finance and nutrition (§4.3), designed from how the user plans to talk to Claude (log a purchase, check the budget, approve recurring transactions, the monthly checklist, add a food from a label, log a meal, change a goal). No tasks tools yet: the tasks module now exists (API endpoints in [api-overview.md §7.3](../api/api-overview.md), data model in [tasks.md](../db/tasks.md)), and MCP tools for it (check something off, what's due today, add a to-do) are a next step.
 
 **Open**
 

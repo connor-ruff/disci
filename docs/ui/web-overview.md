@@ -1,6 +1,6 @@
 # Web App Overview
 
-*Status: **shell implemented and deployed** to S3 + CloudFront (https://d2j30iivfr2al9.cloudfront.net) with Cognito sign-in. The shell pages (Home, Manage modules, Settings) work; the finance module has budgets, categories, the monthly checklist, recurring transactions and the inbox (see [finance-ui.md](finance-ui.md)), and the nutrition module has the daily food sheet, history, the food repo and macro goals (see [nutrition-ui.md](nutrition-ui.md)). Deploying: [deployment.md](../ops/deployment.md).*
+*Status: **shell implemented and deployed** to S3 + CloudFront (https://d2j30iivfr2al9.cloudfront.net) with Cognito sign-in. The shell pages (Home, Manage modules, Settings) work; the finance module has budgets, categories, the monthly checklist, recurring transactions and the inbox (see [finance-ui.md](finance-ui.md)), the nutrition module has the daily food sheet, history, the food repo and macro goals (see [nutrition-ui.md](nutrition-ui.md)), and the tasks module has Today, All tasks and the Kinds guide (see [tasks-ui.md](tasks-ui.md)). Deploying: [deployment.md](../ops/deployment.md).*
 
 The engineering entry point for the web app (`web/`): stack, layout, conventions and local workflow. What the shell looks like and how modules plug into it is in [app-shell.md](app-shell.md); the brand palette is in [ui-overview.md](ui-overview.md).
 
@@ -72,13 +72,20 @@ web/
         │   │                      # ChecklistPage, RecurringPage, InboxPage
         │   └── components/        # FinanceHomeCard, ActiveBadge, ItemSheet, TransactionSheet,
         │                          # RecurringSheet, ReorderToggle
-        └── nutrition/
-            ├── index.ts           # ModuleManifest (sub-nav: Daily, History, Food repo, Goals; SettingsPanel)
-            ├── routes.tsx         # route tree under /nutrition
-            ├── api.ts             # TanStack Query hooks + nutritionKeys
-            ├── format.ts          # formatNutrient, formatQuantity, describeServing, UNIT_SUGGESTIONS
-            ├── pages/             # DailyPage, DayPage, HistoryPage, FoodsPage, GoalsPage
-            └── components/        # DaySheet, LogSheet, FoodForm, NutritionSettings, NutritionHomeCard
+        ├── nutrition/
+        │   ├── index.ts           # ModuleManifest (sub-nav: Daily, History, Food repo, Goals; SettingsPanel)
+        │   ├── routes.tsx         # route tree under /nutrition
+        │   ├── api.ts             # TanStack Query hooks + nutritionKeys
+        │   ├── format.ts          # formatNutrient, formatQuantity, describeServing, UNIT_SUGGESTIONS
+        │   ├── pages/             # DailyPage, DayPage, HistoryPage, FoodsPage, GoalsPage
+        │   └── components/        # DaySheet, LogSheet, FoodForm, NutritionSettings, NutritionHomeCard
+        └── tasks/
+            ├── index.ts           # ModuleManifest (sub-nav: Today, All tasks, Kinds)
+            ├── routes.tsx         # route tree under /tasks
+            ├── api.ts             # TanStack Query hooks + tasksKeys
+            ├── format.ts          # TYPE_LABELS, TYPE_ORDER, UNITS, describeCadence, describeDue
+            ├── pages/             # TodayPage, AllTasksPage, TypesPage
+            └── components/        # TaskRow (+ check control), Section, TaskSheet, NewTaskButton, TasksHomeCard
 ```
 
 **Rule of thumb:** `app/` is the shell, `shared/` is anything two or more places use, and `modules/<key>/` holds everything specific to one module. A module may import from `shared/` and `app/` (its manifest type, the root route); `shared/` never imports from a module.
@@ -116,7 +123,7 @@ web/
 | `useSetModuleEnabled()` | `PUT` / `DELETE /me/modules/{key}` | invalidates `['me', 'modules']` |
 
 - **Query keys** are defined once, in the `queryKeys` object, never as inline arrays. Keys are hierarchical (`['me', 'modules']` sits under `['me']`) so a whole branch can be invalidated at once.
-- A module's hooks live in that module's folder (e.g. `modules/finance/api.ts`, keys in `financeKeys`; `modules/nutrition/api.ts`, keys in `nutritionKeys`), with keys starting with the module key (e.g. `['finance', ...]`).
+- A module's hooks live in that module's folder (e.g. `modules/finance/api.ts`, keys in `financeKeys`; `modules/nutrition/api.ts`, keys in `nutritionKeys`; `modules/tasks/api.ts`, keys in `tasksKeys`), with keys starting with the module key (e.g. `['finance', ...]`).
 - Pages handle `isPending` / `isError` with the shared `LoadingState` / `ErrorState` from `shared/ui/page.tsx`.
 
 ---

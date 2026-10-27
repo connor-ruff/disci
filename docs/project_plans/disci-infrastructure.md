@@ -112,7 +112,7 @@ disci/
 │   │   │   └── user_modules/      # GET /me/modules, PUT/DELETE /me/modules/{key}
 │   │   └── modules/
 │   │       ├── __init__.py        # MODULES registry
-│   │       └── finance/           # built; see docs/api/api-overview.md §1 for its full layout
+│   │       └── finance/           # built, as are nutrition/ and tasks/; see docs/api/api-overview.md §1 for full layouts
 │   │           ├── __init__.py    #   `module = Module(...)`
 │   │           ├── routes/        #   HTTP routes (thin), one file per area (router.py in smaller modules)
 │   │           ├── schemas.py     #   Pydantic request/response models
@@ -135,7 +135,7 @@ disci/
 │       │   ├── ui/                # shadcn-style components on radix-ui
 │       │   └── lib/
 │       └── modules/
-│           └── finance/           # stub today; a full module grows into:
+│           └── finance/           # built, as are nutrition/ and tasks/; each module has:
 │               ├── index.ts       #   the module's manifest, added to MODULES
 │               ├── routes.tsx     #   the module's route tree under /finance
 │               ├── pages/
@@ -238,7 +238,7 @@ You never need to "create an account" locally. The API creates the `core.users` 
 | API Gateway (HTTP API) | Public HTTPS entry point | HTTP API, not REST API (~3.5× cheaper) |
 | Cognito | User accounts, OAuth for the MCP connector | Essentials/Lite tier |
 | S3 + CloudFront | Hosts the static frontend | Default `*.cloudfront.net` domain for now; a custom domain would add a free ACM certificate in us-east-1 |
-| EventBridge Scheduler | Morning/night reports, recurring-task generation | Built for recurring transactions (hourly); reports not yet |
+| EventBridge Scheduler | Morning/night reports, recurring-transaction generation (tasks need no generation job) | Built for recurring transactions (hourly); reports not yet |
 | SES | Sends report emails | |
 | SSM Parameter Store | Config handoff from Terraform to the **deploy script** (Lambdas get config from environment variables; they have no internet access) | Standard parameters are free |
 | CloudWatch Logs | Logs and basic alarms | |
