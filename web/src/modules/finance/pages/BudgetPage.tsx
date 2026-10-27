@@ -121,17 +121,17 @@ export function BudgetPage() {
   )
 }
 
-/** A nudge when recurring transactions are waiting for approval. */
+/** A nudge when recurring transactions are waiting on a decision in the Inbox. */
 function PendingBanner() {
   const inbox = useInbox()
-  const count = inbox.data?.pending.length ?? 0
+  const count = inbox.data?.needs_you.length ?? 0
   if (count === 0) return null
   return (
     <Link to="/finance/inbox" className="block rounded-2xl">
       <Card className="flex items-center gap-3 border-amber-200 bg-amber-50 transition hover:bg-amber-100">
         <Inbox className="size-5 shrink-0 text-amber-700" />
         <span className="flex-1 text-sm font-medium">
-          {count} recurring {count === 1 ? 'transaction needs' : 'transactions need'} your approval
+          {count} recurring {count === 1 ? 'transaction needs' : 'transactions need'} a decision
         </span>
         <span className="text-sm font-semibold text-amber-800">Review</span>
       </Card>

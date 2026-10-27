@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Literal, Self
 from uuid import UUID
@@ -9,6 +9,7 @@ Kind = Literal["expense", "income"]
 PeriodType = Literal["week", "month", "year"]
 Frequency = Literal["weekly", "monthly", "quarterly", "yearly"]
 TransactionStatus = Literal["pending", "confirmed"]
+InboxEntryKind = Literal["applied", "pick_item", "place"]
 # How a checklist item counts as done: actual reaches the plan, or anything was paid.
 ChecklistMode = Literal["full_amount", "any_payment"]
 Money = Annotated[Decimal, Field(max_digits=12, decimal_places=2)]
@@ -216,9 +217,48 @@ class InboxTransactionOut(TransactionOut):
     recurring_name: str | None
 
 
+class InboxEntryOut(BaseModel):
+    """Something the Inbox shows about a transaction from a recurring rule."""
+
+    id: UUID
+    kind: InboxEntryKind = Field(
+        description="applied: auto-applied (the ledger). pick_item: no matching item in "
+        "`budget_id`; pick one. place: approve the (pending) transaction and pick where it "
+        "counts."
+    )
+    created_at: datetime
+    seen: bool = Field(description="applied only: the user has seen it.")
+    transaction: InboxTransactionOut
+    item_name: str | None = Field(description="The rule's intended budget item.")
+    category_id: UUID | None = Field(description="The rule's category (None: Uncategorized).")
+    category_name: str | None
+    budget_id: UUID | None = Field(description="applied/pick_item: the budget it's about.")
+    budget_name: str | None
+    budget_item_id: UUID | None = Field(description="applied: the item it landed in.")
+    budget_item_name: str | None
+    allocations: list[AllocationOut] = Field(
+        default_factory=list, description="place: where it counts so far (pre-Inbox data)."
+    )
+
+
 class Inbox(BaseModel):
-    pending: list[InboxTransactionOut] = Field(description="Awaiting approval.")
-    unassigned: list[InboxTransactionOut] = Field(description="Not counted in any budget.")
+    needs_you: list[InboxEntryOut] = Field(description="Open pick_item and place entries.")
+    unassigned: list[InboxTransactionOut] = Field(
+        description="Confirmed transactions not counted in any budget."
+    )
+    ledger: list[InboxEntryOut] = Field(description="Recent applied entries, newest first.")
+    unseen: int = Field(description="Ledger entries not seen yet (of those returned).")
+
+
+class InboxResolve(BaseModel):
+    budget_item_ids: list[UUID] = Field(
+        default_factory=list,
+        description="place: items it counts toward in full (at most one per budget; may be "
+        "empty). pick_item: exactly one item in the entry's budget.",
+    )
+    amount: Money | None = Field(
+        default=None, gt=0, description="place only: the real amount, if it differs."
+    )
 
 
 class BudgetTransactionOut(TransactionOut):
@@ -234,7 +274,11 @@ class BudgetTransactionOut(TransactionOut):
 
 class RecurringIn(BaseModel):
     kind: Kind
-    name: Name = Field(description="The budget item it counts toward (matched by name).")
+    name: Name = Field(description="What the rule is called.")
+    item_name: Name = Field(
+        description="The budget item it's meant for, matched by name (ignoring case and extra "
+        "spaces) and category in each budget."
+    )
     category_id: UUID | None = None
     amount: Money = Field(gt=0)
     payee: str | None = Field(default=None, max_length=200)
@@ -248,9 +292,10 @@ class RecurringIn(BaseModel):
     )
     ends_on: date | None = None
     auto_apply: bool = Field(
-        default=False, description="Count it in every budget whose period includes the date."
+        default=False,
+        description="Count it toward the matching item in every budget whose period includes "
+        "the date. Off: each occurrence waits in the Inbox to be approved and placed.",
     )
-    requires_approval: bool = False
     paused: bool = False
 
     @model_validator(mode="after")

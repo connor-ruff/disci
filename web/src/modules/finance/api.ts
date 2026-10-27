@@ -287,9 +287,10 @@ export function useReorderItems(budgetId: string) {
   })
 }
 
-// --- Inbox: approvals and unassigned ----------------------------------------------------
+// --- Inbox: decisions from recurring rules, unassigned, and the ledger -------------------
 
 export type InboxTransaction = Schemas['InboxTransactionOut']
+export type InboxEntry = Schemas['InboxEntryOut']
 
 export function useInbox() {
   return useQuery({
@@ -304,30 +305,44 @@ function useInvalidateMoney() {
   return () => queryClient.invalidateQueries({ queryKey: financeKeys.all })
 }
 
-export function useApprove() {
+/** place: approve (optionally a new amount) and count it toward these items, at most one
+ *  per budget. pick_item: count it toward the one item picked in the entry's budget. */
+export function useResolveEntry() {
   const invalidate = useInvalidateMoney()
   return useMutation({
-    mutationFn: async ({ id, amount }: { id: string; amount?: string }) =>
+    mutationFn: async ({ id, itemIds, amount }: { id: string; itemIds: string[]; amount?: string }) =>
       unwrap(
-        await api.POST('/finance/transactions/{transaction_id}/approve', {
-          params: { path: { transaction_id: id } },
-          body: { amount: amount ?? null },
+        await api.POST('/finance/inbox/{entry_id}/resolve', {
+          params: { path: { entry_id: id } },
+          body: { budget_item_ids: itemIds, amount: amount ?? null },
         }),
       ),
     onSuccess: invalidate,
   })
 }
 
-export function useReject() {
+/** place: reject (discard) the transaction. pick_item: skip that budget. */
+export function useDismissEntry() {
   const invalidate = useInvalidateMoney()
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error, response } = await api.POST('/finance/transactions/{transaction_id}/reject', {
-        params: { path: { transaction_id: id } },
+      const { error, response } = await api.POST('/finance/inbox/{entry_id}/dismiss', {
+        params: { path: { entry_id: id } },
       })
-      if (error !== undefined || !response.ok) throw new Error('Could not reject transaction')
+      if (error !== undefined || !response.ok) throw new Error('Could not dismiss')
     },
     onSuccess: invalidate,
+  })
+}
+
+export function useMarkInboxSeen() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async () => {
+      const { error, response } = await api.POST('/finance/inbox/seen')
+      if (error !== undefined || !response.ok) throw new Error('Could not mark as read')
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: financeKeys.inbox }),
   })
 }
 

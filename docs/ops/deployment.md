@@ -143,6 +143,23 @@ Needs `uv`, Node/npm, the AWS CLI, `zip` and `curl`. Deploys whatever is in your
 - `concurrency: deploy-prod` with `cancel-in-progress: false`: one deploy at a time; a newer push waits.
 - Third-party actions are **pinned to commit SHAs** (tag in a comment) so a moved tag can't change what runs with AWS credentials.
 
+### Before a deploy with risky migrations
+
+Automated backups (7 days, point-in-time restore) always exist. Before merging a migration that rewrites or moves existing data, also take a **manual snapshot** for an exact restore point:
+
+```bash
+aws rds create-db-snapshot --db-instance-identifier disci \
+  --db-snapshot-identifier disci-pre-<change>-<yyyy-mm-dd> \
+  --profile connor-ruff-dev-acct --region us-east-2
+# wait for "available" before merging
+aws rds describe-db-snapshots --db-snapshot-identifier disci-pre-<change>-<yyyy-mm-dd> \
+  --profile connor-ruff-dev-acct --region us-east-2 --query 'DBSnapshots[0].Status'
+```
+
+- Manual snapshots are **not managed by OpenTofu** (not in state, never drift) and **don't expire**: delete them once the deploy is confirmed good (`aws rds delete-db-snapshot`, or the RDS console). A few cents a month each while kept.
+- Restoring means creating a new instance from the snapshot (`restore-db-instance-from-db-snapshot`) and pointing the stack at it, so treat it as a last resort; fixing forward is usually simpler.
+- Taken so far: `disci-pre-inbox-2026-10-27` (before the Finance Inbox migration).
+
 ---
 
 ## 4. Infrastructure changes

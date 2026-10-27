@@ -2,12 +2,15 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import date, datetime
 from typing import Any
+from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, status
 from psycopg import Connection, errors
 
 from app.core.db import Db
+from app.modules.finance import service
+from app.modules.finance.schemas import AllocationIn
 from app.modules.finance.sql import queries
 
 
@@ -43,3 +46,20 @@ def user_prefs(db: Db) -> tuple[str, int]:
 
 def today_in(timezone: str) -> date:
     return datetime.now(ZoneInfo(timezone)).date()
+
+
+def write_allocations(db: Db, transaction_id: UUID, amount, allocations: list[AllocationIn]):
+    """Validates and inserts allocations for a transaction (replacing none)."""
+    item_ids = [a.budget_item_id for a in allocations]
+    rows = db.conn.execute(queries["get_item_budgets"], {"item_ids": item_ids}).fetchall()
+    error = service.allocation_errors(amount, allocations, {r["id"]: r["budget_id"] for r in rows})
+    if error:
+        raise invalid(error)
+    with db.conn.cursor() as cur:
+        cur.executemany(
+            queries["insert_allocation"],
+            [
+                {"user_id": db.user_id, "transaction_id": transaction_id, **a.model_dump()}
+                for a in allocations
+            ],
+        )

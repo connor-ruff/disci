@@ -374,11 +374,75 @@ export interface paths {
         };
         /**
          * Get Inbox
-         * @description Transactions needing attention: awaiting approval, or not in any budget yet.
+         * @description What needs a decision (from recurring rules), transactions not counted in any
+         *     budget, and a ledger of what recurring rules applied automatically.
          */
         get: operations["get_inbox_finance_inbox_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/finance/inbox/{entry_id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve Entry
+         * @description place: approves the transaction (with `amount` if given) and makes it count in full
+         *     toward `budget_item_ids`, replacing where it counted before. pick_item: makes it count
+         *     toward the one item picked in the entry's budget. Returns the transaction.
+         */
+        post: operations["resolve_entry_finance_inbox__entry_id__resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/finance/inbox/{entry_id}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dismiss Entry
+         * @description place: rejects the transaction (discarded; its rule won't generate that date again).
+         *     pick_item: skips that budget; the transaction still counts wherever else it landed.
+         */
+        post: operations["dismiss_entry_finance_inbox__entry_id__dismiss_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/finance/inbox/seen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark Seen
+         * @description Marks every ledger entry as seen.
+         */
+        post: operations["mark_seen_finance_inbox_seen_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1456,15 +1520,97 @@ export interface components {
         /** Inbox */
         Inbox: {
             /**
-             * Pending
-             * @description Awaiting approval.
+             * Needs You
+             * @description Open pick_item and place entries.
              */
-            pending: components["schemas"]["InboxTransactionOut"][];
+            needs_you: components["schemas"]["InboxEntryOut"][];
             /**
              * Unassigned
-             * @description Not counted in any budget.
+             * @description Confirmed transactions not counted in any budget.
              */
             unassigned: components["schemas"]["InboxTransactionOut"][];
+            /**
+             * Ledger
+             * @description Recent applied entries, newest first.
+             */
+            ledger: components["schemas"]["InboxEntryOut"][];
+            /**
+             * Unseen
+             * @description Ledger entries not seen yet (of those returned).
+             */
+            unseen: number;
+        };
+        /**
+         * InboxEntryOut
+         * @description Something the Inbox shows about a transaction from a recurring rule.
+         */
+        InboxEntryOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @description applied: auto-applied (the ledger). pick_item: no matching item in `budget_id`; pick one. place: approve the (pending) transaction and pick where it counts.
+             * @enum {string}
+             */
+            kind: "applied" | "pick_item" | "place";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Seen
+             * @description applied only: the user has seen it.
+             */
+            seen: boolean;
+            transaction: components["schemas"]["InboxTransactionOut"];
+            /**
+             * Item Name
+             * @description The rule's intended budget item.
+             */
+            item_name: string | null;
+            /**
+             * Category Id
+             * @description The rule's category (None: Uncategorized).
+             */
+            category_id: string | null;
+            /** Category Name */
+            category_name: string | null;
+            /**
+             * Budget Id
+             * @description applied/pick_item: the budget it's about.
+             */
+            budget_id: string | null;
+            /** Budget Name */
+            budget_name: string | null;
+            /**
+             * Budget Item Id
+             * @description applied: the item it landed in.
+             */
+            budget_item_id: string | null;
+            /** Budget Item Name */
+            budget_item_name: string | null;
+            /**
+             * Allocations
+             * @description place: where it counts so far (pre-Inbox data).
+             */
+            allocations?: components["schemas"]["AllocationOut"][];
+        };
+        /** InboxResolve */
+        InboxResolve: {
+            /**
+             * Budget Item Ids
+             * @description place: items it counts toward in full (at most one per budget; may be empty). pick_item: exactly one item in the entry's budget.
+             */
+            budget_item_ids?: string[];
+            /**
+             * Amount
+             * @description place only: the real amount, if it differs.
+             */
+            amount?: number | string | null;
         };
         /** InboxTransactionOut */
         InboxTransactionOut: {
@@ -1710,9 +1856,14 @@ export interface components {
             kind: "expense" | "income";
             /**
              * Name
-             * @description The budget item it counts toward (matched by name).
+             * @description What the rule is called.
              */
             name: string;
+            /**
+             * Item Name
+             * @description The budget item it's meant for, matched by name (ignoring case and extra spaces) and category in each budget.
+             */
+            item_name: string;
             /** Category Id */
             category_id?: string | null;
             /** Amount */
@@ -1746,15 +1897,10 @@ export interface components {
             ends_on?: string | null;
             /**
              * Auto Apply
-             * @description Count it in every budget whose period includes the date.
+             * @description Count it toward the matching item in every budget whose period includes the date. Off: each occurrence waits in the Inbox to be approved and placed.
              * @default false
              */
             auto_apply: boolean;
-            /**
-             * Requires Approval
-             * @default false
-             */
-            requires_approval: boolean;
             /**
              * Paused
              * @default false
@@ -1770,9 +1916,14 @@ export interface components {
             kind: "expense" | "income";
             /**
              * Name
-             * @description The budget item it counts toward (matched by name).
+             * @description What the rule is called.
              */
             name: string;
+            /**
+             * Item Name
+             * @description The budget item it's meant for, matched by name (ignoring case and extra spaces) and category in each budget.
+             */
+            item_name: string;
             /** Category Id */
             category_id?: string | null;
             /** Amount */
@@ -1806,15 +1957,10 @@ export interface components {
             ends_on?: string | null;
             /**
              * Auto Apply
-             * @description Count it in every budget whose period includes the date.
+             * @description Count it toward the matching item in every budget whose period includes the date. Off: each occurrence waits in the Inbox to be approved and placed.
              * @default false
              */
             auto_apply: boolean;
-            /**
-             * Requires Approval
-             * @default false
-             */
-            requires_approval: boolean;
             /**
              * Paused
              * @default false
@@ -3107,6 +3253,88 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Inbox"];
                 };
+            };
+        };
+    };
+    resolve_entry_finance_inbox__entry_id__resolve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InboxResolve"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransactionDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dismiss_entry_finance_inbox__entry_id__dismiss_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_seen_finance_inbox_seen_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
