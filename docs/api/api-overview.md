@@ -1,6 +1,6 @@
 # API Overview
 
-*Status: **skeleton implemented and deployed** to AWS Lambda behind API Gateway (https://molrqp0ch5.execute-api.us-east-2.amazonaws.com). Core endpoints (`/me`, `/me/modules`) work, and so do the **finance module** (categories, budgets, budget items, transactions, reordering, recurring transactions with approvals, the inbox and the monthly checklist) and the **nutrition module** (tracked nutrients, the food repo, the daily food log and history, and macro goals). The first scheduled job (hourly recurring-transaction generation, `app/jobs/recurring.py`) runs as the `disci-jobs` Lambda. Cognito auth works in production. Deploying and operating it: [deployment.md](../ops/deployment.md).*
+*Status: **skeleton implemented and deployed** to AWS Lambda behind API Gateway (https://molrqp0ch5.execute-api.us-east-2.amazonaws.com). Core endpoints (`/me`, `/me/modules`) work, and so do the **finance module** (categories, budgets, budget items, transactions, reordering, recurring transactions with approvals, the inbox and the monthly checklist) the **nutrition module** (tracked nutrients, the food repo, the daily food log and history, and macro goals) and the **tasks module** (four fixed task types, check-offs and undo, today's progress). The first scheduled job (hourly recurring-transaction generation, `app/jobs/recurring.py`) runs as the `disci-jobs` Lambda. Cognito auth works in production. Deploying and operating it: [deployment.md](../ops/deployment.md).*
 
 The API is the only thing that talks to the database. The web app and the MCP server go through it over HTTP; scheduled jobs (`app/jobs/`) are part of the same codebase and zip, run in their own Lambda, and use the same database role, queries and row-level security (see §9 and [disci-infrastructure.md](../project_plans/disci-infrastructure.md)). It is **FastAPI** on Python 3.13, with plain SQL through **psycopg 3** (no ORM), managed with **uv**.
 
@@ -58,11 +58,19 @@ api/
 │           ├── service.py         # NUTRIENTS registry, DEFAULT_TRACKED, entry_nutrients, day_totals
 │           ├── sql.py             # `queries = Queries(__file__)`
 │           └── queries/           # one .sql per query
+│       └── tasks/                 # mounted at /tasks
+│           ├── __init__.py        # `module` (no setup: nothing is seeded)
+│           ├── routes/__init__.py # `router`: every tasks route (one area, so one file)
+│           ├── schemas.py         # Pydantic models (TaskType, RepeatUnit, TaskOut, TaskDetail, CheckIn)
+│           ├── service.py         # TASK_TYPES guide, type_fields, add_interval, due_status, progress
+│           ├── sql.py             # `queries = Queries(__file__)`
+│           └── queries/           # one .sql per query
 └── tests/                         # pytest, against the disci_test database
     ├── conftest.py
     ├── core/                      # test_users.py, test_user_modules.py, test_aws.py
     ├── modules/finance/           # test_finance.py, test_recurring.py
-    └── modules/nutrition/         # test_nutrition.py
+    ├── modules/nutrition/         # test_nutrition.py
+    └── modules/tasks/             # test_tasks.py
 ```
 
 A small module has `router.py` (thin HTTP routes), `schemas.py` (Pydantic models), `service.py` (business rules that don't belong in SQL) and `queries/` (one `.sql` per query); `core/users/` is a minimal example (no service).
@@ -161,6 +169,7 @@ Interactive docs: http://localhost:8000/docs while `make api` is running.
 | DELETE | `/me/modules/{key}` | Disable a module. Its data is kept and comes back on re-enable. Unknown key → 404. |
 | * | `/finance/...` | Finance module, see §7.1. |
 | * | `/nutrition/...` | Nutrition module, see §7.2. |
+| * | `/tasks/...` | Tasks module, see §7.3. |
 
 ### 7.1 Finance (`/finance`)
 
@@ -235,6 +244,44 @@ Data model: [nutrition.md](../db/nutrition.md). **Nutrient amounts**, quantities
 - **409**: a duplicate food name, or a second active goal of the same kind for a nutrient (`unique_errors` in `routes/_common.py` catches the unique violation inside a savepoint).
 - **422**: request validation (Pydantic): unknown nutrient keys, negative nutrients, `servings` / `standard_quantity` / goal `amount` not above 0, too many decimal places, over-long text.
 
+### 7.3 Tasks (`/tasks`)
+
+Data model: [tasks.md](../db/tasks.md). A task is one of four fixed types (`task_type`): `daily_checklist`, `nondaily_maintenance`, `adhoc_to_do`, `keep_in_mind`. **"Today"** is today in the user's timezone (`core.users.timezone`); endpoints that take `on` (a date) default to it.
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/tasks/types` | The four types in display order (`TypeOut`: `key`, `name`, `summary`, `how_it_works`, `examples`). Fixed text from `service.TASK_TYPES`; the web app's Kinds page and new-task picker show it. |
+| GET | `/tasks` | Active tasks with their progress on day `on` (`TaskOut`), soonest `next_due` first (none last), then by name. **To-dos finished before that day are left out**; one finished that day stays, with `done: true`, until the day ends. |
+| POST | `/tasks` | Create (`TaskCreate`): `task_type`, `name` (1–200 chars, trimmed), `description?` (≤1,000), and the type's own fields: daily `daily_target` (1–100, default 1); maintenance `repeat_every` (1–1,000) + `repeat_unit` (`day`, `week`, `month`, `quarter`, `year`) and `next_due` (default today); to-do `next_due?` (its due date). Fields the type doesn't use are **ignored** (stored as null); a required one missing → 422 naming it. 201. |
+| GET | `/tasks/completions` | Everything checked off on day `on` (`DayCompletionOut`: `id`, `task_id`, `task_name`, `task_type`, `completed_on`, `due_on`, `created_at`), oldest first. Includes deleted tasks: it still happened. |
+| GET | `/tasks/{id}` | `TaskDetail`: the `TaskOut` fields (as of `on`) plus `recent_completions` (`id`, `completed_on`, `due_on`, `created_at`), newest first, up to 30. |
+| PUT | `/tasks/{id}` | Replace the editable fields (`TaskUpdate`: the create body without `task_type`, sent in full). **The type can't change.** Moving a maintenance `next_due` snoozes it. Returns `TaskOut`. |
+| DELETE | `/tasks/{id}` | Soft-delete. Its check-offs stay in history (`/tasks/completions`). 204. |
+| POST | `/tasks/{id}/complete` | Check it off once. Optional body `{on}`: the day it was done (default today; a **future day → 422**). Per type below. Returns `TaskOut` as of that day. |
+| POST | `/tasks/{id}/undo` | Take back the latest check-off (soft-deletes it). Optional body `{on}` (default today). Per type below. Nothing to undo → 404. Returns `TaskOut` as of that day. |
+
+**`TaskOut`**: `id`, `task_type`, `name`, `description`, `repeat_every`, `repeat_unit`, `next_due`, `daily_target`, plus progress computed from the check-offs (`service.progress`):
+
+- `done_on_day`: check-offs on the day asked about; `last_done_on`: the latest day it was checked off (or null).
+- `done`: daily, `done_on_day >= daily_target`; maintenance, done **on that day** (it's already due again later); to-do, checked off; keep in mind, always false.
+- `due_status` (`overdue` / `due_today` / `upcoming`, null without a `next_due`) and `days_until_due` (negative when overdue). **No grace period**: past the date is overdue. A finished to-do has neither (done isn't overdue).
+
+**Complete and undo, per type:**
+
+| Type | Complete | Undo |
+|---|---|---|
+| Daily checklist | Adds one to the day's count; going past the target is fine. | Removes the latest check-off **on that day** only; none that day → 404. |
+| Maintenance | Records the check-off (with `due_on` = the current `next_due`) and sets `next_due` = the day + `repeat_every` × `repeat_unit` (calendar months for month / quarter / year, clamped to the month's end: Jan 31 + 1 month = Feb 28). | Removes the latest check-off (any day) and restores `next_due` to its `due_on`. |
+| To-do | Done. Already done → **409**. `next_due` is unchanged. | Removes its check-off: open again. |
+| Keep in mind | **422**: nothing to check off. | 404 (there's never a check-off). |
+
+Complete and undo lock the task row first, so concurrent taps apply one after the other.
+
+**Errors:**
+- **404**: the task doesn't exist, is deleted, or belongs to another user; undo with nothing to take back.
+- **409**: checking off a to-do that's already done.
+- **422**: request validation (unknown type or unit, out-of-range numbers, over-long text), a type's required field missing, checking off a keep-in-mind task, or a check-off on a future day.
+
 ---
 
 ## 8. Run, test, lint
@@ -249,7 +296,7 @@ Requires Docker (for Postgres) and **uv**.
 | `make api-lint` | `ruff check` and `ruff format --check`. |
 | `make jobs-recurring` | Applies pending migrations, then runs the recurring-transactions job once against the local database, as `disci_api` (AWS runs it hourly; see §9.1). |
 
-**Tests** run against `disci_test`, a separate database in the same local Postgres, so your dev data is untouched. Each test starts with empty tables (an autouse fixture truncates them as the owner). Use `as_user("<sub>")` from `tests/conftest.py` to send requests as a given dev user. **84 tests** in total. The **25 core tests** cover user creation, settings validation, per-user isolation, an email-less (MCP) identity getting 403 until a web sign-in creates the user and then finding it, RLS (as `disci_api` with no `app.user_id`, no rows are visible), module enable/disable, the prod dev-auth guard and the AWS code paths below. The **21 finance tests** (`tests/modules/finance/test_finance.py`) cover period bounds and default names, category seeding on enable, per-kind custom categories, uncategorizing on category delete, multiple budgets per period, Uncategorized items, the item/category kind check, opposite-kind netting, the per-budget allocation cap, counting the same dollars in two budgets, transaction delete, editing a transaction (`GET` shows its allocations; `PUT` changes its fields and moves / adds allocations, rejects an allocation over the amount, and 404s for another user), cross-user isolation, and copying a budget (items carried over without transactions, same period type required, no copying another user's budget). The **26 recurring tests** (`tests/modules/finance/test_recurring.py`) cover occurrence dates for every frequency (including the yearly Feb 29 clamp and `ends_on`), rule validation, `next_occurrence`, auto-apply (creating the item planned for every occurrence in the period, matching an existing item by name, hitting every covering budget, idempotency), landing unassigned without auto-apply, the approve/reject flow and a rejected occurrence never coming back, the job running for every user, the checklist (monthly budgets only; done only once the confirmed actual reaches the plan, partial payments not enough; pending transactions ignored and refunds netted; a $0-planned item needs something logged; a recurring payment meeting the plan completes it), reordering categories and items, and category descriptions and transaction notes. The **12 nutrition tests** (`tests/modules/nutrition/test_nutrition.py`) cover the default tracked nutrients on enable, saving tracked nutrients de-duplicated in display order (unknown key → 422), food names unique per user ignoring case (a deleted food's name reusable) and unknown nutrients staying null, editing a food recalculating past days, day totals (servings multiplied, known values summed, `missing_foods` listed, null when nothing is known, 0 on an empty day), food values keeping 6 decimal places (a 7th place → 422), editing and deleting log entries, a deleted food staying on past days but not loggable, history newest first with the `before` cursor, cross-user isolation (foods, days, logging, goals), goal targets and limits (one active of each kind per nutrient) and changing / removing a goal while past days keep the old one.
+**Tests** run against `disci_test`, a separate database in the same local Postgres, so your dev data is untouched. Each test starts with empty tables (an autouse fixture truncates them as the owner). Use `as_user("<sub>")` from `tests/conftest.py` to send requests as a given dev user. **98 tests** in total. The **25 core tests** cover user creation, settings validation, per-user isolation, an email-less (MCP) identity getting 403 until a web sign-in creates the user and then finding it, RLS (as `disci_api` with no `app.user_id`, no rows are visible), module enable/disable, the prod dev-auth guard and the AWS code paths below. The **21 finance tests** (`tests/modules/finance/test_finance.py`) cover period bounds and default names, category seeding on enable, per-kind custom categories, uncategorizing on category delete, multiple budgets per period, Uncategorized items, the item/category kind check, opposite-kind netting, the per-budget allocation cap, counting the same dollars in two budgets, transaction delete, editing a transaction (`GET` shows its allocations; `PUT` changes its fields and moves / adds allocations, rejects an allocation over the amount, and 404s for another user), cross-user isolation, and copying a budget (items carried over without transactions, same period type required, no copying another user's budget). The **26 recurring tests** (`tests/modules/finance/test_recurring.py`) cover occurrence dates for every frequency (including the yearly Feb 29 clamp and `ends_on`), rule validation, `next_occurrence`, auto-apply (creating the item planned for every occurrence in the period, matching an existing item by name, hitting every covering budget, idempotency), landing unassigned without auto-apply, the approve/reject flow and a rejected occurrence never coming back, the job running for every user, the checklist (monthly budgets only; done only once the confirmed actual reaches the plan, partial payments not enough; pending transactions ignored and refunds netted; a $0-planned item needs something logged; a recurring payment meeting the plan completes it), reordering categories and items, and category descriptions and transaction notes. The **12 nutrition tests** (`tests/modules/nutrition/test_nutrition.py`) cover the default tracked nutrients on enable, saving tracked nutrients de-duplicated in display order (unknown key → 422), food names unique per user ignoring case (a deleted food's name reusable) and unknown nutrients staying null, editing a food recalculating past days, day totals (servings multiplied, known values summed, `missing_foods` listed, null when nothing is known, 0 on an empty day), food values keeping 6 decimal places (a 7th place → 422), editing and deleting log entries, a deleted food staying on past days but not loggable, history newest first with the `before` cursor, cross-user isolation (foods, days, logging, goals), goal targets and limits (one active of each kind per nutrient) and changing / removing a goal while past days keep the old one. The **14 tasks tests** (`tests/modules/tasks/test_tasks.py`) cover the four fixed types and their guide text (unknown type → 422), each type keeping only its fields (and the defaults: daily target 1, maintenance due today; a missing required field → 422), the daily checklist counting up and starting at zero each day (undo only takes back that day's check-offs), maintenance due an interval after the day it was done (done late or on a past day) and undo restoring the old due date, a to-do done once (409 on a second check-off) staying crossed off for the day and gone the next, the check-off rules (keep in mind → 422, a future day → 422), editing keeping the type, deleting keeping history, cross-user isolation, and `add_interval` (6 cases: days, weeks, the end-of-month clamp for months, quarters and Feb 29 years, and 13 months across a year).
 
 `tests/core/test_aws.py` exercises the production-only code paths locally:
 - **Cognito mode** builds requests the way Mangum does from an API Gateway event: verified ID-token claims → `Identity`; an MCP-client access token → `Identity` with no email; that access token is rejected (401) when `mcp_client_id` is unset; no claims, another client's access token, an access token without `client_id` or an ID token without email → 401; the `X-Dev-User` header is ignored.
@@ -267,7 +314,7 @@ Built into one zip by `scripts/build-api-zip.sh` (no Docker) and shipped by `scr
 | `disci-migrator` | `app.migrator.handler` | Connects as the RDS master user (`DISCI_MIGRATOR_DATABASE_URL`), runs `db/aws/roles.sql` (idempotent: ensures `disci_app`, `disci_api`, `rds_iam` grant), then the bundled `bin/dbmate --no-dump-schema --migrations-dir db/migrations up`. Raises if dbmate fails, which stops the deploy before the API is updated. Returns dbmate's output. |
 | `disci-jobs` | `app.jobs.recurring.handler` | Scheduled work, triggered hourly by EventBridge Scheduler. Today it only creates due recurring transactions (§9.1). Same environment variables as `disci-api`. |
 
-The MCP server (`disci-mcp`) is a separate project and zip (`mcp_server/`, [mcp-overview.md](../mcp/mcp-overview.md)) that calls this API over HTTP. Its finance and nutrition tools wrap the §7.1 and §7.2 endpoints; nothing in the API is MCP-specific beyond accepting its access tokens (§3).
+The MCP server (`disci-mcp`) is a separate project and zip (`mcp_server/`, [mcp-overview.md](../mcp/mcp-overview.md)) that calls this API over HTTP. Its finance, nutrition and tasks tools wrap the §7.1, §7.2 and §7.3 endpoints (the tasks tools only read tasks and log completions); nothing in the API is MCP-specific beyond accepting its access tokens (§3).
 
 The deploy runs the migrator **before** updating the API, so migrations must be backward compatible with the live API (expand/contract). `disci-jobs` gets the same zip right after `disci-api`.
 

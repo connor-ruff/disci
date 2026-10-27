@@ -37,6 +37,13 @@ CREATE SCHEMA nutrition;
 
 
 --
+-- Name: tasks; Type: SCHEMA; Schema: -; Owner: -
+--
+
+CREATE SCHEMA tasks;
+
+
+--
 -- Name: current_user_id(); Type: FUNCTION; Schema: core; Owner: -
 --
 
@@ -414,6 +421,52 @@ CREATE TABLE public.schema_migrations (
 
 
 --
+-- Name: task_completions; Type: TABLE; Schema: tasks; Owner: -
+--
+
+CREATE TABLE tasks.task_completions (
+    id uuid DEFAULT uuidv7() NOT NULL,
+    user_id uuid NOT NULL,
+    task_id uuid NOT NULL,
+    completed_on date NOT NULL,
+    due_on date,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    deleted_at timestamp with time zone
+);
+
+
+--
+-- Name: tasks; Type: TABLE; Schema: tasks; Owner: -
+--
+
+CREATE TABLE tasks.tasks (
+    id uuid DEFAULT uuidv7() NOT NULL,
+    user_id uuid NOT NULL,
+    task_type text NOT NULL,
+    name text NOT NULL,
+    description text,
+    repeat_every integer,
+    repeat_unit text,
+    next_due date,
+    daily_target integer,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    deleted_at timestamp with time zone,
+    CONSTRAINT tasks_check CHECK (((repeat_every IS NULL) = (repeat_unit IS NULL))),
+    CONSTRAINT tasks_check1 CHECK (((task_type <> 'daily_checklist'::text) OR ((daily_target IS NOT NULL) AND (repeat_every IS NULL) AND (next_due IS NULL)))),
+    CONSTRAINT tasks_check2 CHECK (((task_type <> 'nondaily_maintenance'::text) OR ((repeat_every IS NOT NULL) AND (next_due IS NOT NULL) AND (daily_target IS NULL)))),
+    CONSTRAINT tasks_check3 CHECK (((task_type <> 'adhoc_to_do'::text) OR ((repeat_every IS NULL) AND (daily_target IS NULL)))),
+    CONSTRAINT tasks_check4 CHECK (((task_type <> 'keep_in_mind'::text) OR ((repeat_every IS NULL) AND (next_due IS NULL) AND (daily_target IS NULL)))),
+    CONSTRAINT tasks_daily_target_check CHECK ((daily_target > 0)),
+    CONSTRAINT tasks_name_check CHECK ((length(TRIM(BOTH FROM name)) > 0)),
+    CONSTRAINT tasks_repeat_every_check CHECK ((repeat_every > 0)),
+    CONSTRAINT tasks_repeat_unit_check CHECK ((repeat_unit = ANY (ARRAY['day'::text, 'week'::text, 'month'::text, 'quarter'::text, 'year'::text]))),
+    CONSTRAINT tasks_task_type_check CHECK ((task_type = ANY (ARRAY['daily_checklist'::text, 'nondaily_maintenance'::text, 'adhoc_to_do'::text, 'keep_in_mind'::text])))
+);
+
+
+--
 -- Name: user_modules user_modules_pkey; Type: CONSTRAINT; Schema: core; Owner: -
 --
 
@@ -582,6 +635,30 @@ ALTER TABLE ONLY public.schema_migrations
 
 
 --
+-- Name: task_completions task_completions_pkey; Type: CONSTRAINT; Schema: tasks; Owner: -
+--
+
+ALTER TABLE ONLY tasks.task_completions
+    ADD CONSTRAINT task_completions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: tasks tasks_id_user_id_key; Type: CONSTRAINT; Schema: tasks; Owner: -
+--
+
+ALTER TABLE ONLY tasks.tasks
+    ADD CONSTRAINT tasks_id_user_id_key UNIQUE (id, user_id);
+
+
+--
+-- Name: tasks tasks_pkey; Type: CONSTRAINT; Schema: tasks; Owner: -
+--
+
+ALTER TABLE ONLY tasks.tasks
+    ADD CONSTRAINT tasks_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: user_modules_user_module_key; Type: INDEX; Schema: core; Owner: -
 --
 
@@ -687,6 +764,27 @@ CREATE UNIQUE INDEX macro_goals_active_key ON nutrition.macro_goals USING btree 
 
 
 --
+-- Name: task_completions_task_idx; Type: INDEX; Schema: tasks; Owner: -
+--
+
+CREATE INDEX task_completions_task_idx ON tasks.task_completions USING btree (task_id, completed_on DESC) WHERE (deleted_at IS NULL);
+
+
+--
+-- Name: task_completions_user_day_idx; Type: INDEX; Schema: tasks; Owner: -
+--
+
+CREATE INDEX task_completions_user_day_idx ON tasks.task_completions USING btree (user_id, completed_on) WHERE (deleted_at IS NULL);
+
+
+--
+-- Name: tasks_user_idx; Type: INDEX; Schema: tasks; Owner: -
+--
+
+CREATE INDEX tasks_user_idx ON tasks.tasks USING btree (user_id) WHERE (deleted_at IS NULL);
+
+
+--
 -- Name: user_modules set_updated_at; Type: TRIGGER; Schema: core; Owner: -
 --
 
@@ -768,6 +866,20 @@ CREATE TRIGGER set_updated_at BEFORE UPDATE ON nutrition.macro_goals FOR EACH RO
 --
 
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON nutrition.preferences FOR EACH ROW EXECUTE FUNCTION core.set_updated_at();
+
+
+--
+-- Name: task_completions set_updated_at; Type: TRIGGER; Schema: tasks; Owner: -
+--
+
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON tasks.task_completions FOR EACH ROW EXECUTE FUNCTION core.set_updated_at();
+
+
+--
+-- Name: tasks set_updated_at; Type: TRIGGER; Schema: tasks; Owner: -
+--
+
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON tasks.tasks FOR EACH ROW EXECUTE FUNCTION core.set_updated_at();
 
 
 --
@@ -912,6 +1024,30 @@ ALTER TABLE ONLY nutrition.macro_goals
 
 ALTER TABLE ONLY nutrition.preferences
     ADD CONSTRAINT preferences_user_id_fkey FOREIGN KEY (user_id) REFERENCES core.users(id);
+
+
+--
+-- Name: task_completions task_completions_task_id_user_id_fkey; Type: FK CONSTRAINT; Schema: tasks; Owner: -
+--
+
+ALTER TABLE ONLY tasks.task_completions
+    ADD CONSTRAINT task_completions_task_id_user_id_fkey FOREIGN KEY (task_id, user_id) REFERENCES tasks.tasks(id, user_id);
+
+
+--
+-- Name: task_completions task_completions_user_id_fkey; Type: FK CONSTRAINT; Schema: tasks; Owner: -
+--
+
+ALTER TABLE ONLY tasks.task_completions
+    ADD CONSTRAINT task_completions_user_id_fkey FOREIGN KEY (user_id) REFERENCES core.users(id);
+
+
+--
+-- Name: tasks tasks_user_id_fkey; Type: FK CONSTRAINT; Schema: tasks; Owner: -
+--
+
+ALTER TABLE ONLY tasks.tasks
+    ADD CONSTRAINT tasks_user_id_fkey FOREIGN KEY (user_id) REFERENCES core.users(id);
 
 
 --
@@ -1071,6 +1207,32 @@ CREATE POLICY owner ON nutrition.preferences TO disci_app USING ((user_id = core
 ALTER TABLE nutrition.preferences ENABLE ROW LEVEL SECURITY;
 
 --
+-- Name: task_completions owner; Type: POLICY; Schema: tasks; Owner: -
+--
+
+CREATE POLICY owner ON tasks.task_completions TO disci_app USING ((user_id = core.current_user_id())) WITH CHECK ((user_id = core.current_user_id()));
+
+
+--
+-- Name: tasks owner; Type: POLICY; Schema: tasks; Owner: -
+--
+
+CREATE POLICY owner ON tasks.tasks TO disci_app USING ((user_id = core.current_user_id())) WITH CHECK ((user_id = core.current_user_id()));
+
+
+--
+-- Name: task_completions; Type: ROW SECURITY; Schema: tasks; Owner: -
+--
+
+ALTER TABLE tasks.task_completions ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: tasks; Type: ROW SECURITY; Schema: tasks; Owner: -
+--
+
+ALTER TABLE tasks.tasks ENABLE ROW LEVEL SECURITY;
+
+--
 -- PostgreSQL database dump complete
 --
 
@@ -1089,4 +1251,5 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('20261025170608'),
     ('20261025190000'),
     ('20261026001500'),
-    ('20261026170000');
+    ('20261026170000'),
+    ('20261027120000');

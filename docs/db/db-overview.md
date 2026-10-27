@@ -1,6 +1,6 @@
 # Data Model Overview
 
-*Status: the **`core` schema is implemented** (`db/migrations/20261025134012_core__init.sql`), and so is **`finance`** (`db/migrations/20261025150312_finance__init.sql`, then recurring transactions, approvals and the monthly checklist in `db/migrations/20261025155734_finance__recurring_and_checklist.sql`, and the deprecated `satisfies_checklist` columns dropped in `db/migrations/20261025170608_finance__drop_satisfies_checklist.sql`). **`nutrition`** is implemented too (`db/migrations/20261025190000_nutrition__init.sql`, then food values widened to 6 decimal places in `db/migrations/20261026001500_nutrition__more_precision.sql`). `tasks` is still a **planning draft** that its migration will be written from. For the exact current schema, read the auto-generated `db/schema.sql`.*
+*Status: the **`core` schema is implemented** (`db/migrations/20261025134012_core__init.sql`), and so is **`finance`** (`db/migrations/20261025150312_finance__init.sql`, then recurring transactions, approvals and the monthly checklist in `db/migrations/20261025155734_finance__recurring_and_checklist.sql`, and the deprecated `satisfies_checklist` columns dropped in `db/migrations/20261025170608_finance__drop_satisfies_checklist.sql`). **`nutrition`** is implemented too (`db/migrations/20261025190000_nutrition__init.sql`, then food values widened to 6 decimal places in `db/migrations/20261026001500_nutrition__more_precision.sql`). So is **`tasks`** (`db/migrations/20261027120000_tasks__init.sql`: `tasks` and `task_completions`). For the exact current schema, read the auto-generated `db/schema.sql`.*
 
 This is the entry point for the Postgres data model. It covers how the model is split into modules, the conventions every table follows, and how the modules relate. Each module has its own doc with full table definitions.
 
@@ -9,7 +9,7 @@ docs/db/
 ├── db-overview.md     # You are here: modules, conventions, cross-module picture
 ├── shared.md          # Tables every module depends on (users, user_modules)
 ├── finance.md         # Budgets, categories, items, transactions, recurring bills
-├── tasks.md           # Tasks (ad-hoc + maintenance) and their occurrences
+├── tasks.md           # Tasks (four fixed types) and their check-offs (task_completions)
 └── nutrition.md       # Food repo, food log, macro goals, tracked nutrients
 ```
 
@@ -23,7 +23,7 @@ Each module is a self-contained slice of the app and gets its **own Postgres sch
 |---|---|---|---|---|
 | Shared | `core` | `users`, `user_modules` | Implemented | [shared.md](shared.md) |
 | Finance | `finance` | `budgets`, `budget_categories`, `budget_items`, `transactions`, `transaction_allocations`, `recurring_transactions` | Implemented (two slices) | [finance.md](finance.md) |
-| Tasks | `tasks` | `tasks`, `task_occurrences` | Planning draft | [tasks.md](tasks.md) |
+| Tasks | `tasks` | `tasks`, `task_completions` | Implemented | [tasks.md](tasks.md) |
 | Nutrition | `nutrition` | `food_items`, `food_item_logs`, `macro_goals`, `preferences` | Implemented | [nutrition.md](nutrition.md) |
 
 **Module boundary rule:** the only foreign key that crosses a module boundary is `user_id → core.users.id`. Modules never reference each other's tables. Cross-module features (the morning and night reports, the "everything" dashboard) **read** from several modules through the API and don't need tables of their own.
@@ -60,7 +60,7 @@ These come straight from the design principles in `docs/project_plans/project-in
 ### Types
 - **Money:** `numeric(12,2)`, always **positive**. Direction comes from a `kind` column (`'income'` / `'expense'`), never from a negative sign. USD only in v1.
 - **Enumerations:** `text` + `CHECK (col IN (...))` rather than Postgres `ENUM` types, because CHECK constraints are much easier to change in a migration.
-- **Recurrence:** decided per module, preferring the simplest form that covers the real cases. Finance's recurring transactions use **explicit schedule columns** (`frequency`, `day_of_week`, `day_of_month`, `starts_on`, `ends_on`; see [finance.md](finance.md)) rather than RRULE strings: easy to CHECK and to edit in a form, with no parser. The tasks draft still plans RRULE strings ([tasks.md](tasks.md)); revisit when it's built.
+- **Recurrence:** decided per module, preferring the simplest form that covers the real cases. Finance's recurring transactions use **explicit schedule columns** (`frequency`, `day_of_week`, `day_of_month`, `starts_on`, `ends_on`; see [finance.md](finance.md)) rather than RRULE strings: easy to CHECK and to edit in a form, with no parser. Tasks do the same: maintenance tasks repeat by `repeat_every` + `repeat_unit` (day, week, month, quarter, year), with the next due date counted from the day it was done ([tasks.md](tasks.md)).
 - **Dates vs. times:** "which day does this belong to" is stored as a `date` resolved in the **user's timezone** (`core.users.timezone`) at write time. Exact moments are `timestamptz`.
 
 ### Integrity

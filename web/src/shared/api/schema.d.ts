@@ -618,6 +618,136 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tasks/types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Types
+         * @description The four task types, what each is for and how it behaves.
+         */
+        get: operations["list_types_tasks_types_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks/completions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Completions
+         * @description Everything checked off on a day (default today), oldest first.
+         */
+        get: operations["list_completions_tasks_completions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Tasks
+         * @description Active tasks with their progress on a day (default today), soonest due first.
+         *
+         *     To-dos finished before that day are left out; one finished that day stays (done).
+         */
+        get: operations["list_tasks_tasks_get"];
+        put?: never;
+        /** Create Task */
+        post: operations["create_task_tasks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Task */
+        get: operations["get_task_tasks__task_id__get"];
+        /** Update Task */
+        put: operations["update_task_tasks__task_id__put"];
+        post?: never;
+        /**
+         * Delete Task
+         * @description Its check-offs stay in history.
+         */
+        delete: operations["delete_task_tasks__task_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks/{task_id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Complete Task
+         * @description Checks a task off once.
+         *
+         *     Daily: adds one to the day's count (it may go past the target). Maintenance: next
+         *     due becomes the day plus its interval. To-do: done (409 if it already is). Keep in
+         *     mind: not checkable (422).
+         */
+        post: operations["complete_task_tasks__task_id__complete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks/{task_id}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo Completion
+         * @description Takes back the latest check-off. Daily: the latest on the day (default today).
+         *     Maintenance: next due goes back to what it was. To-do: open again.
+         */
+        post: operations["undo_completion_tasks__task_id__undo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -945,6 +1075,14 @@ export interface components {
             /** Description */
             description?: string | null;
         };
+        /** CheckIn */
+        CheckIn: {
+            /**
+             * On
+             * @description The day it was done (default today); not in the future.
+             */
+            on?: string | null;
+        };
         /** ChecklistItemOut */
         ChecklistItemOut: {
             /**
@@ -987,6 +1125,64 @@ export interface components {
             done: boolean;
             /** Last Payment On */
             last_payment_on: string | null;
+        };
+        /** CompletionOut */
+        CompletionOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Completed On
+             * Format: date
+             */
+            completed_on: string;
+            /**
+             * Due On
+             * @description When it was due at the time, if it had a due date.
+             */
+            due_on: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** DayCompletionOut */
+        DayCompletionOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Completed On
+             * Format: date
+             */
+            completed_on: string;
+            /**
+             * Due On
+             * @description When it was due at the time, if it had a due date.
+             */
+            due_on: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Task Id
+             * Format: uuid
+             */
+            task_id: string;
+            /** Task Name */
+            task_name: string;
+            /**
+             * Task Type
+             * @enum {string}
+             */
+            task_type: "daily_checklist" | "nondaily_maintenance" | "adhoc_to_do" | "keep_in_mind";
         };
         /** DayOut */
         DayOut: {
@@ -1471,6 +1667,167 @@ export interface components {
             /** Next Occurrence */
             next_occurrence: string | null;
         };
+        /** TaskCreate */
+        TaskCreate: {
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /**
+             * Repeat Every
+             * @description Maintenance: how many repeat_units apart.
+             */
+            repeat_every?: number | null;
+            /**
+             * Repeat Unit
+             * @description Maintenance.
+             */
+            repeat_unit?: ("day" | "week" | "month" | "quarter" | "year") | null;
+            /**
+             * Next Due
+             * @description Maintenance: next due date (defaults to today on create). To-do: optional due date.
+             */
+            next_due?: string | null;
+            /**
+             * Daily Target
+             * @description Daily checklist: check-offs per day (default 1).
+             */
+            daily_target?: number | null;
+            /**
+             * Task Type
+             * @enum {string}
+             */
+            task_type: "daily_checklist" | "nondaily_maintenance" | "adhoc_to_do" | "keep_in_mind";
+        };
+        /** TaskDetail */
+        TaskDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Task Type
+             * @enum {string}
+             */
+            task_type: "daily_checklist" | "nondaily_maintenance" | "adhoc_to_do" | "keep_in_mind";
+            /** Name */
+            name: string;
+            /** Description */
+            description: string | null;
+            /** Repeat Every */
+            repeat_every: number | null;
+            /** Repeat Unit */
+            repeat_unit: ("day" | "week" | "month" | "quarter" | "year") | null;
+            /** Next Due */
+            next_due: string | null;
+            /** Daily Target */
+            daily_target: number | null;
+            /**
+             * Done On Day
+             * @description Check-offs on the day asked about (default today).
+             */
+            done_on_day: number;
+            /** Last Done On */
+            last_done_on: string | null;
+            /**
+             * Done
+             * @description Daily: the day's target is reached. To-do: checked off. Maintenance: done on the day asked about. Keep in mind: always false.
+             */
+            done: boolean;
+            /**
+             * Due Status
+             * @description Against next_due; null without one.
+             */
+            due_status: ("overdue" | "due_today" | "upcoming") | null;
+            /**
+             * Days Until Due
+             * @description Negative when overdue.
+             */
+            days_until_due: number | null;
+            /**
+             * Recent Completions
+             * @description Newest first, up to 30.
+             */
+            recent_completions: components["schemas"]["CompletionOut"][];
+        };
+        /** TaskOut */
+        TaskOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Task Type
+             * @enum {string}
+             */
+            task_type: "daily_checklist" | "nondaily_maintenance" | "adhoc_to_do" | "keep_in_mind";
+            /** Name */
+            name: string;
+            /** Description */
+            description: string | null;
+            /** Repeat Every */
+            repeat_every: number | null;
+            /** Repeat Unit */
+            repeat_unit: ("day" | "week" | "month" | "quarter" | "year") | null;
+            /** Next Due */
+            next_due: string | null;
+            /** Daily Target */
+            daily_target: number | null;
+            /**
+             * Done On Day
+             * @description Check-offs on the day asked about (default today).
+             */
+            done_on_day: number;
+            /** Last Done On */
+            last_done_on: string | null;
+            /**
+             * Done
+             * @description Daily: the day's target is reached. To-do: checked off. Maintenance: done on the day asked about. Keep in mind: always false.
+             */
+            done: boolean;
+            /**
+             * Due Status
+             * @description Against next_due; null without one.
+             */
+            due_status: ("overdue" | "due_today" | "upcoming") | null;
+            /**
+             * Days Until Due
+             * @description Negative when overdue.
+             */
+            days_until_due: number | null;
+        };
+        /**
+         * TaskUpdate
+         * @description All editable fields, sent in full. A task's type can't change.
+         */
+        TaskUpdate: {
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /**
+             * Repeat Every
+             * @description Maintenance: how many repeat_units apart.
+             */
+            repeat_every?: number | null;
+            /**
+             * Repeat Unit
+             * @description Maintenance.
+             */
+            repeat_unit?: ("day" | "week" | "month" | "quarter" | "year") | null;
+            /**
+             * Next Due
+             * @description Maintenance: next due date (defaults to today on create). To-do: optional due date.
+             */
+            next_due?: string | null;
+            /**
+             * Daily Target
+             * @description Daily checklist: check-offs per day (default 1).
+             */
+            daily_target?: number | null;
+        };
         /** TransactionCreate */
         TransactionCreate: {
             /**
@@ -1598,6 +1955,22 @@ export interface components {
              * @description Budget items this counts toward. May be empty (shows as unassigned).
              */
             allocations?: components["schemas"]["AllocationIn"][];
+        };
+        /** TypeOut */
+        TypeOut: {
+            /**
+             * Key
+             * @enum {string}
+             */
+            key: "daily_checklist" | "nondaily_maintenance" | "adhoc_to_do" | "keep_in_mind";
+            /** Name */
+            name: string;
+            /** Summary */
+            summary: string;
+            /** How It Works */
+            how_it_works: string;
+            /** Examples */
+            examples: string[];
         };
         /** UserOut */
         UserOut: {
@@ -3104,6 +3477,288 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_types_tasks_types_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TypeOut"][];
+                };
+            };
+        };
+    };
+    list_completions_tasks_completions_get: {
+        parameters: {
+            query?: {
+                on?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DayCompletionOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_tasks_tasks_get: {
+        parameters: {
+            query?: {
+                on?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_task_tasks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_task_tasks__task_id__get: {
+        parameters: {
+            query?: {
+                on?: string | null;
+            };
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_task_tasks__task_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_task_tasks__task_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    complete_task_tasks__task_id__complete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CheckIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    undo_completion_tasks__task_id__undo_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CheckIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskOut"];
+                };
             };
             /** @description Validation Error */
             422: {

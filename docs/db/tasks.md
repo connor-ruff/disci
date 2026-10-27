@@ -1,28 +1,23 @@
 # Tasks Module (`tasks` schema)
 
-*Status: planning draft. See [db-overview.md](db-overview.md) for conventions (audit columns, soft deletes, RLS) that apply to every table below.*
+*Status: **implemented** in `db/migrations/20261027120000_tasks__init.sql` (`tasks`, `task_completions`). Every table and column below is built. See [db-overview.md](db-overview.md) for conventions (audit columns, soft deletes, RLS) that apply to every table below. The API is in [api-overview.md](../api/api-overview.md) §7.3 and the screens in [tasks-ui.md](../ui/tasks-ui.md).*
 
-**Replaces:** the Google Sheet task log (recurring checklist tasks plus ad-hoc to-dos).
+**Replaces:** the Google Sheet task log (daily habits, recurring upkeep and one-off to-dos).
 
 ---
 
 ## 1. What the module does
 
-Every task has a **task type**, and the type decides how the task behaves. **More types will be added later.** The two below are the first ones, not a closed set:
+Every task is one of **four fixed types**. The type decides which columns it uses and how checking it off behaves, so types are code, not user-editable rows.
 
-| Type | What it is | Examples |
-|---|---|---|
-| **`adhoc`** | A one-off to-do. In the old sheet it was deleted once done. Here it's **marked done instead** (complete, don't delete). | "Book a flight for the wedding" |
-| **`maintenance`** | Regular upkeep you should do **roughly every X days, weeks or months**. Done is never final, because it always comes back. | "Wash bedsheets" every ~2 weeks, "Refill the Brita" nightly, "Replace HVAC filter" every ~3 months |
+| Type (`task_type`) | Shown as | What it is | Examples |
+|---|---|---|---|
+| **`daily_checklist`** | Daily checklist | A habit to do **every day**, once or several times. It has a **daily target** (1 for "take my pill", 5 for "5 sets of jaw exercises"). Each day starts at **zero**: yesterday's count has no bearing on today. | "Take cholesterol pill", "Fill the Brita before bed", "5 sets of jaw exercises" |
+| **`nondaily_maintenance`** | Maintenance | Upkeep that comes back **roughly every X days, weeks, months, quarters or years**. Checking it off moves its **next due** date to that long **after the day it was done**, so doing it late pushes the next one out. Editing the next due date snoozes it. | "Wash the bedsheets every 2 weeks", "Replace the HVAC filter every quarter" |
+| **`adhoc_to_do`** | To-do | A **one-time** task, with or without a due date. Checked off once, it's done; it stays on today's list, crossed off, until the day ends, and is kept in history. | "Book flights for Christmas", "Return *Black Wave* to the library by Nov 1" |
+| **`keep_in_mind`** | Keep in mind | An **evergreen reminder**: no due date, nothing to check off. It's simply shown, to stay front of mind. | "Remember to say please", "Read more" |
 
-Further behavior, inferred from the inspiration doc (marked ✱):
-
-- ✱ **Ad-hoc tasks** have an optional due date (or none, for "someday"). Once done, they drop off the active list but keep their `completed_at` for history and the night report.
-- ✱ **Checking off a maintenance task completes this round, not the task.** The next round is scheduled automatically.
-- ✱ **Maintenance cadence is "roughly"** by default: the next round is due X weeks **after you last did it**, so doing it late pushes the next one out. Strictly scheduled tasks (Brita *every* night) are also supported.
-- ✱ **Skip** a round ("not refilling the Brita tonight, I'm traveling") without counting it as done.
-- ✱ **Missed strict rounds don't pile up.** An unchecked Brita refill from last night is marked *missed*, not left overdue forever. Ad-hoc tasks *do* stay overdue until done.
-- ✱ **Morning report:** due today, plus anything overdue. **Night report:** what was completed today, plus what's still open.
+The user-facing text for each type (name, summary, how it works, examples) lives once, in `TASK_TYPES` in `api/app/modules/tasks/service.py`, and is served by `GET /tasks/types`.
 
 ---
 
@@ -30,55 +25,81 @@ Further behavior, inferred from the inspiration doc (marked ✱):
 
 ```mermaid
 erDiagram
-    tasks ||--o{ task_occurrences : "generates"
+    tasks ||--o{ task_completions : "checked off as"
 ```
 
 (Both tables also have `user_id → core.users`, omitted for readability.)
 
-### Changes from the brainstorm notes
-- **"Task types" is a column, not a table (for now).** Each type drives different *code* behavior (scheduling, overdue handling), so types aren't user-editable rows. Adding a type is a small migration (extend the `CHECK` list and add any per-type constraint) plus the code that implements its behavior. If types later need their own metadata (labels, icons, default settings), promote this to a code-managed `task_types` lookup table. Categories or tags (Chores, Errands...) are a separate concept and could be added later.
-- **Added `task_occurrences`.** A task is the **definition** ("refill the Brita, daily"), and each dated instance you can check off is an **occurrence**. Without this split, completing a maintenance task would mean either mutating the task (losing history) or cloning it (duplicating the definition). This follows principle #3 in the inspiration doc.
-- **Ad-hoc tasks get exactly one occurrence.** Every checkable thing is then an occurrence, so "what's due today" and "what did I finish today" are each a single query, whatever the task's type.
+### Changes from the planning draft
+The first draft (two types, `adhoc` and `maintenance`, scheduled by RRULE strings and expanded into a `task_occurrences` table by a nightly job) was replaced before anything was built:
+
+- **Four types instead of two:** a daily habit with a target count became its own type (`daily_checklist`), and `keep_in_mind` was added. "Strict schedule" maintenance (Brita every night) is now a daily checklist item.
+- **Explicit columns instead of RRULE:** `repeat_every` + `repeat_unit` (like finance's explicit schedule columns), with no parser.
+- **No occurrences, no generation job:** instead of pre-creating a row per due instance, a task holds its own `next_due` and every check-off is logged in **`task_completions`**. There is nothing to generate, miss or skip.
+- **Progress isn't a column on the task.** The planning notes had a `complete_tally` on each task; it's counted from `task_completions` instead (§5). The notes' `repeats` flag is implied by the type, and their `complete_threshold` became `daily_target` (daily checklist only).
+- **Dropped:** `due_time`, `starts_on` / `ends_on`, `paused_at`, skip / missed statuses and per-instance notes.
 
 ---
 
 ## 3. Tables
 
 ### `tasks`
-The definition of a task: what it is and, for maintenance tasks, its cadence.
+One row per task. Which of the optional columns apply depends on `task_type` (CHECKs below).
 
 | Column | Type | Null | Notes |
 |---|---|---|---|
 | `id`, `user_id` | `uuid` | no | |
-| `task_type` | `text` | no | `CHECK IN ('adhoc','maintenance')` for now. Extended as new types are added. |
-| `title` | `text` | no | |
-| `notes` | `text` | yes | |
-| `recurrence_rule` | `text` | yes | RRULE, e.g. `FREQ=DAILY`, `FREQ=WEEKLY;INTERVAL=2`, `FREQ=MONTHLY;INTERVAL=3`. Required for `maintenance`, NULL for `adhoc`. Future types declare their own requirement. |
-| `recurrence_basis` | `text` | yes | `CHECK IN ('completion','schedule')`. Set exactly when `recurrence_rule` is set (the API defaults it to `'completion'` for maintenance). **completion**: next round due one interval after the last completion ("roughly every 2 weeks"). **schedule**: due on fixed dates regardless (Brita nightly). |
-| `starts_on` | `date` | yes | First due date for a maintenance task. |
-| `ends_on` | `date` | yes | Stop generating after this date. |
-| `due_time` | `time` | yes | Optional time of day ("by 9pm"). Applies to every occurrence. |
-| `paused_at` | `timestamptz` | yes | Paused maintenance tasks generate no new occurrences. |
+| `task_type` | `text` | no | `CHECK IN ('daily_checklist','nondaily_maintenance','adhoc_to_do','keep_in_mind')`. **Can't change** after creation (the API's update leaves it out). |
+| `name` | `text` | no | Non-blank (`CHECK (length(trim(name)) > 0)`). API cap 200 chars; trimmed. Not unique. |
+| `description` | `text` | yes | API cap 1,000 chars. |
+| `repeat_every` | `integer` | yes | Maintenance only: how many `repeat_unit`s apart. `> 0`; API cap 1,000. |
+| `repeat_unit` | `text` | yes | Maintenance only. `CHECK IN ('day','week','month','quarter','year')`. |
+| `next_due` | `date` | yes | **Maintenance:** when it's next due (required; moved forward by each check-off, editable to snooze; the API defaults it to today on create). **To-do:** its optional due date (a check-off doesn't change it). Null for the other types. |
+| `daily_target` | `integer` | yes | Daily checklist only (required): check-offs a day needs to be done. `> 0`; API cap 100; the API defaults it to 1. |
 
-- `CHECK ((recurrence_rule IS NULL) = (recurrence_basis IS NULL))`: a generic rule that holds for every type.
-- `CHECK (task_type <> 'adhoc' OR recurrence_rule IS NULL)`
-- `CHECK (task_type <> 'maintenance' OR recurrence_rule IS NOT NULL)`
-- Each type gets its own `task_type <> 'x' OR ...` constraint like these, so adding a type never requires rewriting the others.
+- **Generic rule:** `CHECK ((repeat_every IS NULL) = (repeat_unit IS NULL))`.
+- **One CHECK per type**, each of the form `task_type <> 'x' OR (...)`, so adding a type never rewrites the others:
 
-### `task_occurrences`
-A single checkable instance of a task.
+| Type | Must be set | Must be null |
+|---|---|---|
+| `daily_checklist` | `daily_target` | `repeat_every` (so `repeat_unit`), `next_due` |
+| `nondaily_maintenance` | `repeat_every` (so `repeat_unit`), `next_due` | `daily_target` |
+| `adhoc_to_do` | (nothing; `next_due` optional) | `repeat_every`, `daily_target` |
+| `keep_in_mind` | (nothing) | `repeat_every`, `next_due`, `daily_target` |
+
+- **The API clears rather than rejects** fields a type doesn't use (`service.type_fields`), so a form can send everything it has; a field the type *requires* but is missing is a 422 ("nondaily_maintenance tasks need repeat_every, repeat_unit").
+- Unique `(id, user_id)`: target of `task_completions`' composite FK.
+- Partial index `tasks_user_idx` on `(user_id) WHERE deleted_at IS NULL`.
+
+### `task_completions`
+One row per check-off. This is where all progress lives.
 
 | Column | Type | Null | Notes |
 |---|---|---|---|
 | `id`, `user_id` | `uuid` | no | |
 | `task_id` | `uuid` | no | → `tasks` |
-| `due_on` | `date` | yes | NULL only for undated ("someday") ad-hoc tasks. For ad-hoc tasks, this is where the due date lives. |
-| `status` | `text` | no | `CHECK IN ('open','done','skipped','missed')`, default `'open'`. |
-| `completed_at` | `timestamptz` | yes | Set when `status = 'done'`. |
-| `notes` | `text` | yes | Per-instance note ("used the new filter"). |
+| `completed_on` | `date` | no | The day it counts toward, in the user's timezone. Defaults to today; can be a past day, never a future one (API 422). |
+| `due_on` | `date` | yes | The task's `next_due` at the moment it was checked off. For maintenance this is what **undo restores**; for to-dos it records when it was due. Null for daily checklist items. |
 
-- Unique `(task_id, due_on)` where `due_on` is not null, which makes generation idempotent.
-- `CHECK ((status = 'done') = (completed_at IS NOT NULL))`
+- `FOREIGN KEY (task_id, user_id) REFERENCES tasks (id, user_id)`.
+- Partial index `task_completions_task_idx` on `(task_id, completed_on DESC) WHERE deleted_at IS NULL` (a task's latest check-off, today's count, recent history); partial index `task_completions_user_day_idx` on `(user_id, completed_on) WHERE deleted_at IS NULL` (everything done on a day).
+- **Undo soft-deletes** the row (`deleted_at`); rows are never edited.
+- Several rows on the same day are normal (a daily target of 5 is five rows).
+
+### 3.1 Integrity, RLS and grants
+
+- Both tables have the `set_updated_at` trigger, RLS enabled and an `owner` policy (`user_id = core.current_user_id()`, for `USING` and `WITH CHECK`) for `disci_app`.
+- The migration grants `USAGE` on the schema and `SELECT, INSERT, UPDATE, DELETE` on its tables to `disci_app`, plus default privileges for tables created later.
+- The only child FK, `task_completions → tasks`, includes `user_id` (tenant guard, see [db-overview.md](db-overview.md) §2). Another user's task is invisible under RLS, so checking it off is a 404.
+- **Concurrent check-offs** of one task are serialized: complete and undo first lock the task row (`queries/lock_task.sql`, `SELECT ... FOR UPDATE`), so two taps can't both see a to-do as open or both move a maintenance date.
+- Nothing is seeded: the module has no `setup`.
+
+### 3.2 Delete behavior
+
+| Deleting | What happens |
+|---|---|
+| A task | Soft-deleted. It leaves every list and its own `GET` is a 404, but **its completions stay**: they're history, and "what got done on a day" (`GET /tasks/completions`) still lists them under the task's name. |
+| A check-off (undo) | Soft-deleted (§4). |
 
 ---
 
@@ -86,20 +107,55 @@ A single checkable instance of a task.
 
 | Feature | How |
 |---|---|
-| **Create an ad-hoc task** | Insert `tasks` (`task_type = 'adhoc'`) and one `task_occurrences` row with the chosen `due_on` (or NULL). |
-| **Finish an ad-hoc task** | Set its occurrence to `done` with `completed_at`. The active list hides it, and history and the night report still see it. |
-| **Maintenance, completion basis** (default) | Only one open occurrence exists at a time. Completing (or skipping) it creates the next one, with `due_on` = completion date + interval. The UI can show "due in 3 days" or "5 days overdue". |
-| **Maintenance, schedule basis** | A nightly job expands the RRULE and inserts `open` occurrences for a rolling window (e.g. the next 7 days), so "upcoming" and the morning report can see them. |
-| **Missed handling** | Schedule basis only: the nightly job marks an `open` occurrence as `missed` once a newer occurrence of the same task is due. Completion-basis and ad-hoc occurrences are never auto-missed. They just become overdue. |
-| **Due today** | `status = 'open' AND due_on <= today` (user's timezone). |
-| **Night report** | `status = 'done' AND completed_at` falls within today (user's timezone), plus whatever is still open. |
-| **Edit a maintenance cadence** | Update the rule, then delete (soft) future `open` occurrences and regenerate. Past ones stay as history. |
+| **A task's progress on day D** | `list_tasks.sql` / `get_task.sql` join each task to a lateral count over its undeleted completions: `done_on_day` = check-offs with `completed_on = D`, `last_done_on` = the latest `completed_on`. `service.progress` then works out `done` and the due status. |
+| **`done`, per type** | Daily: `done_on_day >= daily_target`. Maintenance: `last_done_on = D` (done that day; it's already due again later). To-do: it has any check-off. Keep in mind: always false. |
+| **Due status** | `service.due_status(next_due, D)`: `overdue` when `next_due < D`, `due_today` when equal, `upcoming` after; `days_until_due` is negative when overdue. Null without a `next_due`, and **a finished to-do has none** (done isn't overdue). There's **no grace period**: a maintenance task is overdue the day after its due date. The UI words it gently instead ("2 days past due", in amber, not red). |
+| **Listing tasks** | Undeleted tasks, soonest `next_due` first (no due date last), then by name. **To-dos finished before D are left out**; one finished on D stays in the list (with `done`), so it shows crossed off **until the day ends** and is gone tomorrow. |
+| **Check off: daily checklist** | Insert a completion for D. Each one adds 1 to the day's count; going **past the target** is allowed. |
+| **Check off: maintenance** | Insert a completion (with `due_on` = the current `next_due`), then set `next_due` = **D + interval** (`service.add_interval`). Counting from the day it was done, not the old due date, is what makes "roughly every 2 weeks" squishy: done late, the next one moves out. A check-off for a past day counts from that day. |
+| **Check off: to-do** | Insert one completion. A second one is a **409** ("already done"). `next_due` is left as it was. |
+| **Check off: keep in mind** | Refused (**422**): nothing to check off. |
+| **Undo: daily checklist** | Soft-delete the **latest check-off on D** (default today). Earlier days are untouched; with none left on D, undo is a 404. |
+| **Undo: maintenance** | Soft-delete the latest check-off (any day) and put `next_due` back to its `due_on`. |
+| **Undo: to-do** | Soft-delete its check-off; it's open again (and back on the list on later days). |
+| **Edit a task** | Replace name, description and the type's own fields; the type can't change. Moving a maintenance `next_due` is how you snooze it. Past completions are unaffected. |
+| **What got done on a day** | `list_completions_on.sql`: every undeleted completion with `completed_on = D`, oldest first, joined to its task (deleted tasks included: it still happened). |
+| **A task's history** | `GET /tasks/{id}` returns its latest 30 completions, newest first. |
+
+### 4.1 Interval maths (`service.add_interval`)
+
+| `repeat_unit` | Adds | Example |
+|---|---|---|
+| `day` | `repeat_every` days | Oct 27 + 3 days = Oct 30 |
+| `week` | `repeat_every` × 7 days | Oct 27 + 2 weeks = Nov 10 |
+| `month` | `repeat_every` **calendar months** | Dec 15, 2026 + 13 months = Jan 15, 2028 |
+| `quarter` | `repeat_every` × 3 calendar months | Nov 30 + 1 quarter = **Feb 28** |
+| `year` | `repeat_every` × 12 calendar months | Feb 29, 2024 + 1 year = **Feb 28**, 2025 |
+
+Months keep the day of the month; a day that doesn't exist in the target month **clamps to its last day** (Jan 31 + 1 month = Feb 28). Each round counts from the day it was actually done, so a clamped date doesn't snap back: done on Feb 28, a monthly task is next due Mar 28.
 
 ---
 
-## 5. Open questions
+## 5. Decisions
 
-1. **Additional task types:** more types are planned and will be defined later. Each needs its behavior described (does it recur? how is it scheduled? what does "overdue" mean?) and its constraint added.
-2. **Priority, subtasks or categories/tags** for tasks? None are drafted.
-3. **Should "roughly" have a grace window?** E.g. a 2-week task isn't flagged overdue until a few days past due. This could be an optional `grace_days` column on `tasks`.
-4. **Current task list and cadences** from the task sheet, for seeding and migration.
+| Question | Decision |
+|---|---|
+| Fixed types or user-defined? | **Fixed** (four), because each behaves differently in code. A Kinds page in the app explains them. Adding one = a migration (extend the type CHECK, add its own CHECK) plus its behavior in `service.py` and the routes. |
+| One table for all types? | **Yes.** Columns a type doesn't use are null, enforced per type by CHECKs (§3). |
+| Where does progress live? | **In `task_completions`, never on the task.** A tally column would need a **daily reset job** at each user's midnight (and would be wrong for anyone the job missed). Counting rows by `completed_on` means a new day simply starts at zero. It also **keeps history** (what got done when, which a tally overwrites) and makes **undo simple**: soft-delete the latest row, and for maintenance restore the `due_on` it recorded. |
+| Recurrence format | **`repeat_every` + `repeat_unit`** (day, week, month, quarter, year), not RRULE. Easy to CHECK and to edit in a form. |
+| Next due counts from? | **The day it was done** (completion basis), not the old due date. |
+| Grace period before overdue? | **None.** Overdue the day after it's due, but labelled gently ("N days past due", amber). |
+| Finished to-dos | Stay on **that day's** list, crossed off, then drop off. Kept in history. |
+| Can a daily item go past its target? | **Yes** (5 of 3 is fine); it counts as done once it reaches the target. |
+| Check off a past day? | **Yes** in the API (`on`), never a future day. The web app only checks off today for now. |
+| Change a task's type? | **No.** Delete it and add a new one. |
+| Deleting a task | **Soft delete**; its completions stay as history. |
+
+## 6. Open questions / later
+
+1. **Visualizations:** better ways to see tasks and progress (streaks, history, calendars). The user will send inspiration.
+2. **Reordering** tasks within a list (today: soonest due, then name). Would be a `sort_order` column like finance's.
+3. **Morning / night reports** (due today and overdue; what got done today) can read straight from `GET /tasks` and `GET /tasks/completions`.
+4. **Categories, priority or subtasks:** none planned yet.
+5. **Importing** the current task list from the Google Sheet.
