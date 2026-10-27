@@ -314,7 +314,7 @@ Built into one zip by `scripts/build-api-zip.sh` (no Docker) and shipped by `scr
 | `disci-migrator` | `app.migrator.handler` | Connects as the RDS master user (`DISCI_MIGRATOR_DATABASE_URL`), runs `db/aws/roles.sql` (idempotent: ensures `disci_app`, `disci_api`, `rds_iam` grant), then the bundled `bin/dbmate --no-dump-schema --migrations-dir db/migrations up`. Raises if dbmate fails, which stops the deploy before the API is updated. Returns dbmate's output. |
 | `disci-jobs` | `app.jobs.recurring.handler` | Scheduled work, triggered hourly by EventBridge Scheduler. Today it only creates due recurring transactions (§9.1). Same environment variables as `disci-api`. |
 
-The MCP server (`disci-mcp`) is a separate project and zip (`mcp_server/`, [mcp-overview.md](../mcp/mcp-overview.md)) that calls this API over HTTP. Its finance and nutrition tools wrap the §7.1 and §7.2 endpoints (there are no tasks tools yet); nothing in the API is MCP-specific beyond accepting its access tokens (§3).
+The MCP server (`disci-mcp`) is a separate project and zip (`mcp_server/`, [mcp-overview.md](../mcp/mcp-overview.md)) that calls this API over HTTP. Its finance, nutrition and tasks tools wrap the §7.1, §7.2 and §7.3 endpoints (the tasks tools only read tasks and log completions); nothing in the API is MCP-specific beyond accepting its access tokens (§3).
 
 The deploy runs the migrator **before** updating the API, so migrations must be backward compatible with the live API (expand/contract). `disci-jobs` gets the same zip right after `disci-api`.
 

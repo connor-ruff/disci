@@ -155,8 +155,7 @@ Months keep the day of the month; a day that doesn't exist in the target month *
 ## 6. Open questions / later
 
 1. **Visualizations:** better ways to see tasks and progress (streaks, history, calendars). The user will send inspiration.
-2. **MCP tools for tasks** ("I did my jaw exercises", "what's due today?", "add a to-do"). The endpoints exist; see [mcp-overview.md](../mcp/mcp-overview.md).
-3. **Reordering** tasks within a list (today: soonest due, then name). Would be a `sort_order` column like finance's.
-4. **Morning / night reports** (due today and overdue; what got done today) can read straight from `GET /tasks` and `GET /tasks/completions`.
-5. **Categories, priority or subtasks:** none planned yet.
-6. **Importing** the current task list from the Google Sheet.
+2. **Reordering** tasks within a list (today: soonest due, then name). Would be a `sort_order` column like finance's.
+3. **Morning / night reports** (due today and overdue; what got done today) can read straight from `GET /tasks` and `GET /tasks/completions`.
+4. **Categories, priority or subtasks:** none planned yet.
+5. **Importing** the current task list from the Google Sheet.

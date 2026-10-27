@@ -180,4 +180,3 @@ Hooks live in `web/src/modules/tasks/api.ts`; query keys are in `tasksKeys` (`['
 - **Visualizations**: richer ways to see tasks and progress (streaks, history, calendars). The user will send inspiration.
 - **Reordering** tasks within a section (today: soonest due, then name).
 - **Checking off a past day** and a "what I did today" view: the API supports both (`{on}`, `GET /tasks/completions`), the UI doesn't yet.
-- **MCP tools** for tasks; see [tasks.md](../db/tasks.md) §6.

@@ -11,7 +11,7 @@ docs/
 ├── ops/                           # Running the app in production (AWS)
 │   └── deployment.md              # Start here: architecture as built, resources, deploys, DB access, security, cost
 ├── mcp/                           # MCP server (Claude connector, mcp_server/ folder)
-│   └── mcp-overview.md            # Start here: status, auth test findings, server layout/settings, the 17 finance/nutrition tools, local dev, Lambda, connecting Claude, checklist
+│   └── mcp-overview.md            # Start here: status, auth test findings, server layout/settings, the 19 finance/nutrition/tasks tools, local dev, Lambda, connecting Claude, checklist
 ├── api/                           # Back-end API docs (FastAPI, api/ folder)
 │   └── api-overview.md            # Start here: layout, settings, auth, request flow, modules, endpoints
 ├── db/                            # Postgres data model docs (one file per module)
@@ -39,7 +39,7 @@ Contains documentation about running Disci in production on AWS. Start with `ops
 
 ## mcp
 
-Contains documentation for the MCP server (`mcp_server/`, so Claude can act on Disci data). Start with `mcp/mcp-overview.md`: status, what the Cognito auth test proved and how to repeat it, Python SDK notes, the server's layout, settings and auth, its 17 finance and nutrition tools (with the API endpoints behind each; no tasks tools yet) and design conventions, local dev and tests, the Lambda (and its Mangum lifespan gotcha), how to connect Claude, the checklist (decided vs open) and the historical stub source. Infrastructure lives in `ops/deployment.md` §2.2 and auth detail in §9.
+Contains documentation for the MCP server (`mcp_server/`, so Claude can act on Disci data). Start with `mcp/mcp-overview.md`: status, what the Cognito auth test proved and how to repeat it, Python SDK notes, the server's layout, settings and auth, its 19 tools (9 finance, 8 nutrition, 2 tasks; the 2 tasks tools not yet deployed) with the API endpoints behind each and design conventions, local dev and tests, the Lambda (and its Mangum lifespan gotcha), how to connect Claude, the checklist (decided vs open) and the historical stub source. Infrastructure lives in `ops/deployment.md` §2.2 and auth detail in §9.
 
 ## api
 
