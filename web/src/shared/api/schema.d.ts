@@ -80,6 +80,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/finance/preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Preferences
+         * @description Display settings. Defaults (everything off) until the user first saves.
+         */
+        get: operations["get_preferences_finance_preferences_get"];
+        /** Update Preferences */
+        put: operations["update_preferences_finance_preferences_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/finance/categories": {
         parameters: {
             query?: never;
@@ -557,11 +578,51 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Update Log */
+        /**
+         * Update Log
+         * @description A repo food's entry. Quick adds are edited at PUT /quick-logs/{log_id}.
+         */
         put: operations["update_log_nutrition_logs__log_id__put"];
         post?: never;
         /** Delete Log */
         delete: operations["delete_log_nutrition_logs__log_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/nutrition/quick-logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Quick Log
+         * @description Log a one-off food without saving it to the repo. Read and delete it at /logs.
+         */
+        post: operations["create_quick_log_nutrition_quick_logs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/nutrition/quick-logs/{log_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Quick Log */
+        put: operations["update_quick_log_nutrition_quick_logs__log_id__put"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -870,6 +931,12 @@ export interface components {
             /** Checklist Day */
             checklist_day?: number | null;
             /**
+             * Checklist Mode
+             * @default full_amount
+             * @enum {string}
+             */
+            checklist_mode: "full_amount" | "any_payment";
+            /**
              * Kind
              * @enum {string}
              */
@@ -910,8 +977,13 @@ export interface components {
             /** Checklist Day */
             checklist_day: number | null;
             /**
+             * Checklist Mode
+             * @enum {string}
+             */
+            checklist_mode: "full_amount" | "any_payment";
+            /**
              * Checklist Done
-             * @description Checklist items only: confirmed actual has reached the planned amount.
+             * @description Checklist items only: something confirmed was logged and, in full_amount mode, the actual has reached the planned amount.
              */
             checklist_done: boolean;
             /** Sort Order */
@@ -935,6 +1007,12 @@ export interface components {
             is_checklist_item: boolean;
             /** Checklist Day */
             checklist_day?: number | null;
+            /**
+             * Checklist Mode
+             * @default full_amount
+             * @enum {string}
+             */
+            checklist_mode: "full_amount" | "any_payment";
         };
         /** BudgetOut */
         BudgetOut: {
@@ -1106,6 +1184,11 @@ export interface components {
             kind: "expense" | "income";
             /** Checklist Day */
             checklist_day: number;
+            /**
+             * Checklist Mode
+             * @enum {string}
+             */
+            checklist_mode: "full_amount" | "any_payment";
             /** Planned Amount */
             planned_amount: string;
             /**
@@ -1120,7 +1203,7 @@ export interface components {
             due_on: string;
             /**
              * Done
-             * @description The actual has reached the planned amount.
+             * @description Something confirmed was logged and, in full_amount mode, the actual has reached the planned amount.
              */
             done: boolean;
             /** Last Payment On */
@@ -1207,6 +1290,35 @@ export interface components {
             entry_count: number;
             /** Totals */
             totals: components["schemas"]["NutrientTotal"][];
+        };
+        /**
+         * FinancePreferencesIn
+         * @description Both settings, sent in full.
+         */
+        FinancePreferencesIn: {
+            /**
+             * Show Category Totals
+             * @description "$x of $y" beside each category heading.
+             */
+            show_category_totals: boolean;
+            /**
+             * Show Kind Totals
+             * @description The same beside the Income and Expenses headings.
+             */
+            show_kind_totals: boolean;
+        };
+        /** FinancePreferencesOut */
+        FinancePreferencesOut: {
+            /**
+             * Show Category Totals
+             * @description "$x of $y" beside each category heading.
+             */
+            show_category_totals: boolean;
+            /**
+             * Show Kind Totals
+             * @description The same beside the Income and Expenses headings.
+             */
+            show_kind_totals: boolean;
         };
         /**
          * FoodIn
@@ -1433,26 +1545,38 @@ export interface components {
             id: string;
             /**
              * Food Item Id
-             * Format: uuid
+             * @description None for a quick add.
              */
-            food_item_id: string;
-            /** Food Name */
+            food_item_id: string | null;
+            /**
+             * Food Name
+             * @description The repo food's name, or the quick add's own.
+             */
             food_name: string;
             /**
              * Food Deleted
              * @description The food was removed from the repo since.
              */
             food_deleted: boolean;
-            /** Standard Quantity */
-            standard_quantity: string;
-            /** Standard Unit */
-            standard_unit: string;
+            /**
+             * Standard Quantity
+             * @description None for a quick add.
+             */
+            standard_quantity: string | null;
+            /**
+             * Standard Unit
+             * @description None for a quick add.
+             */
+            standard_unit: string | null;
             /**
              * Eaten On
              * Format: date
              */
             eaten_on: string;
-            /** Servings */
+            /**
+             * Servings
+             * @description Always 1 for a quick add.
+             */
             servings: string;
             /** Notes */
             notes: string | null;
@@ -1537,6 +1661,45 @@ export interface components {
              * @description Every nutrient the app knows, in order.
              */
             nutrients: components["schemas"]["NutrientOut"][];
+        };
+        /**
+         * QuickLogIn
+         * @description A quick add: a one-off entry with its own name and nutrients, not saved to the repo.
+         *
+         *     Nutrients are totals for what was eaten. All editable fields, sent in full.
+         */
+        QuickLogIn: {
+            /** Calories */
+            calories?: number | string | null;
+            /** Protein G */
+            protein_g?: number | string | null;
+            /** Total Fat G */
+            total_fat_g?: number | string | null;
+            /** Saturated Fat G */
+            saturated_fat_g?: number | string | null;
+            /** Trans Fat G */
+            trans_fat_g?: number | string | null;
+            /** Cholesterol Mg */
+            cholesterol_mg?: number | string | null;
+            /** Sodium Mg */
+            sodium_mg?: number | string | null;
+            /** Total Carbs G */
+            total_carbs_g?: number | string | null;
+            /** Fiber G */
+            fiber_g?: number | string | null;
+            /** Total Sugars G */
+            total_sugars_g?: number | string | null;
+            /** Added Sugars G */
+            added_sugars_g?: number | string | null;
+            /** Name */
+            name: string;
+            /**
+             * Eaten On
+             * Format: date
+             */
+            eaten_on: string;
+            /** Notes */
+            notes?: string | null;
         };
         /** RecurringIn */
         RecurringIn: {
@@ -2169,6 +2332,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ModuleOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_preferences_finance_preferences_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinancePreferencesOut"];
+                };
+            };
+        };
+    };
+    update_preferences_finance_preferences_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FinancePreferencesIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinancePreferencesOut"];
                 };
             };
             /** @description Validation Error */
@@ -3349,6 +3565,74 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_quick_log_nutrition_quick_logs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuickLogIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_quick_log_nutrition_quick_logs__log_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                log_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuickLogIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogOut"];
+                };
             };
             /** @description Validation Error */
             422: {

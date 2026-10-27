@@ -10,7 +10,7 @@ import { Card } from '@/shared/ui/card'
 import { ErrorState, LoadingState } from '@/shared/ui/page'
 
 import { type LogEntry, type Nutrient, type NutrientTotal, useDay, useTrackedNutrients } from '../api'
-import { describeServing, formatNutrient } from '../format'
+import { describeEntry, formatNutrient } from '../format'
 import { LogSheet } from './LogSheet'
 
 /** Where a day's sheet lives: today is the Daily tab, any other day is under History. */
@@ -171,7 +171,7 @@ function Entries({
                 {headline && <NutrientValue entry={e} nutrient={headline} className="shrink-0 text-sm font-semibold" />}
               </span>
               <span className="text-sm text-muted">
-                {describeServing(e.servings, e.standard_quantity, e.standard_unit)}
+                {describeEntry(e)}
                 {e.notes && ` · ${e.notes}`}
               </span>
               {rest.length > 0 && (

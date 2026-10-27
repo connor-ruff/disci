@@ -1,0 +1,1 @@
+SELECT show_category_totals, show_kind_totals FROM finance.preferences

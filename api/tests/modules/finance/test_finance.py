@@ -360,3 +360,16 @@ def test_cant_copy_another_users_budget(client: TestClient, finance_on) -> None:
         headers=BOB,
     )
     assert resp.status_code == 422
+
+
+# --- Preferences -------------------------------------------------------------------------
+
+
+def test_preferences_default_off_and_save(client: TestClient, finance_on) -> None:
+    off = {"show_category_totals": False, "show_kind_totals": False}
+    assert client.get("/finance/preferences", headers=ALICE).json() == off
+
+    on = {"show_category_totals": True, "show_kind_totals": False}
+    assert client.put("/finance/preferences", json=on, headers=ALICE).json() == on
+    assert client.get("/finance/preferences", headers=ALICE).json() == on
+    assert client.get("/finance/preferences", headers=BOB).json() == off

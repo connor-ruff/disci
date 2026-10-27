@@ -2,8 +2,15 @@
 
 from fastapi import APIRouter
 
-from app.modules.finance.routes import budgets, categories, checklist, recurring, transactions
+from app.modules.finance.routes import (
+    budgets,
+    categories,
+    checklist,
+    preferences,
+    recurring,
+    transactions,
+)
 
 router = APIRouter()
-for area in (categories, budgets, transactions, recurring, checklist):
+for area in (preferences, categories, budgets, transactions, recurring, checklist):
     router.include_router(area.router)

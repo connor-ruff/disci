@@ -1,8 +1,9 @@
 -- Items with their net actual (confirmed transactions only): allocated transactions of
 -- the item's own kind add, the opposite kind subtracts (a rebate reduces Groceries).
 -- Pending (awaiting approval) amounts are reported separately. A checklist item is done
--- once its actual reaches the planned amount (and something has been logged).
-SELECT *, (is_checklist_item AND actual_amount > 0 AND actual_amount >= planned_amount)
+-- once something has been logged and, in full_amount mode, its actual reaches the plan.
+SELECT *, (is_checklist_item AND actual_amount > 0
+           AND (checklist_mode = 'any_payment' OR actual_amount >= planned_amount))
               AS checklist_done
 FROM (
     SELECT
@@ -17,7 +18,7 @@ FROM (
                 FILTER (WHERE t.status = 'pending'),
             0
         )::numeric(12,2) AS pending_amount,
-        i.is_checklist_item, i.checklist_day, i.sort_order,
+        i.is_checklist_item, i.checklist_day, i.checklist_mode, i.sort_order,
         c.sort_order AS category_sort, lower(c.name) AS category_key, i.created_at
     FROM finance.budget_items i
     LEFT JOIN finance.budget_categories c ON c.id = i.category_id AND c.deleted_at IS NULL

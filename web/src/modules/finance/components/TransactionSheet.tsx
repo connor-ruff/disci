@@ -155,7 +155,9 @@ export function TransactionForm({
               {ordinal(item.checklist_day)} ({formatShortDate(dueOn(budget, item.checklist_day))}).{' '}
               {item.checklist_done
                 ? 'Already done.'
-                : `Paid ${formatMoney(item.actual_amount)} of ${formatMoney(item.planned_amount)}; done once it reaches the plan.`}
+                : item.checklist_mode === 'any_payment'
+                  ? 'Done once any payment is logged.'
+                  : `Paid ${formatMoney(item.actual_amount)} of ${formatMoney(item.planned_amount)}; done once it reaches the plan.`}
             </span>
           </div>
         )}

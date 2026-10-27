@@ -207,8 +207,10 @@ CREATE TABLE finance.budget_items (
     deleted_at timestamp with time zone,
     is_checklist_item boolean DEFAULT false NOT NULL,
     checklist_day smallint,
+    checklist_mode text DEFAULT 'full_amount'::text NOT NULL,
     CONSTRAINT budget_items_checklist_check CHECK ((is_checklist_item = (checklist_day IS NOT NULL))),
     CONSTRAINT budget_items_checklist_day_check CHECK (((checklist_day >= 1) AND (checklist_day <= 28))),
+    CONSTRAINT budget_items_checklist_mode_check CHECK ((checklist_mode = ANY (ARRAY['full_amount'::text, 'any_payment'::text]))),
     CONSTRAINT budget_items_kind_check CHECK ((kind = ANY (ARRAY['expense'::text, 'income'::text]))),
     CONSTRAINT budget_items_name_check CHECK ((length(TRIM(BOTH FROM name)) > 0)),
     CONSTRAINT budget_items_planned_amount_check CHECK ((planned_amount >= (0)::numeric))
@@ -233,6 +235,20 @@ CREATE TABLE finance.budgets (
     CONSTRAINT budgets_check CHECK ((period_end >= period_start)),
     CONSTRAINT budgets_name_check CHECK ((length(TRIM(BOTH FROM name)) > 0)),
     CONSTRAINT budgets_period_type_check CHECK ((period_type = ANY (ARRAY['week'::text, 'month'::text, 'year'::text])))
+);
+
+
+--
+-- Name: preferences; Type: TABLE; Schema: finance; Owner: -
+--
+
+CREATE TABLE finance.preferences (
+    id uuid DEFAULT uuidv7() NOT NULL,
+    user_id uuid NOT NULL,
+    show_category_totals boolean DEFAULT false NOT NULL,
+    show_kind_totals boolean DEFAULT false NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
 
@@ -322,14 +338,39 @@ CREATE TABLE finance.transactions (
 CREATE TABLE nutrition.food_item_logs (
     id uuid DEFAULT uuidv7() NOT NULL,
     user_id uuid NOT NULL,
-    food_item_id uuid NOT NULL,
+    food_item_id uuid,
     eaten_on date NOT NULL,
     servings numeric(16,6) NOT NULL,
     notes text,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     deleted_at timestamp with time zone,
-    CONSTRAINT food_item_logs_servings_check CHECK ((servings > (0)::numeric))
+    name text,
+    calories numeric(16,6),
+    protein_g numeric(16,6),
+    total_fat_g numeric(16,6),
+    saturated_fat_g numeric(16,6),
+    trans_fat_g numeric(16,6),
+    cholesterol_mg numeric(16,6),
+    sodium_mg numeric(16,6),
+    total_carbs_g numeric(16,6),
+    fiber_g numeric(16,6),
+    total_sugars_g numeric(16,6),
+    added_sugars_g numeric(16,6),
+    CONSTRAINT food_item_logs_added_sugars_g_check CHECK ((added_sugars_g >= (0)::numeric)),
+    CONSTRAINT food_item_logs_calories_check CHECK ((calories >= (0)::numeric)),
+    CONSTRAINT food_item_logs_cholesterol_mg_check CHECK ((cholesterol_mg >= (0)::numeric)),
+    CONSTRAINT food_item_logs_fiber_g_check CHECK ((fiber_g >= (0)::numeric)),
+    CONSTRAINT food_item_logs_food_or_quick_check CHECK ((((food_item_id IS NOT NULL) AND (name IS NULL) AND (num_nonnulls(calories, protein_g, total_fat_g, saturated_fat_g, trans_fat_g, cholesterol_mg, sodium_mg, total_carbs_g, fiber_g, total_sugars_g, added_sugars_g) = 0)) OR ((food_item_id IS NULL) AND (name IS NOT NULL) AND (servings = (1)::numeric)))),
+    CONSTRAINT food_item_logs_name_check CHECK ((length(TRIM(BOTH FROM name)) > 0)),
+    CONSTRAINT food_item_logs_protein_g_check CHECK ((protein_g >= (0)::numeric)),
+    CONSTRAINT food_item_logs_saturated_fat_g_check CHECK ((saturated_fat_g >= (0)::numeric)),
+    CONSTRAINT food_item_logs_servings_check CHECK ((servings > (0)::numeric)),
+    CONSTRAINT food_item_logs_sodium_mg_check CHECK ((sodium_mg >= (0)::numeric)),
+    CONSTRAINT food_item_logs_total_carbs_g_check CHECK ((total_carbs_g >= (0)::numeric)),
+    CONSTRAINT food_item_logs_total_fat_g_check CHECK ((total_fat_g >= (0)::numeric)),
+    CONSTRAINT food_item_logs_total_sugars_g_check CHECK ((total_sugars_g >= (0)::numeric)),
+    CONSTRAINT food_item_logs_trans_fat_g_check CHECK ((trans_fat_g >= (0)::numeric))
 );
 
 
@@ -528,6 +569,22 @@ ALTER TABLE ONLY finance.budgets
 
 ALTER TABLE ONLY finance.budgets
     ADD CONSTRAINT budgets_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: preferences preferences_pkey; Type: CONSTRAINT; Schema: finance; Owner: -
+--
+
+ALTER TABLE ONLY finance.preferences
+    ADD CONSTRAINT preferences_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: preferences preferences_user_id_key; Type: CONSTRAINT; Schema: finance; Owner: -
+--
+
+ALTER TABLE ONLY finance.preferences
+    ADD CONSTRAINT preferences_user_id_key UNIQUE (user_id);
 
 
 --
@@ -820,6 +877,13 @@ CREATE TRIGGER set_updated_at BEFORE UPDATE ON finance.budgets FOR EACH ROW EXEC
 
 
 --
+-- Name: preferences set_updated_at; Type: TRIGGER; Schema: finance; Owner: -
+--
+
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON finance.preferences FOR EACH ROW EXECUTE FUNCTION core.set_updated_at();
+
+
+--
 -- Name: recurring_transactions set_updated_at; Type: TRIGGER; Schema: finance; Owner: -
 --
 
@@ -928,6 +992,14 @@ ALTER TABLE ONLY finance.budget_items
 
 ALTER TABLE ONLY finance.budgets
     ADD CONSTRAINT budgets_user_id_fkey FOREIGN KEY (user_id) REFERENCES core.users(id);
+
+
+--
+-- Name: preferences preferences_user_id_fkey; Type: FK CONSTRAINT; Schema: finance; Owner: -
+--
+
+ALTER TABLE ONLY finance.preferences
+    ADD CONSTRAINT preferences_user_id_fkey FOREIGN KEY (user_id) REFERENCES core.users(id);
 
 
 --
@@ -1116,6 +1188,13 @@ CREATE POLICY owner ON finance.budgets TO disci_app USING ((user_id = core.curre
 
 
 --
+-- Name: preferences owner; Type: POLICY; Schema: finance; Owner: -
+--
+
+CREATE POLICY owner ON finance.preferences TO disci_app USING ((user_id = core.current_user_id())) WITH CHECK ((user_id = core.current_user_id()));
+
+
+--
 -- Name: recurring_transactions owner; Type: POLICY; Schema: finance; Owner: -
 --
 
@@ -1135,6 +1214,12 @@ CREATE POLICY owner ON finance.transaction_allocations TO disci_app USING ((user
 
 CREATE POLICY owner ON finance.transactions TO disci_app USING ((user_id = core.current_user_id())) WITH CHECK ((user_id = core.current_user_id()));
 
+
+--
+-- Name: preferences; Type: ROW SECURITY; Schema: finance; Owner: -
+--
+
+ALTER TABLE finance.preferences ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: recurring_transactions; Type: ROW SECURITY; Schema: finance; Owner: -
@@ -1252,4 +1337,6 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('20261025190000'),
     ('20261026001500'),
     ('20261026170000'),
-    ('20261027120000');
+    ('20261027120000'),
+    ('20261027150000'),
+    ('20261027150100');

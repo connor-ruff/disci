@@ -9,6 +9,8 @@ Kind = Literal["expense", "income"]
 PeriodType = Literal["week", "month", "year"]
 Frequency = Literal["weekly", "monthly", "quarterly", "yearly"]
 TransactionStatus = Literal["pending", "confirmed"]
+# How a checklist item counts as done: actual reaches the plan, or anything was paid.
+ChecklistMode = Literal["full_amount", "any_payment"]
 Money = Annotated[Decimal, Field(max_digits=12, decimal_places=2)]
 Name = Annotated[str, Field(min_length=1, max_length=100)]
 LongText = Annotated[str, Field(max_length=1000)]
@@ -90,8 +92,10 @@ class BudgetItemOut(BaseModel):
     pending_amount: Money = Field(description="The same, for transactions awaiting approval.")
     is_checklist_item: bool
     checklist_day: int | None
+    checklist_mode: ChecklistMode
     checklist_done: bool = Field(
-        description="Checklist items only: confirmed actual has reached the planned amount."
+        description="Checklist items only: something confirmed was logged and, in full_amount"
+        " mode, the actual has reached the planned amount."
     )
     sort_order: int
 
@@ -113,6 +117,7 @@ class _ItemFields(BaseModel):
     planned_amount: Money = Field(ge=0)
     is_checklist_item: bool = False
     checklist_day: int | None = Field(default=None, ge=1, le=28)
+    checklist_mode: ChecklistMode = "full_amount"
 
     @model_validator(mode="after")
     def _checklist_day_iff_checklist_item(self) -> Self:
@@ -277,8 +282,24 @@ class ChecklistItemOut(BaseModel):
     item_name: str
     kind: Kind
     checklist_day: int
+    checklist_mode: ChecklistMode
     planned_amount: Money
     actual_amount: Money = Field(description="Confirmed net actual so far this month.")
     due_on: date
-    done: bool = Field(description="The actual has reached the planned amount.")
+    done: bool = Field(
+        description="Something confirmed was logged and, in full_amount mode, the actual has"
+        " reached the planned amount."
+    )
     last_payment_on: date | None
+
+
+# --- Preferences -------------------------------------------------------------------------
+
+
+class FinancePreferencesOut(BaseModel):
+    show_category_totals: bool = Field(description='"$x of $y" beside each category heading.')
+    show_kind_totals: bool = Field(description="The same beside the Income and Expenses headings.")
+
+
+class FinancePreferencesIn(FinancePreferencesOut):
+    """Both settings, sent in full."""

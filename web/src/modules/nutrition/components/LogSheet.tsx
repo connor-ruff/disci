@@ -1,4 +1,4 @@
-import { ArrowLeft, CalendarDays, ChevronRight, Pencil, Plus, Search } from 'lucide-react'
+import { ArrowLeft, CalendarDays, ChevronRight, Pencil, Plus, Search, Zap } from 'lucide-react'
 import { type FormEvent, type ReactNode, useState } from 'react'
 
 import { errorMessage } from '@/shared/api/client'
@@ -17,8 +17,9 @@ import {
   useTrackedNutrients,
   useUpdateLog,
 } from '../api'
-import { describeServing, formatNutrient, formatQuantity } from '../format'
+import { describeEntry, formatNutrient, formatQuantity } from '../format'
 import { FoodForm } from './FoodForm'
+import { QuickAddForm } from './QuickAddForm'
 
 type LogSheetProps = {
   /** The day being logged to (YYYY-MM-DD). */
@@ -59,7 +60,11 @@ export function LogSheet({ date, entry: opened, open, onOpenChange }: LogSheetPr
         <NewEntry key={String(open)} date={date} onDone={() => onOpenChangeAndReset(false)} />
       ) : editing ? (
         <>
-          <EntryForm key={entry.id} entry={entry} onDone={onSaved} />
+          {entry.food_item_id ? (
+            <EntryForm key={entry.id} entry={entry} onDone={onSaved} />
+          ) : (
+            <QuickAddForm key={entry.id} entry={entry} onDone={onSaved} />
+          )}
           <Button variant="ghost" onClick={() => setEditing(false)} className="mt-2 w-full">
             Cancel
           </Button>
@@ -90,7 +95,7 @@ function EntryFacts({ entry, onEdit, onDeleted }: { entry: LogEntry; onEdit: () 
           </p>
         )}
         <p className="mt-1 text-sm text-muted">
-          {describeServing(entry.servings, entry.standard_quantity, entry.standard_unit)}
+          {entry.food_item_id ? describeEntry(entry) : 'Quick add · not saved to your repo'}
         </p>
       </div>
 
@@ -150,19 +155,31 @@ function Fact({ icon, label, children }: { icon?: ReactNode; label: string; chil
   )
 }
 
-/** Pick a food (or add one), then how much. */
+/** Pick a food (or add one), then how much; or a quick add with its own nutrients. */
 function NewEntry({ date, onDone }: { date: string; onDone: () => void }) {
   const [food, setFood] = useState<Food | null>(null)
   const [creating, setCreating] = useState<string | null>(null)
+  const [quickAdding, setQuickAdding] = useState<string | null>(null)
 
+  if (quickAdding !== null) {
+    return <QuickAddForm date={date} initialName={quickAdding} onBack={() => setQuickAdding(null)} onDone={onDone} />
+  }
   if (creating !== null) {
     return <FoodForm initialName={creating} onSaved={(f) => (setCreating(null), setFood(f))} onCancel={() => setCreating(null)} />
   }
   if (food) return <EntryForm food={food} date={date} onBack={() => setFood(null)} onDone={onDone} />
-  return <FoodPicker onPick={setFood} onCreate={setCreating} />
+  return <FoodPicker onPick={setFood} onCreate={setCreating} onQuickAdd={setQuickAdding} />
 }
 
-function FoodPicker({ onPick, onCreate }: { onPick: (food: Food) => void; onCreate: (name: string) => void }) {
+function FoodPicker({
+  onPick,
+  onCreate,
+  onQuickAdd,
+}: {
+  onPick: (food: Food) => void
+  onCreate: (name: string) => void
+  onQuickAdd: (name: string) => void
+}) {
   const foods = useFoods()
   const [query, setQuery] = useState('')
 
@@ -192,10 +209,16 @@ function FoodPicker({ onPick, onCreate }: { onPick: (food: Food) => void; onCrea
         />
       </div>
 
-      <Button variant="outline" onClick={() => onCreate(query.trim())} className="justify-start">
-        <Plus className="size-4" />
-        {q && !exact ? `Add "${query.trim()}" as a new food` : 'Add a new food'}
-      </Button>
+      <div className="grid grid-cols-2 gap-2">
+        <Button variant="outline" onClick={() => onCreate(query.trim())} className="min-w-0 justify-start">
+          <Plus className="size-4" />
+          <span className="truncate">{q && !exact ? `Save "${query.trim()}"` : 'New food'}</span>
+        </Button>
+        <Button variant="outline" onClick={() => onQuickAdd(query.trim())} className="justify-start">
+          <Zap className="size-4" />
+          Quick add
+        </Button>
+      </div>
 
       {foods.isPending && <p className="text-muted">Loading…</p>}
       {foods.data && all.length === 0 && (

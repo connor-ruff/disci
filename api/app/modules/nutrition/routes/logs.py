@@ -7,7 +7,14 @@ from fastapi import APIRouter, Query, status
 from app.core.db import Db, DbDep
 from app.modules.nutrition import service
 from app.modules.nutrition.routes._common import not_found
-from app.modules.nutrition.schemas import DayOut, DaySummary, LogCreate, LogOut, LogUpdate
+from app.modules.nutrition.schemas import (
+    DayOut,
+    DaySummary,
+    LogCreate,
+    LogOut,
+    LogUpdate,
+    QuickLogIn,
+)
 from app.modules.nutrition.sql import queries
 
 router = APIRouter()
@@ -69,9 +76,35 @@ def create_log(body: LogCreate, db: DbDep) -> LogOut:
 
 @router.put("/logs/{log_id}")
 def update_log(log_id: UUID, body: LogUpdate, db: DbDep) -> LogOut:
+    """A repo food's entry. Quick adds are edited at PUT /quick-logs/{log_id}."""
     row = db.conn.execute(queries["update_log"], {"log_id": log_id, **body.model_dump()}).fetchone()
     if row is None:
         raise not_found("log entry")
+    return _log(db, log_id)
+
+
+def _quick_fields(body: QuickLogIn) -> dict:
+    return {**body.model_dump(), "name": body.name.strip()}
+
+
+@router.post("/quick-logs", status_code=status.HTTP_201_CREATED)
+def create_quick_log(body: QuickLogIn, db: DbDep) -> LogOut:
+    """Log a one-off food without saving it to the repo. Read and delete it at /logs."""
+    row = db.conn.execute(
+        queries["insert_quick_log"], {"user_id": db.user_id, **_quick_fields(body)}
+    ).fetchone()
+    if row is None:
+        raise RuntimeError("INSERT ... RETURNING returned no row")
+    return _log(db, row["id"])
+
+
+@router.put("/quick-logs/{log_id}")
+def update_quick_log(log_id: UUID, body: QuickLogIn, db: DbDep) -> LogOut:
+    row = db.conn.execute(
+        queries["update_quick_log"], {"log_id": log_id, **_quick_fields(body)}
+    ).fetchone()
+    if row is None:
+        raise not_found("quick add")
     return _log(db, log_id)
 
 

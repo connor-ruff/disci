@@ -1,4 +1,4 @@
-import type { Nutrient } from './api'
+import type { LogEntry, Nutrient } from './api'
 
 const number = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 })
 const quantity = new Intl.NumberFormat('en-US', { maximumFractionDigits: 3 })
@@ -20,6 +20,12 @@ export function describeServing(servings: string | number, standardQuantity: str
   if (s === 1) return formatQuantity(standardQuantity, unit)
   if (Number(standardQuantity) === 1) return `${quantity.format(s)} × ${formatQuantity(1, unit)}`
   return `${quantity.format(s)} × ${formatQuantity(standardQuantity, unit)} = ${formatQuantity(total, unit)}`
+}
+
+/** A log entry's amount, or "Quick add" for a one-off entry (it has no standard quantity). */
+export function describeEntry(entry: LogEntry): string {
+  if (entry.standard_quantity == null || entry.standard_unit == null) return 'Quick add'
+  return describeServing(entry.servings, entry.standard_quantity, entry.standard_unit)
 }
 
 /** Common units offered as suggestions (free text is still allowed). */

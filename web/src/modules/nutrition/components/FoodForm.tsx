@@ -9,7 +9,7 @@ import { type Food, type Nutrient, type NutrientKey, usePreferences, useSaveFood
 import { UNIT_SUGGESTIONS } from '../format'
 
 /** A typed number, up to 6 decimal places (commas allowed). Blank → null (unknown). */
-function parseAmount(input: string): string | null | undefined {
+export function parseAmount(input: string): string | null | undefined {
   const cleaned = input.replace(/[,\s]/g, '')
   if (cleaned === '') return null
   return /^\d+(\.\d{1,6})?$/.test(cleaned) ? cleaned : undefined
@@ -44,28 +44,19 @@ function FoodFields({
   const [description, setDescription] = useState(food?.description ?? '')
   const [quantity, setQuantity] = useState(food ? String(Number(food.standard_quantity)) : '100')
   const [unit, setUnit] = useState(food?.standard_unit ?? 'g')
-  const [values, setValues] = useState<Partial<Record<NutrientKey, string>>>(() =>
+  const [values, setValues] = useState<NutrientValues>(() =>
     Object.fromEntries(
       all.map((n) => [n.key, food?.[n.key] == null ? '' : String(Number(food[n.key]))]),
     ),
   )
   const [invalid, setInvalid] = useState<string | null>(null)
 
-  const tracked = all.filter((n) => trackedKeys.includes(n.key))
-  const others = all.filter((n) => !trackedKeys.includes(n.key))
-  // Open the extra nutrients when the food already has values there.
-  const [showOthers, setShowOthers] = useState(others.some((n) => food?.[n.key] != null))
-
   function onSubmit(event: FormEvent) {
     event.preventDefault()
     const standard = parseAmount(quantity)
     if (!standard || Number(standard) === 0) return setInvalid('Enter a standard quantity like 100 or 0.5 (up to 6 decimal places)')
-    const nutrients: Partial<Record<NutrientKey, string | null>> = {}
-    for (const n of all) {
-      const value = parseAmount(values[n.key] ?? '')
-      if (value === undefined) return setInvalid(`${n.label}: enter a number (up to 6 decimal places), or leave it blank if unknown`)
-      nutrients[n.key] = value
-    }
+    const nutrients = parseNutrients(all, values)
+    if (typeof nutrients === 'string') return setInvalid(nutrients)
     setInvalid(null)
     save.mutate(
       {
@@ -79,19 +70,6 @@ function FoodFields({
       { onSuccess: onSaved },
     )
   }
-
-  const nutrientField = (n: Nutrient) => (
-    <Field key={n.key} label={`${n.label} (${n.unit})`} htmlFor={`food-${n.key}`}>
-      <input
-        id={`food-${n.key}`}
-        inputMode="decimal"
-        value={values[n.key] ?? ''}
-        onChange={(e) => setValues((v) => ({ ...v, [n.key]: e.target.value }))}
-        placeholder="Unknown"
-        className={inputClasses}
-      />
-    </Field>
-  )
 
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-4">
@@ -152,24 +130,7 @@ function FoodFields({
         </p>
       </div>
 
-      <div className="flex flex-col gap-3 rounded-lg bg-background p-3">
-        <p className="text-sm text-muted">Leave a nutrient blank if you don't know it. It won't count as 0.</p>
-        <div className="grid grid-cols-2 gap-3">{tracked.map(nutrientField)}</div>
-        {others.length > 0 && (
-          <>
-            <button
-              type="button"
-              onClick={() => setShowOthers((s) => !s)}
-              aria-expanded={showOthers}
-              className="flex items-center gap-1 self-start text-sm font-medium text-primary"
-            >
-              <ChevronDown className={showOthers ? 'size-4 rotate-180 transition' : 'size-4 transition'} />
-              {showOthers ? 'Hide' : 'Show'} nutrients you don't track ({others.length})
-            </button>
-            {showOthers && <div className="grid grid-cols-2 gap-3">{others.map(nutrientField)}</div>}
-          </>
-        )}
-      </div>
+      <NutrientFields idPrefix="food" nutrients={all} tracked={trackedKeys} values={values} onChange={setValues} />
 
       {(invalid || save.isError) && (
         <p className="text-sm text-red-700">{invalid ?? errorMessage(save.error)}</p>
@@ -186,5 +147,72 @@ function FoodFields({
         )}
       </div>
     </form>
+  )
+}
+
+export type NutrientValues = Partial<Record<NutrientKey, string>>
+
+/** Typed values → API values (blank = null), or an error message for the first bad one. */
+export function parseNutrients(all: Nutrient[], values: NutrientValues): Partial<Record<NutrientKey, string | null>> | string {
+  const nutrients: Partial<Record<NutrientKey, string | null>> = {}
+  for (const n of all) {
+    const value = parseAmount(values[n.key] ?? '')
+    if (value === undefined) return `${n.label}: enter a number (up to 6 decimal places), or leave it blank if unknown`
+    nutrients[n.key] = value
+  }
+  return nutrients
+}
+
+/** One input per nutrient: tracked ones first, the rest tucked away. Blank = unknown. */
+export function NutrientFields({
+  idPrefix,
+  nutrients: all,
+  tracked: trackedKeys,
+  values,
+  onChange,
+}: {
+  idPrefix: string
+  nutrients: Nutrient[]
+  tracked: NutrientKey[]
+  values: NutrientValues
+  onChange: (update: (values: NutrientValues) => NutrientValues) => void
+}) {
+  const tracked = all.filter((n) => trackedKeys.includes(n.key))
+  const others = all.filter((n) => !trackedKeys.includes(n.key))
+  // Open the extra nutrients when there are already values there.
+  const [showOthers, setShowOthers] = useState(others.some((n) => values[n.key]))
+
+  const nutrientField = (n: Nutrient) => (
+    <Field key={n.key} label={`${n.label} (${n.unit})`} htmlFor={`${idPrefix}-${n.key}`}>
+      <input
+        id={`${idPrefix}-${n.key}`}
+        inputMode="decimal"
+        value={values[n.key] ?? ''}
+        onChange={(e) => onChange((v) => ({ ...v, [n.key]: e.target.value }))}
+        placeholder="Unknown"
+        className={inputClasses}
+      />
+    </Field>
+  )
+
+  return (
+    <div className="flex flex-col gap-3 rounded-lg bg-background p-3">
+      <p className="text-sm text-muted">Leave a nutrient blank if you don't know it. It won't count as 0.</p>
+      <div className="grid grid-cols-2 gap-3">{tracked.map(nutrientField)}</div>
+      {others.length > 0 && (
+        <>
+          <button
+            type="button"
+            onClick={() => setShowOthers((s) => !s)}
+            aria-expanded={showOthers}
+            className="flex items-center gap-1 self-start text-sm font-medium text-primary"
+          >
+            <ChevronDown className={showOthers ? 'size-4 rotate-180 transition' : 'size-4 transition'} />
+            {showOthers ? 'Hide' : 'Show'} nutrients you don't track ({others.length})
+          </button>
+          {showOthers && <div className="grid grid-cols-2 gap-3">{others.map(nutrientField)}</div>}
+        </>
+      )}
+    </div>
   )
 }

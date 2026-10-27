@@ -3,6 +3,7 @@ import { Wallet } from 'lucide-react'
 import type { ModuleManifest } from '@/app/module'
 
 import { FinanceHomeCard } from './components/FinanceHomeCard'
+import { FinanceSettings } from './components/FinanceSettings'
 import { financeRoute } from './routes'
 
 export const financeModule: ModuleManifest = {
@@ -17,4 +18,5 @@ export const financeModule: ModuleManifest = {
     { label: 'Categories', to: '/finance/categories' },
   ],
   HomeCard: FinanceHomeCard,
+  SettingsPanel: FinanceSettings,
 }
