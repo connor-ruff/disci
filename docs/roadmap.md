@@ -12,7 +12,6 @@ Last reviewed: 2026-10-27.
 
 | Item | Notes |
 |---|---|
-| **Finance: drop `recurring_transactions.requires_approval`** | A migration that drops the column, in a release after `20261028120000_finance__fold_requires_approval.sql` is deployed. That migration folded it into `auto_apply`, and no code references it any more. |
 | **Delete the RDS snapshot `disci-pre-inbox-2026-10-27`** | Once the Inbox rework has run in production for a while without problems. Command in [deployment.md](ops/deployment.md) §3. |
 | **Alarms** | No CloudWatch alarms exist. At least: errors on `disci-jobs` (a failed recurring run is silent today) and on `disci-mcp`. |
 | **MCP: the mid-handshake HTTP 400** | Harmless. Claude sends `server/discover`, which mcp 1.30 doesn't know ([mcp-overview.md](mcp/mcp-overview.md) §1). Likely fixed by moving to mcp 2.x, which has breaking API changes, so it's a change of its own. |
