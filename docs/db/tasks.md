@@ -152,10 +152,6 @@ Months keep the day of the month; a day that doesn't exist in the target month *
 | Change a task's type? | **No.** Delete it and add a new one. |
 | Deleting a task | **Soft delete**; its completions stay as history. |
 
-## 6. Open questions / later
+## 6. Not built yet
 
-1. **Visualizations:** better ways to see tasks and progress (streaks, history, calendars). The user will send inspiration.
-2. **Reordering** tasks within a list (today: soonest due, then name). Would be a `sort_order` column like finance's.
-3. **Morning / night reports** (due today and overdue; what got done today) can read straight from `GET /tasks` and `GET /tasks/completions`.
-4. **Categories, priority or subtasks:** none planned yet.
-5. **Importing** the current task list from the Google Sheet.
+See [roadmap.md](../roadmap.md).

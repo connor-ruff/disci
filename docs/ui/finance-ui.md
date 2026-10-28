@@ -1,6 +1,6 @@
 # Finance UI
 
-*Status: **implemented** (`web/src/modules/finance/`): budgets list, new budget, the budget page (items, transactions, logging, reorder mode), categories (with descriptions and reordering), and the second slice: the monthly **Checklist**, **Recurring** transactions and the **Inbox** (decisions recurring rules need, unassigned transactions and a ledger of what applied automatically). Transactions open in a view with **Edit** and **Delete**. Checklist items can be done on the full amount or on any payment (§4.2), and the budget page's subtotals are opt-in from Settings (§2, §11). What's still missing is in §10.*
+*Status: **implemented** (`web/src/modules/finance/`): budgets list, new budget, the budget page (items, transactions, logging, reorder mode), categories (with descriptions and reordering), and the second slice: the monthly **Checklist**, **Recurring** transactions and the **Inbox** (decisions recurring rules need, unassigned transactions and a ledger of what applied automatically). Transactions open in a view with **Edit** and **Delete**. Checklist items can be done on the full amount or on any payment (§4.2), and the budget page's subtotals are opt-in from Settings (§2, §11). What's not built yet is in [roadmap.md](../roadmap.md).*
 
 What the Finance screens look like and how they behave. The data model is in [finance.md](../db/finance.md), the endpoints in [api-overview.md](../api/api-overview.md) §7.1, and the shell around these pages in [app-shell.md](app-shell.md). Engineering conventions (hooks, query keys, `Sheet`, `Field`, `Checkbox`, `SortableList`, money and date helpers) are in [web-overview.md](web-overview.md).
 
@@ -108,7 +108,7 @@ Oct 1 – Oct 31, 2026  (● Active)
 | Item **actual** | Net of the **confirmed** transactions allocated to the item: transactions of the item's kind **add**, the opposite kind **subtracts** (a $25 grocery rebate logged as income on Groceries lowers its actual). Can be negative. Comes from the API (`actual_amount`). Pending transactions are excluded and shown separately as "awaiting approval" (`pending_amount`). |
 | Item **planned** | The item's `planned_amount`. |
 | **Spent vs budget** (KPI) | Sum of expense items' actuals ("spent"), "of" the sum of their planned amounts (planned expenses). Ring: spent ÷ planned expenses, "of budget". Footnote: "$X left to spend", or "$X over budget" in **amber** once spent passes the plan. |
-| **Budget surplus / deficit** (KPI) | **Planned income − planned expenses.** (Previously labelled "Left to plan".) Positive: income not yet given a job (zero-based budgeting). Negative: more planned spending than planned income, shown in **amber** as "Budget deficit". Uses planned amounts only, not actuals. Ring: planned expenses ÷ planned income, "of income". |
+| **Budget surplus / deficit** (KPI) | **Planned income − planned expenses.** Positive: income not yet given a job (zero-based budgeting). Negative: more planned spending than planned income, shown in **amber** as "Budget deficit". Uses planned amounts only, not actuals. Ring: planned expenses ÷ planned income, "of income". |
 | **True surplus / deficit** (KPI) | **Planned income − actual spent** (expense actuals). Positive: planned income not spent yet. Negative: spending is past planned income, shown in **amber** as "True deficit". Ring: spent ÷ planned income, "of income". |
 | **Category / side totals** (when turned on in Settings) | Sum of the group's (or side's) item actuals, "of" the sum of their planned amounts. An expense total whose actual is over its planned shows the actual in **amber**. |
 
@@ -148,7 +148,7 @@ Opened by "Add income" / "Add expense" (new item of that kind, straight to the f
 - Three buttons side by side, icon over label, in order: **Edit**, **View transactions**, **Log transaction** (primary). Below them, **Delete item** (red; confirms: "Its transactions stay but won't count toward this budget").
   - **Edit** switches to the form (title "Edit <name>") with **Save** and **Cancel**; both return to the view.
   - **View transactions** (title "<name> transactions") shows a "Back to <name>" link and the item's rows from the budget's transactions (`TransactionList`, filtered client-side by `budget_item_id`, item name hidden), or "Nothing logged to <name> yet." Tapping a row opens the transaction view (§4.5) **on top** of the item sheet.
-  - **Log transaction** opens the transaction sheet (§4.3) with this item preselected, **on top** of the item sheet (it no longer closes it); closing it returns to the item.
+  - **Log transaction** opens the transaction sheet (§4.3) with this item preselected, **on top** of the item sheet; closing it returns to the item.
 - Closing the sheet resets it to the view for next time.
 
 **Form** (new item, or Edit):
@@ -184,6 +184,29 @@ Takes a required `budget` prop (the budget being logged into: `id`, `name`, `per
 
 On save it creates one confirmed allocation for the **full amount** to the chosen item (or none), and refreshes everything under Finance (budgets, inbox, checklist).
 
+### 4.4 Recurring sheet (`RecurringSheet`)
+
+Opened by **New** on the Recurring page, or by tapping a rule (edit; title = the rule's name).
+
+| Field | Behaviour |
+|---|---|
+| Type | Segmented **Expense** / **Income**. Changing it clears the category. |
+| Name | Required. What the rule is called ("Netflix"); shown on its card and in the Inbox. |
+| Budget item | Required (`item_name`). Hint: "The item it counts toward in each budget: same name (any capitalization) and the category below." For a **new** rule it mirrors Name as you type until you edit it yourself. Offers **suggestions** through a native `<datalist>`: the existing item names of the rule's type from the **monthly budget(s) covering today**, or, if there are none, the **most recent monthly budget** (`useItemNameSuggestions` in `api.ts`). A budget matches an item of the same type with this name (ignoring capitalization and extra spaces) **and** the rule's category; nothing is created when no item matches (the Inbox asks instead, §8). Free text is still allowed. |
+| Amount / Category | Side by side. Category lists only that type's categories, plus Uncategorized. |
+| Repeats | Segmented **Monthly** (default) / Weekly / Quarterly / Yearly. |
+| On day | Monthly: select of "1st of each month" … "28th of each month". |
+| Every | Weekly: select of Monday … Sunday. |
+| Starting / First date | `type="date"`, defaults to today. Labelled **First date** for quarterly and yearly, which repeat from it; a hint shows the later dates ("Then May 10, Aug 10 and Nov 10 each year" / "Every year on Feb 10"). Quarterly rejects a day after the 28th with a message before sending. |
+| Ends (optional) | `type="date"`, not before the start. |
+| Auto-apply | Checkbox, **on by default**. Hint: counts it toward the budget item in every budget whose dates include it, with no approval; a budget without that item asks you in the Inbox. Off: every occurrence waits in the Inbox for you to approve (and fix the amount) and place. |
+| Paused | Checkbox, when editing only. Creates nothing while paused. |
+| Payee / Notes (optional) | Copied onto each transaction it creates. |
+
+Buttons: **Create** / **Save**; when editing, also **Delete recurring transaction** (confirms; transactions it already created are kept). Saving creates anything due today right away.
+
+There is no checklist option on a rule. A rule's payment (e.g. an autopay bill with auto-apply on) completes a checklist item the same way any payment does: by bringing the item's actual up to its planned amount (or, for an **Any payment** item, by being paid at all).
+
 ### 4.5 Transaction view (`TransactionDetailSheet`)
 
 Opened by tapping a transaction row, on the budget page or in an item's transactions (§4.2). It loads the transaction with `GET /finance/transactions/{id}` (title "Transaction").
@@ -200,29 +223,6 @@ Opened by tapping a transaction row, on the budget page or in an item's transact
 - On save (`PUT /finance/transactions/{id}`, the whole transaction): its allocation(s) **in this budget** are replaced by one full-amount allocation to the chosen item (or none). Allocations in **other budgets** are kept: set to the new amount when they were the full old amount or would exceed the new amount, otherwise left as they were. The `description` is preserved.
 - Caveat: a transaction **split** over several items in this budget collapses to the one chosen item when edited.
 - A **pending** transaction stays pending when edited (status doesn't change); approve it in the Inbox.
-
-### 4.4 Recurring sheet (`RecurringSheet`)
-
-Opened by **New** on the Recurring page, or by tapping a rule (edit; title = the rule's name).
-
-| Field | Behaviour |
-|---|---|
-| Type | Segmented **Expense** / **Income**. Changing it clears the category. |
-| Name | Required. What the rule is called ("Netflix"); shown on its card and in the Inbox. |
-| Budget item | Required (`item_name`). Hint: "The item it counts toward in each budget: same name (any capitalization) and the category below." For a **new** rule it mirrors Name as you type until you edit it yourself. Offers **suggestions** through a native `<datalist>`: the existing item names of the rule's type from the **monthly budget(s) covering today**, or, if there are none, the **most recent monthly budget** (`useItemNameSuggestions` in `api.ts`). A budget matches an item of the same type with this name (ignoring capitalization and extra spaces) **and** the rule's category; nothing is created when no item matches (the Inbox asks instead, §8). Free text is still allowed. |
-| Amount / Category | Side by side. Category lists only that type's categories, plus Uncategorized. |
-| Repeats | Segmented **Monthly** (default) / Weekly / Quarterly / Yearly. |
-| On day | Monthly: select of "1st of each month" … "28th of each month". |
-| Every | Weekly: select of Monday … Sunday. |
-| Starting / First date | `type="date"`, defaults to today. Labelled **First date** for quarterly and yearly, which repeat from it; a hint shows the later dates ("Then May 10, Aug 10 and Nov 10 each year" / "Every year on Feb 10"). Quarterly rejects a day after the 28th with a message before sending. |
-| Ends (optional) | `type="date"`, not before the start. |
-| Auto-apply | Checkbox, **on by default**. Hint: counts it toward the budget item in every budget whose dates include it, with no approval; a budget without that item asks you in the Inbox. Off: every occurrence waits in the Inbox for you to approve (and fix the amount) and place. (There is no separate "Requires approval" option any more.) |
-| Paused | Checkbox, when editing only. Creates nothing while paused. |
-| Payee / Notes (optional) | Copied onto each transaction it creates. |
-
-Buttons: **Create** / **Save**; when editing, also **Delete recurring transaction** (confirms; transactions it already created are kept). Saving creates anything due today right away.
-
-There is no checklist option on a rule. A rule's payment (e.g. an autopay bill with auto-apply on) completes a checklist item the same way any payment does: by bringing the item's actual up to its planned amount (or, for an **Any payment** item, by being paid at all).
 
 ---
 
@@ -313,10 +313,7 @@ Hooks live in `web/src/modules/finance/api.ts`; query keys are in `financeKeys` 
 
 ## 10. Not built yet
 
-The API or data model already supports some of these; the UI doesn't yet.
-
-- **Splitting** a transaction across several items, and **allocating one transaction to more than one budget** from the UI (the API accepts several allocations, e.g. a monthly and a yearly budget). Inbox Assign and the transaction form write one allocation in the budget at hand (editing keeps allocations in other budgets, §4.5).
-- **Renaming a budget / editing notes** in the UI (the API has `PUT /finance/budgets/{id}`).
+See [roadmap.md](../roadmap.md). The API already supports some of it (splitting a transaction, counting it in several budgets, renaming a budget); the UI doesn't yet.
 
 ---
 

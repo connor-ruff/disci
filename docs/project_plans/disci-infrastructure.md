@@ -2,7 +2,7 @@
 
 *Project name: **Disci** (short for discipline). Code/resource name: `disci`. Draft as of Oct 25, 2026. Prices are AWS on-demand list prices for us-east-1.*
 
-> **This is the original plan.** The infrastructure was built and first deployed on Oct 25, 2026. For what actually exists and how to deploy and operate it, see **[docs/ops/deployment.md](../ops/deployment.md)** (the source of truth). This doc has been corrected where it would mislead (zip packages instead of container images, config via Lambda env vars, no ACM/us-east-1 yet), but it still describes planned pieces that aren't built (MCP, the report jobs, SES). The jobs Lambda and EventBridge Scheduler exist, running hourly recurring-transaction generation.
+> **Historical: the original plan, not kept up to date.** The infrastructure was built and first deployed on Oct 25, 2026. For what actually exists and how to operate it, see **[docs/ops/deployment.md](../ops/deployment.md)** (the source of truth; its §10 lists where the build differs from this plan). The reasoning and cost breakdown here still apply. Unbuilt pieces (the report jobs, SES, a custom domain, Snowflake) are tracked in [roadmap.md](../roadmap.md).
 
 ## 1. What we're building
 
@@ -287,12 +287,6 @@ Lambdas run in the VPC's private subnets next to RDS, with **no NAT Gateway** (~
 
 Roughly flat until hundreds of active users: Lambda, API Gateway and Cognito stay at or near free, and RDS might step up to db.t4g.small (~$23/mo). Moving to Snowflake for reporting adds Snowflake credits, which mostly depend on how often loads and queries run.
 
-## 6. Open questions to settle during build
+## 6. Open questions
 
-1. ~~MCP auth with Cognito~~. Decided: keep Cognito. A second pre-registered client (`disci-mcp`) works with Claude's custom connector (verified 2026-10-25); the API/MCP layer keys on the access token's `sub`. See [deployment.md §9](../ops/deployment.md).
-2. ~~Ad-hoc database access method~~. Decided: EC2 Instance Connect Endpoint (see networking above).
-3. ~~Migration tool~~. Decided: dbmate (see §3d).
-4. **Report delivery**: email via SES (deterministic, cheap) vs. Claude scheduled tasks (conversational), or both.
-5. **Domain name.** Still open; the app runs on the default CloudFront and API Gateway hostnames.
-6. ~~Container images vs zip~~. Decided: zip packages built without Docker (no ECR).
-7. ~~Where JWTs are verified~~. Decided: API Gateway's JWT authorizer; the API reads the verified claims.
+All settled during the build (MCP auth: Cognito; database access: EC2 Instance Connect Endpoint; migrations: dbmate; packaging: zips), except report delivery and the domain name, which are tracked in [roadmap.md](../roadmap.md).

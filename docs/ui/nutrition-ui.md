@@ -1,6 +1,6 @@
 # Nutrition UI
 
-*Status: **implemented** (`web/src/modules/nutrition/`): the **Daily** food sheet (and the same sheet for any past day) with **quick adds** for one-off foods, **History**, the **Food repo** (each food opens in a view first), **Goals**, and a **Nutrition** section on the Settings page for choosing tracked nutrients. Goals aren't shown on the daily sheet yet; what's still missing is in §9.*
+*Status: **implemented** (`web/src/modules/nutrition/`): the **Daily** food sheet (and the same sheet for any past day) with **quick adds** for one-off foods, **History**, the **Food repo** (each food opens in a view first), **Goals**, and a **Nutrition** section on the Settings page for choosing tracked nutrients. Goals aren't shown on the daily sheet yet; what's not built is in [roadmap.md](../roadmap.md).*
 
 What the Nutrition screens look like and how they behave. The data model is in [nutrition.md](../db/nutrition.md), the endpoints in [api-overview.md](../api/api-overview.md) §7.2, and the shell around these pages in [app-shell.md](app-shell.md). Engineering conventions (hooks, query keys, `Sheet`, `Field`, `Checkbox`, `Segmented`, date helpers) are in [web-overview.md](web-overview.md).
 
@@ -163,7 +163,7 @@ A **quick add** is a one-off entry with its own name and nutrients, logged to a 
 
 - Waits for the nutrient list before rendering, like the food form.
 - Buttons: **Log it** for a new quick add; **Save** when editing (all fields are sent, `PUT /nutrition/quick-logs/{id}`).
-- To keep a quick add's food for next time, add it to the repo with New food; a quick add can't be converted (see [nutrition.md](../db/nutrition.md) §6).
+- To keep a quick add's food for next time, add it to the repo with New food; a quick add can't be converted yet ([roadmap.md](../roadmap.md)).
 
 ---
 
@@ -224,5 +224,4 @@ Dates use the shared helpers in `shared/lib/dates.ts`: `todayIn(me.timezone)` fo
 
 ## 9. Not built yet
 
-- **Goals on the daily sheet**: progress toward targets and warnings near limits (the Home card shows today's goal progress, §1, but the daily and history sheets don't yet). Planned as a later dashboard combining goals with day totals; the API already serves goals for any day (`GET /nutrition/goals?on=`).
-- **Meals** (breakfast, lunch, ...), **recipes / saved meals**, and **turning a quick add into a repo food**. See [nutrition.md](../db/nutrition.md) §6. (Logging through Claude is built in the MCP server: [mcp-overview.md](../mcp/mcp-overview.md).)
+See [roadmap.md](../roadmap.md).

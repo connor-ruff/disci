@@ -2,6 +2,8 @@
 
 *Disci is short for "discipline". Companion to `disci-infrastructure.md`. This file tells the story: how life upkeep is tracked today, what works, what doesn't, and what the new app should be. Read it before designing anything. The infrastructure doc covers how; this one covers why and for whom.*
 
+> **Historical: written before the build, and not kept up to date.** The story and principles still hold, but specifics (data model, the "proposed" items) may differ from what was built. For the current state, start at [docs-directory.md](../docs-directory.md); for what's left, [roadmap.md](../roadmap.md).
+
 ---
 
 ## 1. Who this is for
@@ -128,23 +130,6 @@ Discussed and agreed with the user; details are in `disci-infrastructure.md`.
 
 ---
 
-## 6. What we don't know yet (ask, don't guess)
+## 6. What happened next
 
-The exact structure of the current trackers hasn't been captured. Before finalizing the data model, **ask the user for**:
-
-- **EveryDollar**: the list of budget categories (and any groups), and whether budgets are set per month or are fixed. Find out whether an export of historical expenses exists, and whether it should be migrated.
-- **Bills sheet**: its columns (name, amount, due day, autopay?, account, etc.) and the current list of bills.
-- **Task sheet**: its columns, how recurrence is expressed today, and the full set of current recurring tasks.
-- **Nutrition sheet**: the food repo's columns (which nutrients, serving units, brand), how quantities are entered in the daily log (grams? servings?), and the **daily macro goals** (fixed, or varying by day).
-- **Reports**: what exactly the morning and night reports should contain, and the delivery channel (email via SES, Claude scheduled tasks, or both).
-- **Build order**: which domain to build first. Leaning toward **to-dos or nutrition**, since they already live in spreadsheets that can be migrated and they prove out the Claude/MCP loop before finances. User hasn't confirmed.
-
-CSV exports of each Google Sheet would answer most of this at once, and would double as migration seed data.
-
----
-
-## 7. Where we left off
-
-Infrastructure and repo layout are agreed (see `disci-infrastructure.md`). **The next step is the data model**, starting with whichever domain the user picks first, guided by the principles in section 4 and the answers to section 6.
-
-**Update:** a first-draft data model for all three modules now lives in `docs/db/` (start at `docs/db/db-overview.md`). Each module doc ends with its own open questions.
+The questions this section once listed were answered while building each module (see each module's Decisions in `docs/db/`). Whatever is still open is in [roadmap.md](../roadmap.md).

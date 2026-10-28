@@ -13,7 +13,7 @@ Look: mostly white and calming (white and off-white backgrounds, greens used as 
 
 - App icon: teal tile, white "D", mint check (see web-overview.md, Home-screen app).
 
-## Shared / General Naviation and UI
+## Shared / General Navigation and UI
 
 - app-shell.md: the shell (top bar, module menu, sub-nav) and how modules plug into it.
 - web-overview.md: web app engineering (stack, folder layout, theming tokens, mobile conventions, local dev).

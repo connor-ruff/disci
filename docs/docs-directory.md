@@ -1,54 +1,46 @@
-# Documentation Directory 
+# Documentation Directory
 
-All documentation is organized into sub-folders under the `docs/` directory.
+All documentation lives under `docs/`. Start here.
 
 ```
 docs/
-├── docs-directory.md              # You are here: entry point for all docs
-├── project_plans/                 # Initial planning / architecture docs
-│   ├── disci-infrastructure.md    # original infra & cost plan (as-built: ops/deployment.md)
-│   └── project-inspiration.md
-├── ops/                           # Running the app in production (AWS)
-│   └── deployment.md              # Start here: architecture as built, resources, deploys, DB access, security, cost
-├── mcp/                           # MCP server (Claude connector, mcp_server/ folder)
-│   └── mcp-overview.md            # Start here: status, auth test findings, server layout/settings, the 19 finance/nutrition/tasks tools, local dev, Lambda, connecting Claude, checklist
-├── api/                           # Back-end API docs (FastAPI, api/ folder)
-│   └── api-overview.md            # Start here: layout, settings, auth, request flow, modules, endpoints
-├── db/                            # Postgres data model docs (one file per module)
-│   ├── db-overview.md             # Start here: modules, conventions, open questions
-│   ├── shared.md                  # core schema: users, user_modules, helper functions
+├── docs-directory.md              # You are here: entry point and doc rules
+├── roadmap.md                     # Everything not built yet, cleanup steps and open questions (the only backlog)
+├── project_plans/                 # Historical: the plans written before the build (not kept up to date)
+│   ├── project-inspiration.md     # Why Disci exists: the old trackers, the vision, design principles
+│   └── disci-infrastructure.md    # Original infra & cost plan (as built: ops/deployment.md)
+├── ops/
+│   └── deployment.md              # Production on AWS: architecture, resources, deploys, snapshots, DB access, security, cost
+├── mcp/
+│   └── mcp-overview.md            # MCP server (Claude connector): Cognito auth, layout, settings, the tools, local dev, Lambda, connecting
+├── api/
+│   └── api-overview.md            # FastAPI back end: layout, settings, auth, request flow, SQL conventions, adding a module, endpoints, tests, jobs
+├── db/                            # Postgres data model, one file per module (Postgres schema)
+│   ├── db-overview.md             # Modules and the conventions every table follows
+│   ├── shared.md                  # core: users, user_modules, helper functions
 │   ├── finance.md                 # budgets, items, transactions, allocations, recurring rules, Inbox entries, preferences
-│   ├── tasks.md                   # four fixed task types, tasks + task_completions
-│   └── nutrition.md
-└── ui/                            # Front-end layout & UX docs
-    ├── ui-overview.md             # General style guidelines
+│   ├── nutrition.md               # food repo, food log and quick adds, goals, tracked nutrients
+│   └── tasks.md                   # four fixed task types, tasks + task_completions
+└── ui/                            # Front end
+    ├── ui-overview.md             # Brand palette and look
     ├── app-shell.md               # Shell, module menu, opt-in modules, Settings page, how modules plug in
-    ├── web-overview.md            # Web app engineering: stack, layout, API client, theming, local dev
-    ├── finance-ui.md              # Finance screens: routes, budget page, forms, Recurring, Inbox, what the numbers mean, settings
-    ├── nutrition-ui.md            # Nutrition screens: daily sheet, quick adds, history, food repo, goals, unknown values
-    └── tasks-ui.md                # Tasks screens: Today, All tasks, Kinds guide, check control, task sheet
+    ├── web-overview.md            # Web app engineering: stack, folder layout, API client, theming, mobile conventions, local dev
+    ├── finance-ui.md              # Finance screens
+    ├── nutrition-ui.md            # Nutrition screens
+    └── tasks-ui.md                # Tasks screens
 ```
 
-## project_plans 
+**Where to start:** to change a module, read its `db/` doc, its section of `api/api-overview.md` §7 and its `ui/` doc. For anything about production, read `ops/deployment.md`. For what to build next, read `roadmap.md`.
 
-Contains initial planning / architecture docs.
+---
 
-## ops
+## Doc rules
 
-Contains documentation about running Disci in production on AWS. Start with `ops/deployment.md`, the ops entry point and source of truth for what was built: the architecture and resources (OpenTofu in the `aws_iac_mngr` repo), how a deploy works from a laptop or CI, infrastructure changes and Cognito users (invite-only: inviting and removing people), database access through the EC2 Instance Connect tunnel, the security model, cost and the budget, and known follow-ups.
+These keep the docs accurate and stop them filling up with forgotten notes.
 
-## mcp
-
-Contains documentation for the MCP server (`mcp_server/`, so Claude can act on Disci data). Start with `mcp/mcp-overview.md`: status, what the Cognito auth test proved and how to repeat it, Python SDK notes, the server's layout, settings and auth, its 19 tools (9 finance, 8 nutrition, 2 tasks; the 2 tasks tools and the reworked Finance Inbox tools not yet deployed) with the API endpoints behind each and design conventions, local dev and tests, the Lambda (and its Mangum lifespan gotcha), how to connect Claude, the checklist (decided vs open) and the historical stub source. Infrastructure lives in `ops/deployment.md` §2.2 and auth detail in §9.
-
-## api
-
-Contains documentation about the back-end API (`api/`). Start with `api/api-overview.md`, which covers the code layout, settings and auth modes, the per-request transaction, SQL conventions, how to add a module, the current endpoints (finance, nutrition and tasks) and how to run and test it locally.
-
-## db
-
-Contains documentation about the Postgres data model used in the back-end of the application. Start with `db/db-overview.md`, which lists each module (its own Postgres schema), the conventions every table follows, and links to each module's doc. Finance, nutrition and tasks are all implemented.
-
-## ui
-
-Contains documentation on front-end layout and user experience. Start with `ui/app-shell.md`, which covers the frame every page lives in and how modules plug into it, and `ui/web-overview.md` for the web app's engineering side (stack, folder layout, API client, theming, mobile conventions, local dev). Module-specific screens have their own docs: `ui/finance-ui.md`, `ui/nutrition-ui.md` and `ui/tasks-ui.md`.
+1. **Docs describe what exists now.** When code changes, update the docs in the same change. Don't write changelog phrasing ("previously", "no longer", "was renamed", "now does"). Git history has the past. The one exception is the reasoning behind a decision, in a module's **Decisions** table: it says *why* things are the way they are, not what they used to be.
+2. **Everything not built goes in `roadmap.md`, and only there.** That covers future features, "revisit later" notes, cleanup steps (like the contract half of an expand/contract migration) and questions waiting on a decision. Other docs link to it rather than keeping their own lists. When an item is done, delete its line. When a question is decided, record the answer in the module's Decisions table and delete it from the roadmap.
+3. **No deploy status or branch names.** Everything on `main` is deployed (CI deploys every push), so "built but not deployed yet" notes go stale within a day.
+4. **Don't track what tools already track.** Don't write test counts, exhaustive test inventories, or lists of migration file names. Run the tests, look in `db/migrations/`, or read `db/schema.sql`. Say what a file *covers*, not what each test checks.
+5. **One home per fact.** If two docs need the same detail, keep it in one and link to it from the other.
+6. **`project_plans/` is frozen.** It records the reasoning before the build. Don't update it to match the code; current docs supersede it.

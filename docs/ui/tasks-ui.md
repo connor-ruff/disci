@@ -1,6 +1,6 @@
 # Tasks UI
 
-*Status: **implemented** (`web/src/modules/tasks/`): **Today** (the daily checklist, what's due, what's coming up and what to keep in mind), **All tasks** (every task by kind, where tasks are added, changed and removed), the **Kinds** guide to the four task types, the task sheet (view, then edit) and the Home card. What's still missing is in §8.*
+*Status: **implemented** (`web/src/modules/tasks/`): **Today** (the daily checklist, what's due, what's coming up and what to keep in mind), **All tasks** (every task by kind, where tasks are added, changed and removed), the **Kinds** guide to the four task types, the task sheet (view, then edit) and the Home card. What's not built yet is in [roadmap.md](../roadmap.md).*
 
 What the Tasks screens look like and how they behave. The data model is in [tasks.md](../db/tasks.md), the endpoints in [api-overview.md](../api/api-overview.md) §7.3, and the shell around these pages in [app-shell.md](app-shell.md). Engineering conventions (hooks, query keys, `Sheet`, `Field`, date helpers) are in [web-overview.md](web-overview.md).
 
@@ -177,6 +177,4 @@ Hooks live in `web/src/modules/tasks/api.ts`; query keys are in `tasksKeys` (`['
 
 ## 8. Not built yet
 
-- **Visualizations**: richer ways to see tasks and progress (streaks, history, calendars). The user will send inspiration.
-- **Reordering** tasks within a section (today: soonest due, then name).
-- **Checking off a past day** and a "what I did today" view: the API supports both (`{on}`, `GET /tasks/completions`), the UI doesn't yet.
+See [roadmap.md](../roadmap.md).

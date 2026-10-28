@@ -45,10 +45,7 @@ Which modules a user has turned on. Modules are opt-in so new users aren't overw
 - **First enable runs the module's setup** in the same transaction (e.g. finance copies the default budget categories into `finance.budget_categories`, and nutrition writes the default tracked nutrients into `nutrition.preferences`). Setup runs only when the row is first created, never on re-enable.
 - **Turning a module off hides it; it doesn't delete anything.** Its data is untouched and reappears when it's turned back on.
 - **API**: `GET /me/modules` lists modules with an `enabled` flag, `PUT /me/modules/{key}` enables (runs setup on first enable), `DELETE /me/modules/{key}` disables. The registry is `MODULES` in `api/app/modules/__init__.py`.
-- **v1 gating is UI-only**: disabled modules are hidden from navigation and the dashboard, but the API doesn't refuse their requests. This may be revisited so that MCP/Claude also respects it.
-
-### Likely future additions
-- **Report preferences** (morning/night report on or off, send time, channel). These could be columns here or a `core.user_settings` table once there are more than a few settings.
+- **Gating is UI-only**: disabled modules are hidden from navigation and the dashboard, but the API doesn't refuse their requests (so Claude can still use them).
 
 ---
 
