@@ -123,7 +123,7 @@ aws logs tail /aws/lambda/disci-mcp --since 1h --filter-pattern '{ $.logger = "d
   --profile connor-ruff-dev-acct --region us-east-2
 ```
 
-CloudWatch Logs Insights queries (pick the log groups in the console):
+Logs Insights queries. In the console: CloudWatch → Logs → **Log Analytics**, pick the log groups, then run (the CLI is `aws logs start-query`):
 
 ```
 # API errors (disci-api)
