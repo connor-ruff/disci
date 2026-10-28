@@ -1,10 +1,15 @@
 """AWS Lambda entry point: API Gateway (HTTP API, payload v2) → FastAPI, via Mangum."""
 
+import logging
+
 from mangum import Mangum
 
 from app.core.db import open_pool
 from app.core.settings import get_settings
 from app.main import app
+
+# Lambda's Python runtime defaults the root logger to WARNING; the request log is INFO.
+logging.getLogger().setLevel(logging.INFO)
 
 # Open the connection pool once per Lambda container, at cold start. Mangum runs the
 # app's lifespan (startup and shutdown) around every single invocation, which would

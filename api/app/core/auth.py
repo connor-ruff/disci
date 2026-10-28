@@ -30,7 +30,7 @@ def get_identity(
         sub = request.headers.get(DEV_USER_HEADER, DEV_DEFAULT_SUB)
         return Identity(sub=sub, email=f"{sub}@disci.local")
 
-    claims = _gateway_jwt_claims(request)
+    claims = gateway_jwt_claims(request)
     if claims is None or "sub" not in claims:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
     # The web app sends ID tokens. The MCP server forwards the access token Claude got
@@ -46,7 +46,7 @@ def get_identity(
     raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
 
 
-def _gateway_jwt_claims(request: Request) -> dict[str, str] | None:
+def gateway_jwt_claims(request: Request) -> dict[str, str] | None:
     """Claims from a Cognito token that API Gateway's JWT authorizer already verified
     (signature, expiry, issuer, and audience for ID tokens / client_id for access tokens)
     before invoking the Lambda.

@@ -20,8 +20,9 @@ from app.modules.finance.recurring import generate_for_user
 from app.modules.finance.routes._common import today_in
 from app.modules.finance.sql import queries
 
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+# Named, so its JSON lines carry `"logger": "app.jobs.recurring"` (alarms filter on it).
+logger = logging.getLogger("app.jobs.recurring")
+logging.getLogger().setLevel(logging.INFO)
 
 
 def run() -> dict[str, int]:
@@ -40,8 +41,17 @@ def run() -> dict[str, int]:
                         conn, user["user_id"], user["timezone"], today_in(user["timezone"])
                     )
             except Exception:
-                logger.exception("recurring generation failed for user %s", user["user_id"])
-    logger.info("recurring: %d users, %d transactions created", len(users), created)
+                logger.exception(
+                    "recurring generation failed for user %s",
+                    user["user_id"],
+                    extra={"user_id": str(user["user_id"])},
+                )
+    logger.info(
+        "recurring: %d users, %d transactions created",
+        len(users),
+        created,
+        extra={"users_processed": len(users), "transactions_created": created},
+    )
     return {"users": len(users), "created": created}
 
 

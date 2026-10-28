@@ -1,14 +1,22 @@
 import json
 import logging
+import time
+from contextvars import ContextVar
 
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 log = logging.getLogger("disci_mcp.requests")
 
+# This Lambda invocation's request ID (None off Lambda). Tools send it to the API, which
+# logs it as `caller_request_id`, so a tool call can be followed into the API's logs.
+request_id: ContextVar[str | None] = ContextVar("request_id", default=None)
+
 
 class RequestLog:
-    """Logs one line per HTTP request: method, path, status, JSON-RPC method, the caller's
-    Cognito sub (first 8 characters) and user-agent. Never logs tokens or bodies.
+    """Logs one line per HTTP request: method, path, status, duration, JSON-RPC method,
+    the caller's Cognito sub (first 8 characters) and user-agent. On Lambda (JSON log
+    format) these are separate keys next to Lambda's own `requestId`. Never logs tokens
+    or bodies. Also sets `request_id` for the tools.
 
     Pure ASGI rather than BaseHTTPMiddleware, so it can peek at the request body (for the
     JSON-RPC method) and still hand it on to the app untouched.
@@ -24,6 +32,9 @@ class RequestLog:
 
         body = bytearray()
         status = 0
+        start = time.perf_counter()
+        context = scope.get("aws.context")  # set by Mangum on Lambda
+        request_id.set(getattr(context, "aws_request_id", None))
 
         async def receive_and_keep() -> Message:
             message = await receive()
@@ -46,9 +57,19 @@ class RequestLog:
             headers = dict(scope.get("headers") or [])
             ua = headers.get(b"user-agent", b"-").decode(errors="replace")[:60]
             rpc = _rpc_method(bytes(body))
+            duration_ms = round((time.perf_counter() - start) * 1000)
             log.info(
                 "%s %s -> %s  rpc=%s  sub=%s  ua=%s",
                 scope["method"], scope["path"], status or "error", rpc, sub, ua,
+                extra={
+                    "method": scope["method"],
+                    "path": scope["path"],
+                    "status": status or 500,  # the app raised before responding
+                    "duration_ms": duration_ms,
+                    "rpc": rpc,
+                    "sub": sub,
+                    "ua": ua,
+                },
             )  # fmt: skip
 
 

@@ -89,7 +89,7 @@ API errors become tool errors: **403** → "Sign in to the Disci web app once fi
 
 `server.py`: `stateless_http=True` (Lambda), `json_response=True` (plain JSON, not SSE), DNS-rebinding protection off (§3), and server `instructions` telling Claude that amounts are dollar strings, dates are `YYYY-MM-DD` in the user's timezone, and that before changing anything it should tell the user what it's about to write (e.g. which budget item a purchase counts toward) unless they already said so.
 
-`create_app()` wraps the app in `RequestLog` (`request_log.py`, pure ASGI), so it runs locally and on Lambda. One INFO line per HTTP request on logger `disci_mcp.requests`, e.g. `POST /mcp -> 200  rpc=tools/call  sub=3f9a1c2e  ua=Claude-User`: method, path, status (`error` if the app raised before responding), JSON-RPC method(s) from the body (`-` if none, `response` for client responses, comma-joined for batches), first 8 chars of the verified token's Cognito `sub` (`-` if unauthenticated), user-agent (60 chars max). Never logs tokens or bodies. Purpose: tell MCP clients apart and catch odd status codes (like the 400 in §1).
+`create_app()` wraps the app in `RequestLog` (`request_log.py`, pure ASGI), so it runs locally and on Lambda. One INFO line per HTTP request on logger `disci_mcp.requests`, e.g. `POST /mcp -> 200  rpc=tools/call  sub=3f9a1c2e  ua=Claude-User`, carrying the fields `method`, `path`, `status` (`error` in the message and 500 in the field if the app raised before responding), `duration_ms`, `rpc` (JSON-RPC method(s) from the body: `-` if none, `response` for client responses, comma-joined for batches), `sub` (first 8 chars of the verified token's Cognito `sub`, `-` if unauthenticated) and `ua` (user-agent, 60 chars max). Never logs tokens or bodies. Purpose: tell MCP clients apart and catch odd status codes (like the 400 in §1). It also sets the `request_id` contextvar to the Lambda invocation's `aws_request_id` (from Mangum's `scope["aws.context"]`; `None` off Lambda), and `api.request()` sends it to the API as `X-Request-Id`, which the API logs as `caller_request_id`. Reading the logs and following a tool call into the API: [deployment.md §2.3](../ops/deployment.md).
 
 ### 4.3 Tools
 
@@ -148,7 +148,7 @@ The tests run against a routed `FakeApi` (`tests/conftest.py`), which returns ca
 
 | File | Covers |
 |---|---|
-| `test_server.py` | Repeated Lambda invocations on one warm handler (§4.4), the cognito-mode 401 and protected-resource metadata, dev auth refused in prod, the request log line. |
+| `test_server.py` | Repeated Lambda invocations on one warm handler (§4.4), the cognito-mode 401 and protected-resource metadata, dev auth refused in prod, the request log line and its fields, tools sending the Lambda request ID to the API. |
 | `test_api.py` | How API errors become tool errors (§4.2). |
 | `test_finance.py`, `test_nutrition.py`, `test_tasks.py` | Each module's tools: the API calls they make, merging updates with current values, per-item batch outcomes, and the shape of what they return. |
 
@@ -164,7 +164,7 @@ Once applied and deployed:
 2. In Claude: Customize > Connectors > Add custom connector > that URL > Advanced settings > "Use your own OAuth client" > client ID and secret (`tofu output mcp_client_id` / `tofu output -raw mcp_client_secret`, or the Secrets Manager secret).
 3. Sign in on the Cognito hosted page. The user must have **signed in to the Disci web app at least once** first, else tools answer "Sign in to the Disci web app once first".
 
-Logs: `/aws/lambda/disci-mcp` (14 days). Request lines only: `aws logs tail /aws/lambda/disci-mcp --since 1h --filter-pattern '"->"'` (Lambda's default log format omits the logger name, so filter on the arrow).
+Logs: `/aws/lambda/disci-mcp` (14 days); how to tail and query them is in [deployment.md §2.3](../ops/deployment.md).
 
 ---
 
