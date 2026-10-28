@@ -295,7 +295,6 @@ CREATE TABLE finance.recurring_transactions (
     starts_on date NOT NULL,
     ends_on date,
     auto_apply boolean DEFAULT false NOT NULL,
-    requires_approval boolean DEFAULT false NOT NULL,
     paused_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
@@ -1448,4 +1447,5 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('20261027150000'),
     ('20261027150100'),
     ('20261027200000'),
-    ('20261028120000');
+    ('20261028120000'),
+    ('20261028130000');

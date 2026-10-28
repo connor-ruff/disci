@@ -1,6 +1,6 @@
 # Finance Module (`finance` schema)
 
-*Status: **implemented**; every table and column below is built. Migrations: `db/migrations/*_finance__*.sql`. One column is retired and unused, awaiting a drop (`recurring_transactions.requires_approval`; see [roadmap.md](../roadmap.md)). See [db-overview.md](db-overview.md) for conventions (audit columns, soft deletes, RLS, money types) that apply to every table below. The API is in [api-overview.md](../api/api-overview.md) §7.1 and the screens in [finance-ui.md](../ui/finance-ui.md).*
+*Status: **implemented**; every table and column below is built. Migrations: `db/migrations/*_finance__*.sql`. See [db-overview.md](db-overview.md) for conventions (audit columns, soft deletes, RLS, money types) that apply to every table below. The API is in [api-overview.md](../api/api-overview.md) §7.1 and the screens in [finance-ui.md](../ui/finance-ui.md).*
 
 **Replaces:** EveryDollar (budget plus every logged expense) **and** the Google Sheet bills checklist.
 
@@ -196,7 +196,6 @@ A rule for money that moves on a schedule: subscriptions, rent, utilities, paych
 | `starts_on` | `date` | no | Earliest date for every frequency. **Quarterly and yearly repeat from it** (every 3 / 12 months on its day). Quarterly requires its day ≤ 28; yearly clamps Feb 29 to Feb 28 in other years. |
 | `ends_on` | `date` | yes | Optional, `>= starts_on`. For subscriptions that end, or loans paid off. |
 | `auto_apply` | `boolean` | no | Default `false`. **"Auto-apply"** (§4): count each occurrence toward the matching item in every budget covering its date. Off: each occurrence is pending and waits in the Inbox to be approved and placed. |
-| `requires_approval` | `boolean` | no | Default `false`. **Retired:** always `false` (`20261028120000_finance__fold_requires_approval.sql` folded it into `auto_apply`), and no code reads or writes it. To be dropped ([roadmap.md](../roadmap.md)). |
 | `paused_at` | `timestamptz` | yes | Paused rules generate nothing. The API exposes it as a `paused` boolean. |
 
 - Unique `(id, user_id)`: target of `transactions`' composite FK.
