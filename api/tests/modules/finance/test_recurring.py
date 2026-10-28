@@ -296,20 +296,10 @@ def test_rejected_occurrence_never_comes_back(client: TestClient, finance_on) ->
     assert (box["needs_you"], box["unassigned"]) == ([], [])
 
 
-def test_rules_from_before_the_inbox_keep_working(client: TestClient, finance_on) -> None:
-    """Data saved before the Inbox: requires_approval rules, and pending transactions that
-    already count toward an item (the migration gives each a "place" entry)."""
+def test_pending_transactions_from_before_the_inbox(client: TestClient, finance_on) -> None:
+    """A pending transaction that already counted toward an item before the Inbox existed
+    (the migration gave it a "place" entry) shows where it counts and resolves normally."""
     october = new_budget(client)
-    rule = make_rule(client, name="Electric", amount="90.00", day_of_month=5, auto_apply=True)
-    with psycopg.connect(OWNER_URL) as conn:
-        conn.execute(
-            "UPDATE finance.recurring_transactions SET requires_approval = true WHERE id = %s",
-            (rule["id"],),
-        )
-    listed = client.get("/finance/recurring", headers=ALICE).json()[0]
-    assert (listed["item_name"], listed["auto_apply"]) == ("Electric", False)
-
-    # A pending transaction with an allocation and its migrated "place" entry.
     item = add_item(client, october["id"], kind="expense", name="Electric", planned_amount="90")
     txn = client.post(
         "/finance/transactions",
@@ -333,19 +323,14 @@ def test_rules_from_before_the_inbox_keep_working(client: TestClient, finance_on
     (place,) = inbox(client)["needs_you"]
     assert [a["budget_item_id"] for a in place["allocations"]] == [item["id"]]
 
-    # The old approve endpoint still works and closes the entry.
     resp = client.post(
-        f"/finance/transactions/{txn['id']}/approve", json={"amount": "84.17"}, headers=ALICE
+        f"/finance/inbox/{place['id']}/resolve",
+        json={"budget_item_ids": [item["id"]], "amount": "84.17"},
+        headers=ALICE,
     )
     assert resp.json()["status"] == "confirmed"
     assert inbox(client)["needs_you"] == []
     assert item_named(budget(client, october["id"]), "Electric")["actual_amount"] == "84.17"
-
-    # Saving the rule retires requires_approval.
-    fields = ("kind", "name", "item_name", "amount", "frequency", "day_of_month", "starts_on")
-    body = {k: listed[k] for k in fields} | {"auto_apply": True}
-    client.put(f"/finance/recurring/{rule['id']}", json=body, headers=ALICE)
-    assert client.get("/finance/recurring", headers=ALICE).json()[0]["auto_apply"] is True
 
 
 def test_job_runs_for_every_user(client: TestClient, finance_on) -> None:

@@ -182,12 +182,6 @@ class AllocationsReplace(BaseModel):
     _check_allocations = field_validator("allocations")(_one_allocation_per_item)
 
 
-class ApproveIn(BaseModel):
-    amount: Money | None = Field(
-        default=None, gt=0, description="Corrected amount, if it differs from the rule's."
-    )
-
-
 class TransactionOut(BaseModel):
     id: UUID
     kind: Kind

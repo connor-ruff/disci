@@ -311,43 +311,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/finance/transactions/{transaction_id}/approve": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Approve Transaction */
-        post: operations["approve_transaction_finance_transactions__transaction_id__approve_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/finance/transactions/{transaction_id}/reject": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Reject Transaction
-         * @description Discards a pending transaction. Its rule won't generate that date again.
-         */
-        post: operations["reject_transaction_finance_transactions__transaction_id__reject_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/finance/budgets/{budget_id}/transactions": {
         parameters: {
             query?: never;
@@ -915,14 +878,6 @@ export interface components {
         AllocationsReplace: {
             /** Allocations */
             allocations: components["schemas"]["AllocationIn"][];
-        };
-        /** ApproveIn */
-        ApproveIn: {
-            /**
-             * Amount
-             * @description Corrected amount, if it differs from the rule's.
-             */
-            amount?: number | string | null;
         };
         /** BudgetCreate */
         BudgetCreate: {
@@ -3129,70 +3084,6 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["TransactionOut"];
                 };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    approve_transaction_finance_transactions__transaction_id__approve_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                transaction_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ApproveIn"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TransactionOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    reject_transaction_finance_transactions__transaction_id__reject_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                transaction_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
             /** @description Validation Error */
             422: {
