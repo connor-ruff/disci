@@ -12,7 +12,8 @@ docs/
 ├── research/                      # Point-in-time studies of options not built yet (dated, not kept up to date)
 │   ├── log-export-to-snowflake.md            # Goal, constraints and comparison of ways to get logs into Snowflake
 │   ├── log-export-option-a-firehose-s3.md    # Option A: Firehose → S3 → external table
-│   └── log-export-option-b-cloudwatch-s3-tables.md  # Option B: CloudWatch S3 Tables (Iceberg) → Snowflake catalog integration
+│   ├── log-export-option-b-cloudwatch-s3-tables.md  # Option B: CloudWatch S3 Tables (Iceberg) → Snowflake catalog integration
+│   └── user-activity-tracking.md             # Seeing how invited users use Disci (counts, activity) without reading their data
 ├── ops/
 │   ├── deployment.md              # Production on AWS: architecture, resources, logs, alarms, deploys, snapshots, DB access, security
 │   └── cost.md                    # Monthly cost, the free-tier ledger (what Disci uses of each allowance), checking spend, guardrails
