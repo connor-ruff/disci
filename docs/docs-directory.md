@@ -10,7 +10,8 @@ docs/
 │   ├── project-inspiration.md     # Why Disci exists: the old trackers, the vision, design principles
 │   └── disci-infrastructure.md    # Original infra & cost plan (as built: ops/deployment.md)
 ├── ops/
-│   └── deployment.md              # Production on AWS: architecture, resources, logs, deploys, snapshots, DB access, security, cost
+│   ├── deployment.md              # Production on AWS: architecture, resources, logs, alarms, deploys, snapshots, DB access, security
+│   └── cost.md                    # Monthly cost, the free-tier ledger (what Disci uses of each allowance), checking spend, guardrails
 ├── mcp/
 │   └── mcp-overview.md            # MCP server (Claude connector): Cognito auth, layout, settings, the tools, local dev, Lambda, connecting
 ├── api/
@@ -30,7 +31,7 @@ docs/
     └── tasks-ui.md                # Tasks screens
 ```
 
-**Where to start:** to change a module, read its `db/` doc, its section of `api/api-overview.md` §7 and its `ui/` doc. For anything about production, read `ops/deployment.md`. For what to build next, read `roadmap.md`.
+**Where to start:** to change a module, read its `db/` doc, its section of `api/api-overview.md` §7 and its `ui/` doc. For anything about production, read `ops/deployment.md`, and `ops/cost.md` before adding AWS resources. For what to build next, read `roadmap.md`.
 
 ---
 
@@ -44,3 +45,4 @@ These keep the docs accurate and stop them filling up with forgotten notes.
 4. **Don't track what tools already track.** Don't write test counts, exhaustive test inventories, or lists of migration file names. Run the tests, look in `db/migrations/`, or read `db/schema.sql`. Say what a file *covers*, not what each test checks.
 5. **One home per fact.** If two docs need the same detail, keep it in one and link to it from the other.
 6. **`project_plans/` is frozen.** It records the reasoning before the build. Don't update it to match the code; current docs supersede it.
+7. **Every AWS change is costed.** A change that adds an AWS resource (an alarm, a metric, a Lambda, a secret...) or noticeably more usage updates [ops/cost.md](ops/cost.md) in the same change: its §1 cost table if it costs money, and its free-tier ledger if it uses an allowance. The free tier is shared across the whole account, so check the ledger before adding.
