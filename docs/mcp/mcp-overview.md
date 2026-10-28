@@ -174,6 +174,7 @@ Logs: `/aws/lambda/disci-mcp` (14 days). Request lines only: `aws logs tail /aws
 - **Data access: forward the caller's access token to the API.** The server never touches the database, so RLS, validation and business rules stay in one place. The authorizer's audience includes the `disci-mcp` client, and the API accepts access tokens whose `client_id` is `DISCI_MCP_CLIENT_ID`.
 - **Users: identified by Cognito `sub`, with no change to the users table.** `core.users.cognito_sub` already existed. The lookup-only `core.find_user(sub)` ([db/shared.md](../db/shared.md)) maps a request to an existing user and never creates one.
 - **Tool surface: task-shaped tools** (§4.3), designed from how the user talks to Claude: log a purchase, check the budget, handle the Inbox, the monthly checklist, add a food from a label, log a meal, change a goal, "what's due today?", "I did my jaw exercises". Tasks tools only read tasks and log completions. Creating, editing and undoing tasks stays in the web app.
+- **Scheduled reports belong to the user's AI client, not Disci.** Disci serves data through the MCP tools and doesn't push morning or night summaries. A user who wants regular updates sets up a scheduled task in their own agent (Claude, Instinct AI) that reads these tools.
 
 **Limits to design within**
 

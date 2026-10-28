@@ -259,7 +259,7 @@ Until then the budget sees $0.
 
 ## 9. Follow-ups
 
-Infrastructure that isn't built yet (alarms, a custom domain, the report jobs and SES, Cognito login from `localhost`) is tracked in [roadmap.md](../roadmap.md). How the MCP server authenticates with Cognito (client, discovery, tokens, refresh) is in [mcp-overview.md](../mcp/mcp-overview.md) §1.
+Infrastructure that isn't built yet (alarms, a custom domain, Cognito login from `localhost`) is tracked in [roadmap.md](../roadmap.md). How the MCP server authenticates with Cognito (client, discovery, tokens, refresh) is in [mcp-overview.md](../mcp/mcp-overview.md) §1.
 
 ---
 
