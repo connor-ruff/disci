@@ -67,7 +67,8 @@ All infrastructure is **OpenTofu** in the IaC repo, root `aws_iac_mngr/controlle
 | `mcp.tf` | `disci-mcp` Lambda (outside the VPC, JSON log format), its role, log group, and the `ANY /mcp` and `GET /.well-known/{proxy+}` routes without the authorizer (§2.2) |
 | `frontend.tf` | Private S3 bucket + CloudFront (Origin Access Control, SPA fallback: 403/404 → `/index.html` with 200, managed security-headers policy, default certificate) |
 | `ci.tf` | `disci-github-deploy` role (GitHub OIDC; see §7) |
-| `budget.tf` | $25/mo AWS Budgets alert filtered on `project=disci` (see §8) |
+| `alarms.tf` | SNS topic `disci-alarms` (email to `admin_email`), the `disci-recurring-failures` log metric filter and four CloudWatch alarms (§2.4) |
+| `budget.tf` | $25/mo AWS Budgets alert filtered on `project=disci` (see [cost.md](cost.md) §5) |
 | `outputs.tf` | Deploy config published to SSM `/disci/prod/*` (non-secret); outputs incl. `eice_id`, `rds_endpoint`, `db_master_password` (sensitive) |
 
 The account-wide GitHub OIDC provider lives separately in `aws_iac_mngr/admin_resources/github_oidc/` and must be applied before the disci root.
@@ -136,6 +137,26 @@ filter logger = "app.jobs.recurring"
 # Exceptions (any group)
 filter ispresent(errorType)
 | fields @timestamp, @log, logger, errorType, errorMessage
+```
+
+### 2.4 Alarms
+
+Alarms publish to the SNS topic `disci-alarms`, which emails `admin_email`. The subscription stays pending until the link in AWS's confirmation email is clicked; until then nothing is delivered.
+
+| Alarm | Catches | Rule |
+|---|---|---|
+| `disci-jobs-crashed` | A `disci-jobs` run failing outright (DB unreachable, timeout, a bug outside the per-user loop) | `AWS/Lambda` `Errors` Sum > 0 per 1 h; missing data = not breaching |
+| `disci-jobs-user-failures` | Recurring generation failing for a user. The job catches it and carries on, so it never counts as a Lambda error. | `Disci/RecurringFailures` Sum > 0 per 1 h; missing data = not breaching. The metric comes from the log metric filter `disci-recurring-failures` on `/aws/lambda/disci-jobs`: `{ $.logger = "app.jobs.recurring" && $.level = "ERROR" }` |
+| `disci-jobs-not-running` | No `disci-jobs` invocation in 6 hours (schedule disabled or broken) | `AWS/Lambda` `Invocations` < 1 over 6 h; missing data = breaching. Also emails on return to OK. |
+| `disci-api-5xx` | A 5xx from the HTTP API (`$default` stage): an unhandled exception, crash or timeout in `disci-api` or `disci-mcp`, which both sit behind it | `AWS/ApiGateway` `5xx` Sum > 0 per 5 min; missing data = not breaching |
+
+Each alarm emails once when it enters ALARM. The ones that treat missing data as not breaching return to OK by themselves once the failures stop, so the next incident emails again. There are deliberately no others: a crash or timeout in `disci-api` or `disci-mcp` already shows as a gateway 5xx, 4xx responses are user errors, expired tokens and Claude's harmless MCP handshake 400, and `disci-migrator` runs only in deploys, where a failure fails CI.
+
+The alarm descriptions point to the log group to read; how to read it: §2.3. Test the email path by forcing a state (the alarm returns to its real state at the next evaluation):
+
+```bash
+aws cloudwatch set-alarm-state --alarm-name <name> --state-value ALARM --state-reason test \
+  --profile connor-ruff-dev-acct --region us-east-2
 ```
 
 ---
@@ -277,20 +298,13 @@ Web security headers come from CloudFront's managed `SecurityHeadersPolicy`. The
 
 ## 8. Cost
 
-Expected **~$14–15/mo**, nearly all RDS (db.t4g.micro ~$11.68 + 20 GB gp3 ~$2.30). Lambda, API Gateway, Cognito, S3/CloudFront, SSM standard parameters, the Instance Connect Endpoint and CloudWatch Logs (14-day retention) are at or near free at this scale. No NAT, no public IPs, no interface endpoints, no ECR. Detailed breakdown: [disci-infrastructure.md §5](../project_plans/disci-infrastructure.md).
-
-**Budget:** `disci-monthly`, $25/mo, emails `admin_email` at 80% actual and 100% forecast. It filters on the `project=disci` tag, which only works once the tag is **activated as a cost allocation tag**:
-
-1. Wait until AWS lists the tag (up to ~24h after the first apply).
-2. Billing and Cost Management → **Cost allocation tags** → find `project` under user-defined tags → **Activate**.
-
-Until then the budget sees $0.
+What Disci costs, the free-tier allowances it uses, how to check spend, and the budget: [cost.md](cost.md).
 
 ---
 
 ## 9. Follow-ups
 
-Infrastructure that isn't built yet (alarms, a custom domain, Cognito login from `localhost`) is tracked in [roadmap.md](../roadmap.md). How the MCP server authenticates with Cognito (client, discovery, tokens, refresh) is in [mcp-overview.md](../mcp/mcp-overview.md) §1.
+Infrastructure that isn't built yet (a custom domain, Cognito login from `localhost`) is tracked in [roadmap.md](../roadmap.md). How the MCP server authenticates with Cognito (client, discovery, tokens, refresh) is in [mcp-overview.md](../mcp/mcp-overview.md) §1.
 
 ---
 

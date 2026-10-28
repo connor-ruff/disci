@@ -13,7 +13,6 @@ Last reviewed: 2026-10-27.
 | Item | Notes |
 |---|---|
 | **Delete the RDS snapshot `disci-pre-inbox-2026-10-27`** | Once the Inbox rework has run in production for a while without problems. Command in [deployment.md](ops/deployment.md) §3. |
-| **Alarms** | No CloudWatch alarms exist. At least: errors on `disci-jobs` and `disci-mcp`, and `disci-jobs` `Invocations` < 1 (the job stopped running). A per-user recurring failure is caught inside the job and never raises a Lambda error, so it needs a metric filter on its error lines (`{ $.logger = "app.jobs.recurring" && $.level = "ERROR" }`); API 500s are returned as responses, so their signal is API Gateway's 5xx metric. Log fields: [deployment.md](ops/deployment.md) §2.3. |
 | **MCP: the mid-handshake HTTP 400** | Harmless. Claude sends `server/discover`, which mcp 1.30 doesn't know ([mcp-overview.md](mcp/mcp-overview.md) §1). Likely fixed by moving to mcp 2.x, which has breaking API changes, so it's a change of its own. |
 
 ## 2. Next: the rest of the original vision
