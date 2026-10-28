@@ -10,7 +10,7 @@ docs/
 │   ├── project-inspiration.md     # Why Disci exists: the old trackers, the vision, design principles
 │   └── disci-infrastructure.md    # Original infra & cost plan (as built: ops/deployment.md)
 ├── ops/
-│   └── deployment.md              # Production on AWS: architecture, resources, deploys, snapshots, DB access, security, cost
+│   └── deployment.md              # Production on AWS: architecture, resources, logs, deploys, snapshots, DB access, security, cost
 ├── mcp/
 │   └── mcp-overview.md            # MCP server (Claude connector): Cognito auth, layout, settings, the tools, local dev, Lambda, connecting
 ├── api/

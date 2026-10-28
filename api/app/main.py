@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.db import close_pool, open_pool
+from app.core.request_log import log_request
 from app.core.settings import get_settings
 from app.core.user_modules.router import router as user_modules_router
 from app.core.users.router import router as users_router
@@ -28,6 +29,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.middleware("http")(log_request)
 
     @app.get("/health", tags=["health"])
     def health() -> dict[str, str]:

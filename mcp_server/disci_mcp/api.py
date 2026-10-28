@@ -6,6 +6,7 @@ import httpx
 from mcp.server.fastmcp.exceptions import ToolError
 
 from disci_mcp.auth import caller_token
+from disci_mcp.request_log import request_id
 from disci_mcp.settings import get_settings
 
 # API Gateway gives up at 30 s; stay well inside it and Claude's own limits.
@@ -20,6 +21,7 @@ async def request(
     The API does all the work (RLS, validation); this server never touches the database.
     In cognito mode the caller's access token is forwarded as is, and API Gateway
     verifies it again. In dev mode the configured dev user is sent as X-Dev-User.
+    On Lambda, this invocation's request ID goes along as X-Request-Id for the API's log.
     """
     settings = get_settings()
     if settings.auth_mode == "dev":
@@ -29,6 +31,8 @@ async def request(
         if token is None:
             raise ToolError("Not authenticated")
         headers = {"Authorization": f"Bearer {token}"}
+    if rid := request_id.get():
+        headers["X-Request-Id"] = rid
 
     async with httpx.AsyncClient(base_url=settings.api_url, timeout=TIMEOUT) as client:
         resp = await client.request(method, path, params=params, json=body, headers=headers)

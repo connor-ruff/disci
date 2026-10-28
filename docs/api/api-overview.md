@@ -13,7 +13,7 @@ api/
 ├── pyproject.toml / uv.lock       # deps: fastapi, mangum, psycopg[binary], psycopg-pool, pydantic-settings
 │                                  # dev: uvicorn, pytest, httpx, ruff, boto3 (the Lambda runtime provides boto3)
 ├── app/
-│   ├── main.py                    # builds the app: CORS, /health, core routers, mounts each module at /<key>
+│   ├── main.py                    # builds the app: CORS, request log, /health, core routers, mounts each module at /<key>
 │   ├── lambda_handler.py          # Lambda entry point `handler` (Mangum wraps the app)
 │   ├── migrator.py                # migrator Lambda entry point (roles + dbmate; see §9)
 │   ├── jobs/                      # scheduled jobs, one file per job (see §9.1)
@@ -21,6 +21,7 @@ api/
 │   ├── core/                      # cross-module plumbing
 │   │   ├── settings.py            # Settings from DISCI_* env vars
 │   │   ├── auth.py                # request → Identity (sub, email; email None for MCP access tokens)
+│   │   ├── request_log.py         # log_request middleware: one log line per request (§4)
 │   │   ├── db.py                  # connection pool, per-request transaction (DbDep), sub → user
 │   │   ├── rds_iam.py             # IamAuthConnection: logs in with an RDS IAM token
 │   │   ├── sql.py                 # Queries: loads queries/<name>.sql
@@ -129,6 +130,8 @@ Endpoints that need the database take `db: DbDep` (`core/db.py`). For each reque
 The dependency uses `Depends(get_db, scope="function")`, so the commit happens **before** the response is sent: a client never sees success for a write that failed to commit.
 
 **Database role.** The API connects as a login role that is a member of `disci_app` and does not own any tables, so RLS applies. Locally that is `disci_api` with a password (created by `db/local/roles.sql`). In production it is `disci_api` with **no password** and the `rds_iam` role (created by `db/aws/roles.sql`); with `DISCI_DB_IAM_AUTH=true` the pool uses `IamAuthConnection` (`core/rds_iam.py`), which signs a fresh IAM token (valid 15 minutes) for each **new** connection, locally with the Lambda's role and no network call. Open connections stay valid. Never connect the API as the owner `disci`, which bypasses RLS.
+
+**Request log.** `create_app()` registers `log_request` (`core/request_log.py`) as HTTP middleware. It logs one INFO line per request on logger `app.requests`, e.g. `GET /me -> 200 (12 ms)`, with the fields `method`, `path`, `status` (500 if the app raised), `duration_ms`, `sub` (first 8 chars of the Cognito `sub` from the verified claims, via `auth.gateway_jwt_claims`; `None` in dev auth) and `caller_request_id` (the `X-Request-Id` header, which the MCP server sets to its Lambda request ID). Never logs tokens, query strings or bodies. `lambda_handler.py` sets the root logger to INFO, since Lambda's Python runtime defaults to WARNING. Reading the logs: [deployment.md §2.3](../ops/deployment.md).
 
 **Pool on Lambda.** The pool (`min_size=1`, `max_size=5`) is opened in the FastAPI lifespan, which Mangum runs on cold start (`lifespan="auto"`). Because Lambda freezes the process between invocations, the pool checks each connection is alive before handing it out.
 
@@ -309,6 +312,7 @@ Requires Docker (for Postgres) and **uv**.
 |---|---|
 | `tests/core/test_users.py`, `test_user_modules.py` | User creation on first sign-in, settings validation, per-user isolation, an email-less (MCP) identity getting 403 until a web sign-in creates the user, RLS with no `app.user_id` showing nothing, module enable/disable and first-enable setup, the prod dev-auth guard. |
 | `tests/core/test_aws.py` | The production-only code paths (below). |
+| `tests/core/test_request_log.py` | The request log line and its fields, including the caller's request ID. |
 | `tests/modules/finance/test_finance.py` | Budgets (periods, names, copying), categories and items (kinds, Uncategorized), transactions and allocations (netting, the per-budget cap, editing, deleting), cross-user isolation, display preferences. |
 | `tests/modules/finance/test_recurring.py` | Schedules and occurrence dates, rule validation, auto-apply and the Inbox (matching items, `pick_item` and `place` entries, the ledger, never creating items), pending transactions from before the Inbox, the hourly job, the checklist and its modes, reordering. |
 | `tests/modules/nutrition/test_nutrition.py` | Tracked nutrients, the food repo, day totals and unknown values, precision, log entries and quick adds, history paging, cross-user isolation, effective-dated goals. |
@@ -343,6 +347,6 @@ The deploy runs the migrator **before** updating the API, so migrations must be 
 1. Connects as the API's database login (`disci_api`, IAM auth when `DISCI_DB_IAM_AUTH=true`, so in production it signs its own token), not as the owner, so **RLS applies**.
 2. Calls `finance.users_with_recurring()`, a narrow `SECURITY DEFINER` function that returns only `(user_id, timezone)` for users with active rules (see [db-overview.md](../db/db-overview.md) §2).
 3. For each user, in **its own transaction**: sets `app.user_id`, then runs `generate_for_user` (`finance/recurring.py`) with today's date **in that user's timezone**. A failure for one user is logged and rolled back without blocking the others.
-4. Returns and logs `{users, created}`.
+4. Returns and logs `{users, created}` ([deployment.md §2.1](../ops/deployment.md)).
 
 Generation is idempotent (one transaction per rule per date, ever; see [finance.md](../db/finance.md) §4), so extra or retried runs are harmless. The API calls the same `generate_for_user` right after a rule is created or updated. Locally: `make jobs-recurring`.

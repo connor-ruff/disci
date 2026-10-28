@@ -26,7 +26,7 @@ Each module is a self-contained slice of the app and gets its **own Postgres sch
 | Tasks | `tasks` | `tasks`, `task_completions` | Implemented | [tasks.md](tasks.md) |
 | Nutrition | `nutrition` | `food_items`, `food_item_logs`, `macro_goals`, `preferences` | Implemented | [nutrition.md](nutrition.md) |
 
-**Module boundary rule:** the only foreign key that crosses a module boundary is `user_id → core.users.id`. Modules never reference each other's tables. Cross-module features (the morning and night reports, the "everything" dashboard) **read** from several modules through the API and don't need tables of their own.
+**Module boundary rule:** the only foreign key that crosses a module boundary is `user_id → core.users.id`. Modules never reference each other's tables. Cross-module features (like the "everything" dashboard) **read** from several modules through the API and don't need tables of their own.
 
 ```mermaid
 flowchart LR

@@ -13,7 +13,7 @@ Last reviewed: 2026-10-27.
 | Item | Notes |
 |---|---|
 | **Delete the RDS snapshot `disci-pre-inbox-2026-10-27`** | Once the Inbox rework has run in production for a while without problems. Command in [deployment.md](ops/deployment.md) §3. |
-| **Alarms** | No CloudWatch alarms exist. At least: errors on `disci-jobs` (a failed recurring run is silent today) and on `disci-mcp`. |
+| **Alarms** | No CloudWatch alarms exist. At least: errors on `disci-jobs` and `disci-mcp`, and `disci-jobs` `Invocations` < 1 (the job stopped running). A per-user recurring failure is caught inside the job and never raises a Lambda error, so it needs a metric filter on its error lines (`{ $.logger = "app.jobs.recurring" && $.level = "ERROR" }`); API 500s are returned as responses, so their signal is API Gateway's 5xx metric. Log fields: [deployment.md](ops/deployment.md) §2.3. |
 | **MCP: the mid-handshake HTTP 400** | Harmless. Claude sends `server/discover`, which mcp 1.30 doesn't know ([mcp-overview.md](mcp/mcp-overview.md) §1). Likely fixed by moving to mcp 2.x, which has breaking API changes, so it's a change of its own. |
 
 ## 2. Next: the rest of the original vision
@@ -22,9 +22,6 @@ From [project-inspiration.md](project_plans/project-inspiration.md) §3, these a
 
 | Item | Notes |
 |---|---|
-| **Morning and night reports** | Morning: what's due and coming up. Night: what got done today. Tasks can already be read from `GET /tasks` and `GET /tasks/completions`. **Open: delivery.** Email via SES (needs an SES identity, a report job on `disci-jobs` and a schedule) or a Claude scheduled task that reads Disci through the MCP server (no new infra, more conversational), or both. If report settings are needed (on/off, send time, channel), they could be columns on `core.users` or a `core.user_settings` table. |
-| **Moving off the old trackers** | Import the food repo and the task list from their Google Sheets. **Open:** are EveryDollar's past expenses wanted, and how far back? |
-| **Goals on the nutrition daily sheet** | Progress toward targets and warnings near limits. The Home card already shows them, and the API serves goals for any day (`GET /nutrition/goals?on=`). |
 | **Connector setup in Settings** | A Settings section showing each user the MCP URL, client ID and shared secret, plus the setup steps for Claude and for Instinct AI. Draft notes for the Instinct steps are in `docs/user_guides/` (not committed). |
 
 ## 3. Later: feature backlog
@@ -61,8 +58,6 @@ From [project-inspiration.md](project_plans/project-inspiration.md) §3, these a
 
 The questions above that need a decision, gathered here:
 
-1. How should reports be delivered: SES email, Claude scheduled tasks, or both? (§2)
-2. Import EveryDollar's past expenses, and if so, how far back? (§2)
-3. Should a resumed recurring rule skip the dates it missed while paused? (§3)
-4. Should the module menu have a fixed order or one the user can arrange? Today it uses the order the API returns.
-5. Is one summary card per module the right Home page?
+1. Should a resumed recurring rule skip the dates it missed while paused? (§3)
+2. Should the module menu have a fixed order or one the user can arrange? Today it uses the order the API returns.
+3. Is one summary card per module the right Home page?

@@ -61,10 +61,10 @@ All infrastructure is **OpenTofu** in the IaC repo, root `aws_iac_mngr/controlle
 | `network.tf` | Private-only VPC (10.42.0.0/16, 2 subnets, no IGW/NAT), security groups (Lambda → RDS :5432, EICE → RDS :5432), EC2 Instance Connect Endpoint |
 | `database.tf` | RDS Postgres 18, db.t4g.micro, 20 GB gp3, encrypted, IAM auth on, 7-day backups, deletion protection, final snapshot. Master password from `random_password` |
 | `auth.tf` | Cognito user pool (email usernames, **self-signup off: invite-only**, deletion protection), hosted login domain, public web client (code + PKCE, no secret; ID/access tokens 60 min, refresh 30 days), a second confidential client `disci-mcp` for the Claude connector (auth-code flow, scopes openid/email/profile, callback `https://claude.ai/api/mcp/auth_callback`, no password flows, access 60 min, refresh 30 days; outputs `mcp_client_id` / `mcp_client_secret`, secret kept in Secrets Manager as `disci-mcp-cognito-client-keys`; see [mcp-overview.md](../mcp/mcp-overview.md) §1), the admin user (`admin_email`) and one user per address in `invited_emails` |
-| `compute.tf` | `disci-api`, `disci-migrator` and `disci-jobs` Lambdas (arm64, Python 3.13, zip, 512 MB; 15 s / 300 s / 120 s timeouts), their IAM roles, 14-day log groups. Created with **placeholder code**; `ignore_changes = [filename, source_code_hash]` so app deploys never show as drift |
+| `compute.tf` | `disci-api`, `disci-migrator` and `disci-jobs` Lambdas (arm64, Python 3.13, zip, 512 MB; 15 s / 300 s / 120 s timeouts), their IAM roles, 14-day log groups, JSON log format (§2.3). Created with **placeholder code**; `ignore_changes = [filename, source_code_hash]` so app deploys never show as drift |
 | `schedules.tf` | EventBridge Scheduler: the hourly `disci-recurring-transactions` schedule targeting `disci-jobs`, and the `disci-scheduler` role it assumes (may only `lambda:InvokeFunction` on `disci-jobs`) |
 | `api.tf` | HTTP API, CORS for the web origin, Cognito JWT authorizer on `$default` (audience: web client and the `disci-mcp` client), open `GET /health`, throttle 10 rps / burst 20 |
-| `mcp.tf` | `disci-mcp` Lambda (outside the VPC), its role, log group, and the `ANY /mcp` and `GET /.well-known/{proxy+}` routes without the authorizer (§2.2) |
+| `mcp.tf` | `disci-mcp` Lambda (outside the VPC, JSON log format), its role, log group, and the `ANY /mcp` and `GET /.well-known/{proxy+}` routes without the authorizer (§2.2) |
 | `frontend.tf` | Private S3 bucket + CloudFront (Origin Access Control, SPA fallback: 403/404 → `/index.html` with 200, managed security-headers policy, default certificate) |
 | `ci.tf` | `disci-github-deploy` role (GitHub OIDC; see §7) |
 | `budget.tf` | $25/mo AWS Budgets alert filtered on `project=disci` (see §8) |
@@ -91,7 +91,7 @@ The account-wide GitHub OIDC provider lives separately in `aws_iac_mngr/admin_re
 | Trigger | EventBridge Scheduler schedule `disci-recurring-transactions`, `rate(1 hour)`, flexible time window off, **2 retries**. Hourly so each user's transactions appear soon after midnight in their own timezone. The job is idempotent, so retried or extra runs are harmless. |
 | IAM | Role `disci-jobs-lambda`: VPC access execution role plus `rds-db:connect` as **`disci_api`** (the same policy as the API). The scheduler's role `disci-scheduler` trusts `scheduler.amazonaws.com` (scoped to this account) and may only invoke `disci-jobs`. |
 | Database | Connects as `disci_api` with IAM auth (no password), so RLS applies. It finds users through the narrow `SECURITY DEFINER` function `finance.users_with_recurring()` and then works one user at a time with `app.user_id` set, one transaction per user (see [api-overview.md §9.1](../api/api-overview.md)). |
-| Logs | `/aws/lambda/disci-jobs`, 14 days. Each run logs how many users it processed and transactions it created. |
+| Logs | `/aws/lambda/disci-jobs`, 14 days. Each run logs how many users it processed and transactions it created (`users_processed`, `transactions_created`); a failed user logs an exception with `user_id`. Reading them: §2.3. |
 
 Run it by hand with `aws lambda invoke --function-name disci-jobs out.json`, or locally with `make jobs-recurring`.
 
@@ -103,9 +103,40 @@ Run it by hand with `aws lambda invoke --function-name disci-jobs out.json`, or 
 | Routes | On the existing HTTP API, **without the JWT authorizer**: `ANY /mcp` (the MCP endpoint) and `GET /.well-known/{proxy+}` (OAuth protected-resource metadata). The server must answer unauthenticated requests itself (401 + `WWW-Authenticate`) and verifies every token itself (JWKS, `iss`, `token_use=access`, `client_id` = `disci-mcp`). |
 | Data | Tools call the public API URL, forwarding the caller's access token. The authorizer's audience includes the `disci-mcp` client (for access tokens API Gateway matches `client_id`), and the API accepts that client's access tokens via `DISCI_MCP_CLIENT_ID` ([api-overview.md §3](../api/api-overview.md)). |
 | IAM | Role `disci-mcp-lambda`: `AWSLambdaBasicExecutionRole` only (logs). |
-| Logs | `/aws/lambda/disci-mcp`, 14 days. One line per HTTP request (method, path, status, JSON-RPC method, short `sub`, user-agent; no tokens or bodies): [mcp-overview.md §4.2](../mcp/mcp-overview.md). |
+| Logs | `/aws/lambda/disci-mcp`, 14 days. One line per HTTP request (method, path, status, duration, JSON-RPC method, short `sub`, user-agent; no tokens or bodies): [mcp-overview.md §4.2](../mcp/mcp-overview.md). Reading them: §2.3. |
 
 Connector URL: SSM `/disci/prod/mcp_url`. Server code, local dev and how to connect Claude: [mcp-overview.md](../mcp/mcp-overview.md).
+
+### 2.3 Logs
+
+All in **us-east-2**: log groups `/aws/lambda/disci-{api,jobs,mcp,migrator}`, 14 days. Every Lambda uses Lambda's **JSON log format**, so each line is one JSON object: `timestamp`, `level`, `message`, `logger`, `requestId` (the Lambda invocation), every `extra=` field from the code as its own key, and `errorType` / `errorMessage` / `stackTrace` for exceptions. Lambda's own START/REPORT lines are JSON too. The code sets the log level (INFO).
+
+The request lines and their fields: `app.requests` on `disci-api` ([api-overview.md §4](../api/api-overview.md)) and `disci_mcp.requests` on `disci-mcp` ([mcp-overview.md §4.2](../mcp/mcp-overview.md)). The recurring job's lines: §2.1.
+
+**Following a tool call into the API:** the MCP server sends its invocation's `requestId` to the API as `X-Request-Id`, which the API logs as `caller_request_id`. Take the `requestId` from the `disci_mcp.requests` line, then find the `disci-api` lines whose `caller_request_id` equals it.
+
+Tail one group, e.g. the MCP request lines:
+
+```bash
+aws logs tail /aws/lambda/disci-mcp --since 1h --filter-pattern '{ $.logger = "disci_mcp.requests" }' \
+  --profile connor-ruff-dev-acct --region us-east-2
+```
+
+CloudWatch Logs Insights queries (pick the log groups in the console):
+
+```
+# API errors (disci-api)
+filter logger = "app.requests" and status >= 500
+| fields @timestamp, method, path, status, duration_ms, sub
+
+# Recurring runs and failures (disci-jobs)
+filter logger = "app.jobs.recurring"
+| fields @timestamp, level, message, users_processed, transactions_created, user_id
+
+# Exceptions (any group)
+filter ispresent(errorType)
+| fields @timestamp, @log, logger, errorType, errorMessage
+```
 
 ---
 
@@ -259,7 +290,7 @@ Until then the budget sees $0.
 
 ## 9. Follow-ups
 
-Infrastructure that isn't built yet (alarms, a custom domain, the report jobs and SES, Cognito login from `localhost`) is tracked in [roadmap.md](../roadmap.md). How the MCP server authenticates with Cognito (client, discovery, tokens, refresh) is in [mcp-overview.md](../mcp/mcp-overview.md) §1.
+Infrastructure that isn't built yet (alarms, a custom domain, Cognito login from `localhost`) is tracked in [roadmap.md](../roadmap.md). How the MCP server authenticates with Cognito (client, discovery, tokens, refresh) is in [mcp-overview.md](../mcp/mcp-overview.md) §1.
 
 ---
 

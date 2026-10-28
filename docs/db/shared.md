@@ -16,7 +16,7 @@ One row per person who can sign in. Identity itself (passwords, OAuth) lives in 
 | `cognito_sub` | `text` | no | Unique. The Cognito user's `sub` claim, used to map a JWT to a user row. |
 | `email` | `text` | no | Unique (case-insensitive). Copied from Cognito for convenience and reports. |
 | `display_name` | `text` | yes | |
-| `timezone` | `text` | no | IANA name, e.g. `America/Chicago`. Default `'UTC'`. Decides which **day** a food log, task or transaction falls on, and when reports go out. |
+| `timezone` | `text` | no | IANA name, e.g. `America/Chicago`. Default `'UTC'`. Decides which **day** a food log, task or transaction falls on. |
 | `week_starts_on` | `smallint` | no | ISO day numbering: `1` = Monday ... `7` = Sunday, enforced by `CHECK (week_starts_on BETWEEN 1 AND 7)`. Default `1` (Monday). Used for weekly budgets and "this week" views. |
 | `created_at` / `updated_at` / `deleted_at` | `timestamptz` | | Standard audit columns. |
 
