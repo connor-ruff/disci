@@ -13,6 +13,7 @@ Expected **~$14.50/mo**.
 | Service | What Disci has | Cost |
 |---|---|---|
 | RDS | `disci` db.t4g.micro, 20 GB gp3, 7-day backups | ~$11.68 instance + ~$2.30 storage. Backups up to the database's size are free. |
+| RDS manual snapshots | Taken before risky migrations ([deployment.md](deployment.md) §3); never expire | Free while all backups and snapshots together fit in 20 GB (the provisioned storage); per GB-month beyond. Delete them once a deploy is confirmed good. |
 | Secrets Manager | 1 secret (`disci-mcp-cognito-client-keys`) | $0.40/secret/mo |
 | API Gateway (HTTP API) | 1 API (web app + MCP) | $1.00 per million requests; Disci makes a few thousand a month. No free tier (§2). |
 | Everything else | Lambda, CloudWatch, SNS, EventBridge Scheduler, CloudFront, S3, Cognito, SSM standard parameters, the Instance Connect Endpoint | $0 inside the free tier (§3), or free outright |

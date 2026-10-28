@@ -1,6 +1,6 @@
 # Deployment & Operations
 
-*Status: **live in production** since Oct 25, 2026 (first deploy). This is the source of truth for what was actually built on AWS and how to operate it. The original plan, [disci-infrastructure.md](../project_plans/disci-infrastructure.md), explains the reasoning and costs but differs in places (see §10). The MCP server (`disci-mcp`, §2.2) has been live since 2026-10-26.*
+*The source of truth for what runs on AWS and how to operate it. The original plan, [disci-infrastructure.md](../project_plans/disci-infrastructure.md), explains the reasoning but differs in places (see §10). What it costs: [cost.md](cost.md).*
 
 | | URL |
 |---|---|
@@ -208,7 +208,7 @@ aws rds describe-db-snapshots --db-snapshot-identifier disci-pre-<change>-<yyyy-
   --profile connor-ruff-dev-acct --region us-east-2 --query 'DBSnapshots[0].Status'
 ```
 
-- Manual snapshots are **not managed by OpenTofu** (not in state, never drift) and **don't expire**: delete them once the deploy is confirmed good (`aws rds delete-db-snapshot`, or the RDS console). A few cents a month each while kept.
+- Manual snapshots are **not managed by OpenTofu** (not in state, never drift) and **don't expire**: delete them once the deploy is confirmed good (`aws rds delete-db-snapshot`, or the RDS console). What they cost while kept: [cost.md](cost.md) §1.
 - Restoring means creating a new instance from the snapshot (`restore-db-instance-from-db-snapshot`) and pointing the stack at it, so treat it as a last resort; fixing forward is usually simpler.
 
 ---
@@ -227,7 +227,7 @@ tofu apply tfplan
 - Lambda **code** never shows as drift (ignored), but Lambda **configuration** (env vars, memory, timeout) is owned by tofu. A new `DISCI_*` setting the API needs must be added in `compute.tf` and applied **before** the code that requires it is deployed.
 - New deploy config for the script goes in `outputs.tf`'s `deploy_config` map (→ SSM). Nothing secret goes in SSM.
 - If the deploy script needs a new AWS permission, add it to `ci.tf` (the deploy role is deliberately code-only).
-- **Apply before deploy when the deploy script needs new infrastructure.** Example: the recurring-transactions change added `disci-jobs`, its schedule and the `lambda_jobs_name` SSM parameter. `deploy.sh` reads that parameter and updates `disci-jobs`, so the first deploy containing it fails at "Reading deploy config" until `tofu apply` has created them (and added `disci-jobs` to the deploy role in `ci.tf`). Apply first, then push or deploy. **The MCP change is the same** (2026-10-26): `deploy.sh` now reads `lambda_mcp_name` and updates `disci-mcp`, so `tofu apply` (creating `mcp.tf`, the new SSM parameters, the deploy-role permission, the authorizer audience and `DISCI_MCP_CLIENT_ID`) must run before the next deploy.
+- **Apply before deploy when the deploy script needs new infrastructure.** Example: the recurring-transactions change added `disci-jobs`, its schedule and the `lambda_jobs_name` SSM parameter. `deploy.sh` reads that parameter and updates `disci-jobs`, so the first deploy containing it fails at "Reading deploy config" until `tofu apply` has created them (and added `disci-jobs` to the deploy role in `ci.tf`). Apply first, then push or deploy.
 
 ### Cognito users
 
