@@ -48,7 +48,7 @@ Nothing inside the VPC needs the internet, which is why there is no NAT (~$33/mo
 
 `disci-mcp` sits **outside** the VPC because it needs the internet (Cognito JWKS, the public API URL); it never touches the database.
 
-Not built yet: the report jobs, SES report emails, a custom domain (see §9). The first scheduled job, hourly recurring-transaction generation, is built (§2.1). The MCP server is live (§2.2).
+Scheduled jobs: hourly recurring-transaction generation (§2.1). MCP server: §2.2. What isn't built yet: [roadmap.md](../roadmap.md).
 
 ---
 
@@ -60,7 +60,7 @@ All infrastructure is **OpenTofu** in the IaC repo, root `aws_iac_mngr/controlle
 |---|---|
 | `network.tf` | Private-only VPC (10.42.0.0/16, 2 subnets, no IGW/NAT), security groups (Lambda → RDS :5432, EICE → RDS :5432), EC2 Instance Connect Endpoint |
 | `database.tf` | RDS Postgres 18, db.t4g.micro, 20 GB gp3, encrypted, IAM auth on, 7-day backups, deletion protection, final snapshot. Master password from `random_password` |
-| `auth.tf` | Cognito user pool (email usernames, **self-signup off: invite-only**, deletion protection), hosted login domain, public web client (code + PKCE, no secret; ID/access tokens 60 min, refresh 30 days), a second confidential client `disci-mcp` for the Claude connector (auth-code flow, scopes openid/email/profile, callback `https://claude.ai/api/mcp/auth_callback`, no password flows, access 60 min, refresh 30 days; outputs `mcp_client_id` / `mcp_client_secret`, secret kept in Secrets Manager as `disci-mcp-cognito-client-keys`; see §9), the admin user (`admin_email`) and one user per address in `invited_emails` |
+| `auth.tf` | Cognito user pool (email usernames, **self-signup off: invite-only**, deletion protection), hosted login domain, public web client (code + PKCE, no secret; ID/access tokens 60 min, refresh 30 days), a second confidential client `disci-mcp` for the Claude connector (auth-code flow, scopes openid/email/profile, callback `https://claude.ai/api/mcp/auth_callback`, no password flows, access 60 min, refresh 30 days; outputs `mcp_client_id` / `mcp_client_secret`, secret kept in Secrets Manager as `disci-mcp-cognito-client-keys`; see [mcp-overview.md](../mcp/mcp-overview.md) §1), the admin user (`admin_email`) and one user per address in `invited_emails` |
 | `compute.tf` | `disci-api`, `disci-migrator` and `disci-jobs` Lambdas (arm64, Python 3.13, zip, 512 MB; 15 s / 300 s / 120 s timeouts), their IAM roles, 14-day log groups. Created with **placeholder code**; `ignore_changes = [filename, source_code_hash]` so app deploys never show as drift |
 | `schedules.tf` | EventBridge Scheduler: the hourly `disci-recurring-transactions` schedule targeting `disci-jobs`, and the `disci-scheduler` role it assumes (may only `lambda:InvokeFunction` on `disci-jobs`) |
 | `api.tf` | HTTP API, CORS for the web origin, Cognito JWT authorizer on `$default` (audience: web client and the `disci-mcp` client), open `GET /health`, throttle 10 rps / burst 20 |
@@ -158,7 +158,6 @@ aws rds describe-db-snapshots --db-snapshot-identifier disci-pre-<change>-<yyyy-
 
 - Manual snapshots are **not managed by OpenTofu** (not in state, never drift) and **don't expire**: delete them once the deploy is confirmed good (`aws rds delete-db-snapshot`, or the RDS console). A few cents a month each while kept.
 - Restoring means creating a new instance from the snapshot (`restore-db-instance-from-db-snapshot`) and pointing the stack at it, so treat it as a last resort; fixing forward is usually simpler.
-- Taken so far: `disci-pre-inbox-2026-10-27` (before the Finance Inbox migration).
 
 ---
 
@@ -258,18 +257,9 @@ Until then the budget sees $0.
 
 ---
 
-## 9. Known follow-ups
+## 9. Follow-ups
 
-- **MCP server: live since 2026-10-26, verified end to end from Claude.** Cognito kept (verified 2026-10-25 with a throwaway connector test). Infrastructure in §2.2; code, local dev, connecting and the checklist in [mcp/mcp-overview.md](../mcp/mcp-overview.md). Next: more tools (see the checklist there).
-  - **Client.** The `disci-mcp` Cognito client (§2) is separate from `disci-web`, which is unchanged. Cognito has no dynamic client registration, so each user adds the connector in Claude via Customize > Connectors > Add custom connector (server URL = `mcp_url`), then Advanced settings > "Use your own OAuth client" and pastes the shared client ID and secret. They still sign in on Cognito's hosted login as themselves, so the token carries their own `sub`. Planned: a Disci settings page showing these instructions (URL, client ID/secret). The shared secret is acceptable for a small invite-only group; Anthropic-held credentials (directory listing) or a DCR provider would remove the paste step later.
-  - **Discovery.** Claude accepted Cognito's OIDC discovery doc (`https://cognito-idp.<region>.amazonaws.com/<pool>/.well-known/openid-configuration`) even though it has no `registration_endpoint` or `code_challenge_methods_supported` (the oauth-authorization-server path returns 400). The MCP server answers unauthenticated calls with `401` and `WWW-Authenticate: Bearer resource_metadata="<url>"`, and serves RFC 9728 protected-resource metadata: `resource` equal to the MCP URL exactly, first `authorization_servers` entry the issuer `https://cognito-idp.us-east-2.amazonaws.com/<pool id>`, and `scopes_supported` (Claude requests only what is advertised).
-  - **Tokens.** The access token has `sub`, `username` (= sub), `client_id`, `scope`, `token_use=access`, `iss`, `iat`, `exp`, `jti`; **no `email` and no `aud`**. Handled by keying on `sub`: the authorizer matches `client_id` against its audience list (web + `disci-mcp`), the API accepts access tokens from `DISCI_MCP_CLIENT_ID` and looks the user up with `core.find_user(sub)` (lookup only; a user must sign in to the web app once first, else 403).
-  - **Refresh.** Verified: with a 5-minute access token Claude silently got a new token (new `jti`). Users sign in once per connection and re-login only when the 30-day refresh token lapses or they remove the connector.
-  - **Hosting.** A separate Lambda with routes on the existing HTTP API, **outside the VPC** (the VPC has no NAT, so a VPC Lambda cannot call the public API URL; outside it forwards the user's token to the API at no extra cost), plus the unauthenticated `/.well-known/{proxy+}` route. HTTP API limits: 30 s timeout, no response streaming (fine for stateless tools; Claude allows 240 s per tool call and ~150k chars per result). Claude's source IPs are `160.79.104.0/21` if allow-listing is needed. Docs: https://claude.com/docs/connectors/building/authentication.md
-  - **Still open:** the settings page, more tools (food logging, expense entry), alarms.
-- **Custom domain.** The app uses the default `*.cloudfront.net` and `execute-api` hostnames. A domain needs Route 53, an ACM certificate in **us-east-1** for CloudFront (plus an us-east-2 cert for an API custom domain), and updated Cognito callback/logout URLs and CORS origins.
-- **Not built yet:** the report jobs (they'll be more handlers on `disci-jobs` or more schedules in `schedules.tf`) and SES report emails. Report delivery is still an open question.
-- Cognito login from `localhost` (would need `http://localhost:5173` callback URLs on the client, or a second client).
+Infrastructure that isn't built yet (alarms, a custom domain, the report jobs and SES, Cognito login from `localhost`) is tracked in [roadmap.md](../roadmap.md). How the MCP server authenticates with Cognito (client, discovery, tokens, refresh) is in [mcp-overview.md](../mcp/mcp-overview.md) §1.
 
 ---
 

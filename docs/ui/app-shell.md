@@ -10,7 +10,7 @@ The **shell** is the frame around every page: the top bar, the module menu, and 
 
 - **Modules are opt-in.** A new user starts with nothing enabled and turns on only the modules they want. The app should never feel like a wall of features.
 - **Navigation is built from the enabled modules.** The shell never hard-codes "Finance". It renders whatever modules are registered *and* turned on for the user.
-- **Phone-first.** The app will mostly be used on phones (see [ui-overview.md](ui-overview.md)), so the layout is designed for a phone browser first and widens gracefully (mobile app comes later).
+- **Phone-first.** The app will mostly be used on phones (see [ui-overview.md](ui-overview.md)), so the layout is designed for a phone browser first and widens gracefully.
 
 ---
 
@@ -92,6 +92,4 @@ The shell shows registry entries the current user has enabled (from `GET /me/mod
 
 ## 5. Open questions
 
-1. **Module order** in the menu: fixed, or user-arrangeable? (Today: the order the API returns.)
-2. **Home cards**: is one summary card per module the right home page, or should Home be something else?
-3. ~~**Visual style**~~ **Resolved:** the brand palette in [ui-overview.md](ui-overview.md) (ink `#002421`, teal `#00998E`, mist `#CCFFFC`), in a mostly white, calm, light-only theme. How it maps to UI tokens is in [web-overview.md](web-overview.md).
+Module order in the menu, and what Home should be, are in [roadmap.md](../roadmap.md).

@@ -70,8 +70,9 @@ web/
         │   ├── api.ts             # TanStack Query hooks + financeKeys
         │   ├── pages/             # BudgetsPage, NewBudgetPage, BudgetPage, CategoriesPage,
         │   │                      # ChecklistPage, RecurringPage, InboxPage
-        │   └── components/        # FinanceHomeCard, ActiveBadge, ItemSheet, TransactionSheet,
-        │                          # RecurringSheet, ReorderToggle, FinanceSettings
+        │   └── components/        # FinanceHomeCard, ActiveBadge, BudgetKpis, ItemSheet, TransactionSheet,
+        │                          # TransactionDetailSheet, TransactionList, RecurringSheet,
+        │                          # RecurringGuide, ReorderToggle, FinanceSettings
         ├── nutrition/
         │   ├── index.ts           # ModuleManifest (sub-nav: Daily, History, Food repo, Goals; SettingsPanel)
         │   ├── routes.tsx         # route tree under /nutrition
@@ -173,7 +174,7 @@ The app will mostly be used on phones, so:
 
 ## 7. Home-screen app (PWA-lite)
 
-Disci can be saved to a phone's home screen (Share → Add to Home Screen on iOS) and then launches full-screen with its own icon, like an app. There is **no service worker and no offline support**; that is intentional for now, so every launch loads the latest deploy from the network.
+Disci can be saved to a phone's home screen (Share → Add to Home Screen on iOS) and then launches full-screen with its own icon, like an app. There is **no service worker and no offline support**, on purpose: every launch loads the latest deploy from the network.
 
 **Files.**
 - `web/public/manifest.json`: `name`/`short_name` "Disci", `display: standalone`, `start_url` `/`, background and theme color `#f8faf9`, and the 192 and 512 px PNG icons with `purpose: "any maskable"`.

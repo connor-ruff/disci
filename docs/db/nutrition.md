@@ -1,6 +1,6 @@
 # Nutrition Module (`nutrition` schema)
 
-*Status: **implemented** in `db/migrations/20261025190000_nutrition__init.sql` (`food_items`, `food_item_logs`, `macro_goals`, `preferences`), with food values widened to 6 decimal places in `db/migrations/20261026001500_nutrition__more_precision.sql` and quick adds (log entries with their own name and nutrients) added in `db/migrations/20261027150100_nutrition__quick_add_logs.sql`. Every table and column below is built. See [db-overview.md](db-overview.md) for conventions (audit columns, soft deletes, RLS) that apply to every table below. The API is in [api-overview.md](../api/api-overview.md) §7.2 and the screens in [nutrition-ui.md](../ui/nutrition-ui.md).*
+*Status: **implemented**; every table and column below is built. Migrations: `db/migrations/*_nutrition__*.sql`. See [db-overview.md](db-overview.md) for conventions (audit columns, soft deletes, RLS) that apply to every table below. The API is in [api-overview.md](../api/api-overview.md) §7.2 and the screens in [nutrition-ui.md](../ui/nutrition-ui.md).*
 
 **Replaces:** the Google Sheet food repo plus its daily log tab.
 
@@ -151,7 +151,7 @@ One row per user: which nutrients they track.
 | **Changing a goal's amount** | If it **started today**: updated in place. Otherwise the old row gets `ends_on` = yesterday and a **new row** (new id) starts today with the new amount, so earlier days keep the old amount. Only active goals (`ends_on` NULL) can be changed; nutrient and kind can't. |
 | **Removing a goal** | Soft-delete if it started today, else end it yesterday (§3.2). |
 
-Goals aren't compared with day totals anywhere yet (see §6).
+Goals are compared with day totals only on the Home card and in the MCP server's `get_food_day`, not on the daily sheet ([roadmap.md](../roadmap.md)).
 
 ---
 
@@ -171,13 +171,6 @@ Goals aren't compared with day totals anywhere yet (see §6).
 | Goals over time | **Effective-dated** (`starts_on` / `ends_on`). Changes start today; past days keep the goals they had. |
 | Do goals vary by day (training vs. rest)? | **No, not in v1.** |
 
-## 6. Open questions
+## 6. Not built yet
 
-1. **Goals vs. the day:** goals aren't shown on the daily sheet yet. The plan is a later dashboard combining them with day totals (progress toward targets, warnings near limits).
-2. **Meals:** group entries into breakfast / lunch / dinner / snack? Dropped for v1; would be a nullable `meal` column on `food_item_logs`.
-3. **Recipes or saved meals** ("my usual breakfast" = several foods logged at once): a future `recipes` + `recipe_items` pair.
-4. **Versioning foods**, if recalculating history on edit turns out to be wrong (§5).
-5. **Day-dependent goals** (training vs. rest days) would need a day-type dimension on `macro_goals`.
-6. **Other logs:** body weight, water intake.
-7. **Importing the food repo** from the Google Sheet. (~~Claude/MCP logging~~: built. `log_foods` logs repo foods by id or quick adds by name + nutrients; see [mcp-overview.md](../mcp/mcp-overview.md).)
-8. **Turning a quick add into a repo food** ("save this to my repo") isn't built; for now, create the food and log it instead.
+See [roadmap.md](../roadmap.md).

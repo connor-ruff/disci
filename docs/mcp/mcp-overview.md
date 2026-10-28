@@ -1,47 +1,45 @@
 # MCP Server
 
-*Status (as of 2026-10-27): **live and verified end to end, with 17 finance and nutrition tools; 2 tasks tools are built (19 in all) but not yet deployed.** The server lives in `mcp_server/` (§4). The first deploy (PR #2) shipped one read-only tool, `get_budget_summary`; the server now has 17 tools (9 finance, 8 nutrition, §4.3), deployed (PR #4) and verified from Claude against production data on 2026-10-26. Two tasks tools (`get_tasks`, `log_task_completion`) were added on `tasks/module-v1` and are not deployed yet, bringing the count to 19 (9 finance, 8 nutrition, 2 tasks). Quick adds in `log_foods`, `get_food_day` and `update_food_log` (log entries not saved to the food repo) were added on the same branch and are not deployed yet either; the tool count is unchanged. Also on that branch and not yet deployed: the Finance Inbox rework replaced `approve_transactions` / `reject_transactions` with `resolve_inbox_entries` / `dismiss_inbox_entries`, reshaped `get_transaction_inbox`, and added `done_when` to `get_monthly_checklist` (count unchanged). The deployed server still calls the old `/finance/transactions/{id}/approve` and `/reject` endpoints, which keep working; its `get_transaction_inbox` reads the old `pending` field, so it breaks once the new API is deployed until the MCP server is deployed alongside it (the deploy ships both). Its infrastructure (`aws_iac_mngr`, `controlled_resources/disci/mcp.tf`: the `disci-mcp` Lambda and its routes, plus authorizer/API changes) is applied and the code deployed (PR #2). On 2026-10-26 the custom connector logged in through Cognito, listed the tools and called `get_budget_summary` against production data. Cognito is kept as the auth provider: a throwaway test on 2026-10-25 proved Claude's custom connector can authenticate against Cognito with a pre-registered client, per-user identity works, and silent token refresh works. Already live: the `disci-mcp` Cognito client (`controlled_resources/disci/auth.tf`) and its Secrets Manager secret `disci-mcp-cognito-client-keys` (`controlled_resources/general/secrets_manager`). The auth detail (client, discovery, tokens) lives in [deployment.md §9](../ops/deployment.md#9-known-follow-ups) and is not repeated here.*
+*Status: **live** since 2026-10-26, with 19 tools (9 finance, 8 nutrition, 2 tasks; §4.3). The server lives in `mcp_server/` and deploys with every push to `main`, alongside the API and web app ([deployment.md](../ops/deployment.md) §3). Infrastructure: [deployment.md](../ops/deployment.md) §2.2.*
 
-This doc exists so a fresh session can pick up the MCP server without re-deriving anything: what the auth test proved, how to repeat it, SDK notes, how the server is built and run, how to connect Claude to it, what is decided and what is still open, and the historical stub source (appendix).
-
----
-
-## 1. What the test showed
-
-Details of the client, discovery and tokens are in [deployment.md §9](../ops/deployment.md#9-known-follow-ups).
-
-- Login via the Cognito hosted page works with "Use your own OAuth client" and the client ID + secret.
-- Claude accepted Cognito's OIDC discovery doc despite no `registration_endpoint` and no `code_challenge_methods_supported`.
-- Claude lists tools, resources and prompts right after connecting (UA `Claude-User`; requests were also seen from `python-httpx`).
-- The access token has `sub` but no `email` and no `aud`.
-- With a 5-minute access token, Claude refreshed silently (new `jti`, no 401, no re-login).
-- One request returned HTTP 400 mid-handshake (followed by successful retries). Explained on 2026-10-26: see (g) in §6.
+The MCP server lets Claude (and other MCP clients, such as Instinct AI) read and change a user's Disci data. This doc covers how it authenticates with Cognito, how it's built and run, how to connect Claude, and the decisions behind it. What's not built yet is in [roadmap.md](../roadmap.md).
 
 ---
 
-## 2. How the test was run (to repeat it)
+## 1. Auth with Cognito
 
-1. Run the throwaway stub (source in the appendix) locally on `127.0.0.1:8765`. Env: `PUBLIC_URL`, `COGNITO_CLIENT_ID`.
-2. Expose it with `cloudflared tunnel --url http://127.0.0.1:8765` (quick tunnel, no account). The URL changes each run, and `PUBLIC_URL` must equal the tunnel URL: the protected-resource metadata `resource` must match the URL the user enters in Claude exactly, including `/mcp`.
-3. In Claude: Customize > Connectors > Add custom connector > URL `<tunnel>/mcp` > Advanced settings > "Use your own OAuth client" > client ID and secret. Get them from `tofu output mcp_client_id` and `tofu output -raw mcp_client_secret` in `aws_iac_mngr/controlled_resources/disci`, or from the Secrets Manager secret.
-4. The server log (token `iat`/`exp`/`jti` per request) is how to confirm refresh.
-5. To test refresh: temporarily set `access_token_validity = 5` (minutes; Cognito's minimum) on the `disci-mcp` client in `auth.tf`, apply, reconnect the connector (existing tokens keep their old lifetime), call a tool, wait more than 5 minutes, call again. Then restore to 60 and apply.
-6. Afterwards, stop the tunnel and remove the test connector.
+Cognito is the OAuth provider. A throwaway connector test on 2026-10-25 showed that Claude's custom connector works with it (§2), and production has run this way since.
+
+- **Client.** A separate Cognito app client, `disci-mcp` (`controlled_resources/disci/auth.tf` in `aws_iac_mngr`), with its secret in Secrets Manager (`disci-mcp-cognito-client-keys`). Claude's callback `https://claude.ai/api/mcp/auth_callback` is registered on it. Cognito has no dynamic client registration, so each user pastes the shared client ID and secret into Claude (§5) and then signs in on Cognito's hosted login **as themselves**, so the token carries their own `sub`. A shared secret is acceptable for a small invite-only group.
+- **Discovery.** Claude accepts Cognito's OIDC discovery doc (`https://cognito-idp.us-east-2.amazonaws.com/us-east-2_fNVWgEaJ5/.well-known/openid-configuration`; the pool id isn't a secret), even though it has no `registration_endpoint` or `code_challenge_methods_supported`. The oauth-authorization-server path returns 400 and isn't needed. The server answers unauthenticated calls with **401** and `WWW-Authenticate: Bearer resource_metadata="<url>"`, and serves RFC 9728 protected-resource metadata at `/.well-known/oauth-protected-resource/mcp`: `resource` equal to the MCP URL exactly, the issuer as the first `authorization_servers` entry, and `scopes_supported` (Claude requests only what's advertised).
+- **Tokens.** The access token has `sub`, `username` (= sub), `client_id`, `scope`, `token_use=access`, `iss`, `iat`, `exp` and `jti`, but **no `email` and no `aud`**. So everything keys on `sub`: the server checks `client_id`, API Gateway's authorizer matches `client_id` against its audience list (web + `disci-mcp`), and the API looks the user up with `core.find_user(sub)`. That lookup never creates a user, so a user must sign in to the web app once first, else **403**.
+- **Refresh.** Silent. With a 5-minute access token Claude got a new one (new `jti`) with no 401 and no re-login. Users sign in once per connection and again only when the 30-day refresh token lapses or they remove the connector.
+- **The mid-handshake 400.** Claude (`ua=Claude-User`) opens with a `server/discover` request, which mcp 1.30 doesn't know (its latest protocol version is 2025-11-25). The SDK fails to validate the message and answers HTTP 400 instead of a JSON-RPC "method not found" error. Claude then carries on normally. Instinct AI (`ua=python-requests`) does the standard `initialize` → `notifications/initialized` → `tools/call` and never sees it. Harmless; the fix is on the [roadmap](../roadmap.md).
 
 ---
 
-## 3. SDK and implementation notes (from the stub; the real server follows them)
+## 2. Repeating the auth test
 
-- Official Python MCP SDK. `mcp` 2.x renamed FastMCP to `MCPServer` and changed APIs, so the stub pinned `mcp>=1.12,<2` (1.30.0 was used; `mcp_server/` pins `mcp>=1.30,<2`) and imports `from mcp.server.fastmcp import FastMCP`.
+Worth doing after changing the Cognito client or upgrading the SDK. The 2026-10-25 test used a throwaway stub server. Its source was removed from this doc, and is in git history (`git show 93d89a6:docs/mcp/mcp-overview.md`, appendix). The real server in cognito mode (§4.1) should serve the same purpose, but hasn't been used for this yet.
+
+1. Run the server locally on `127.0.0.1:8765` in cognito mode: `cd mcp_server && uv run uvicorn disci_mcp.server:create_app --factory --port 8765`, with the §4.1 variables set: `DISCI_MCP_AUTH_MODE=cognito`, `DISCI_MCP_PUBLIC_URL` = the tunnel URL (next step), the Cognito issuer and the `disci-mcp` client ID. `DISCI_MCP_API_URL` can point at a local `make api`, which ignores the token in dev auth and acts as the seeded user, which is fine for an auth test.
+2. Expose it with `cloudflared tunnel --url http://127.0.0.1:8765` (a quick tunnel, no account). The URL changes each run. `PUBLIC_URL` must equal it, because the metadata's `resource` must match the URL entered in Claude exactly, including `/mcp`.
+3. In Claude: Customize > Connectors > Add custom connector > URL `<tunnel>/mcp` > Advanced settings > "Use your own OAuth client" > client ID and secret (`tofu output mcp_client_id` and `tofu output -raw mcp_client_secret` in `aws_iac_mngr/controlled_resources/disci`, or the Secrets Manager secret).
+4. To test refresh: temporarily set `access_token_validity = 5` (minutes; Cognito's minimum) on the `disci-mcp` client in `auth.tf`, apply, and reconnect the connector (existing tokens keep their old lifetime). Call a tool, wait more than 5 minutes, and call again. A new `jti` in the token shows the refresh worked. Then restore it to 60 and apply.
+5. Afterwards, stop the tunnel and remove the test connector.
+
+---
+
+## 3. SDK and implementation notes
+
+- Official Python MCP SDK. `mcp` 2.x renamed FastMCP to `MCPServer` and changed APIs, so `mcp_server/` pins `mcp>=1.30,<2` and imports `from mcp.server.fastmcp import FastMCP`.
 - Auth pattern: `FastMCP(..., token_verifier=<obj with async verify_token(token) -> AccessToken | None>, auth=AuthSettings(issuer_url=<Cognito issuer>, resource_server_url=<PUBLIC_URL>/mcp, required_scopes=["openid"], validate_token_resource=False))`. The SDK then serves the `401` + `WWW-Authenticate: Bearer ... resource_metadata=...` and `/.well-known/oauth-protected-resource/mcp` automatically.
 - `validate_token_resource=False` because Cognito access tokens have no `aud`.
 - The verifier checks the signature via PyJWT `PyJWKClient` on the pool JWKS (RS256), `iss`, `token_use == "access"`, and `client_id` == the MCP client.
-- DNS-rebinding protection had to be disabled (`TransportSecuritySettings(enable_dns_rebinding_protection=False)`) behind the tunnel. The real server keeps it off: the protection guards servers on localhost, and this one is public with bearer auth on every request.
+- DNS-rebinding protection is off (`TransportSecuritySettings(enable_dns_rebinding_protection=False)`). It broke the server behind a tunnel, and it isn't needed: the protection guards servers on localhost, and this one is public with bearer auth on every request.
 - `stateless_http=True` (needed for Lambda / API Gateway).
 - The app is a Starlette app from `mcp.streamable_http_app()`, served by uvicorn.
 - `get_access_token()` from `mcp.server.auth.middleware.auth_context` exposes the caller's claims inside a tool.
-- Cognito discovery is the OIDC doc only (`.../.well-known/openid-configuration`); the oauth-authorization-server path returns 400.
-- Issuer: `https://cognito-idp.us-east-2.amazonaws.com/us-east-2_fNVWgEaJ5` (the pool id is not a secret).
 
 ---
 
@@ -91,7 +89,7 @@ API errors become tool errors: **403** → "Sign in to the Disci web app once fi
 
 `server.py`: `stateless_http=True` (Lambda), `json_response=True` (plain JSON, not SSE), DNS-rebinding protection off (§3), and server `instructions` telling Claude that amounts are dollar strings, dates are `YYYY-MM-DD` in the user's timezone, and that before changing anything it should tell the user what it's about to write (e.g. which budget item a purchase counts toward) unless they already said so.
 
-`create_app()` wraps the app in `RequestLog` (`request_log.py`, pure ASGI), so it runs locally and on Lambda. One INFO line per HTTP request on logger `disci_mcp.requests`, e.g. `POST /mcp -> 200  rpc=tools/call  sub=3f9a1c2e  ua=Claude-User`: method, path, status (`error` if the app raised before responding), JSON-RPC method(s) from the body (`-` if none, `response` for client responses, comma-joined for batches), first 8 chars of the verified token's Cognito `sub` (`-` if unauthenticated), user-agent (60 chars max). Never logs tokens or bodies. Purpose: tell MCP clients apart and catch odd status codes (§6 (g)).
+`create_app()` wraps the app in `RequestLog` (`request_log.py`, pure ASGI), so it runs locally and on Lambda. One INFO line per HTTP request on logger `disci_mcp.requests`, e.g. `POST /mcp -> 200  rpc=tools/call  sub=3f9a1c2e  ua=Claude-User`: method, path, status (`error` if the app raised before responding), JSON-RPC method(s) from the body (`-` if none, `response` for client responses, comma-joined for batches), first 8 chars of the verified token's Cognito `sub` (`-` if unauthenticated), user-agent (60 chars max). Never logs tokens or bodies. Purpose: tell MCP clients apart and catch odd status codes (like the 400 in §1).
 
 ### 4.3 Tools
 
@@ -146,7 +144,15 @@ Built by `scripts/build-mcp-zip.sh` → `build/mcp.zip` (Linux arm64 wheels, no 
 
 CI (`.github/workflows/deploy.yml`, `test` job) runs `mcp-lint` and `mcp-test` alongside the API's.
 
-**28 tests**, against a routed `FakeApi` (`tests/conftest.py`: canned answers by method and path, recording each call and body). `test_server.py` (4): repeated Lambda invocations on one warm handler; cognito mode answering 401 with `WWW-Authenticate` `resource_metadata` and serving the protected-resource metadata; dev auth refused in prod; the request log line. `test_api.py` (4): error messages carrying FastAPI's `detail` (string and validation list) and the 403 sign-in message; an empty body → `None`. `test_finance.py` (7): budget summary for every covering budget, defaulting to today and noting gaps; `log_transaction` counting the full amount toward each item; `update_transaction` keeping what isn't passed; `resolve_inbox_entries` reporting each outcome; dismiss and delete; the inbox (`needs_you` entries, `meant_for`, the `applied` ledger) and checklist (`done_when`). `test_nutrition.py` (8): settings; search ranking; `add_food` sending unknowns as null; `log_foods` per-entry outcomes and the day; `log_foods` quick adds going to `/quick-logs` and skipping the repo; `update_food_log` keeping what isn't passed; `update_food_log` keeping a quick add's name and nutrients; `set_nutrition_goal` updating or creating. `test_tasks.py` (5): `get_tasks` grouping by kind with only each kind's fields; `times` repeating the check-off for partial daily progress; logging on a past day; `times > 1` refused for a non-daily task with nothing written; API errors coming through. Beyond the tests, every tool was smoke-tested end to end against the local API (`make api` + `make mcp`).
+The tests run against a routed `FakeApi` (`tests/conftest.py`), which returns canned answers by method and path and records each call and body.
+
+| File | Covers |
+|---|---|
+| `test_server.py` | Repeated Lambda invocations on one warm handler (§4.4), the cognito-mode 401 and protected-resource metadata, dev auth refused in prod, the request log line. |
+| `test_api.py` | How API errors become tool errors (§4.2). |
+| `test_finance.py`, `test_nutrition.py`, `test_tasks.py` | Each module's tools: the API calls they make, merging updates with current values, per-item batch outcomes, and the shape of what they return. |
+
+Run `make mcp-test` for the current count. New tools get a test in their module's file. Beyond the tests, every tool has been smoke-tested end to end against the local API (`make api` + `make mcp`).
 
 ---
 
@@ -162,131 +168,19 @@ Logs: `/aws/lambda/disci-mcp` (14 days). Request lines only: `aws logs tail /aws
 
 ---
 
-## 6. Build checklist
+## 6. Decisions
 
-**Decided**
-
-- Separate MCP Lambda with routes on the existing HTTP API, outside the VPC (`mcp.tf`).
-- Unauthenticated `/.well-known/*` routes (the MCP server does its own auth).
-- Claude's callback `https://claude.ai/api/mcp/auth_callback` is already on the `disci-mcp` client.
-- Identify users by Cognito `sub`.
-- (a) **Data access: forward the access token to the API.** The authorizer's audience now includes the `disci-mcp` client (API Gateway matches `client_id` for access tokens), and the API accepts access tokens whose `client_id` equals `DISCI_MCP_CLIENT_ID`.
-- (b) **Schema: resolved without a migration of the users table.** `core.users` already had `cognito_sub` (unique). A new lookup-only function `core.find_user(sub)` ([db/shared.md](../db/shared.md)) maps an MCP request to an existing user; it never creates one. The user must sign in to the web app once first (that creates the row via `core.ensure_user`); otherwise **403**.
-- (c) **Tool surface: 17 task-shaped tools** for finance and nutrition (§4.3), designed from how the user plans to talk to Claude (log a purchase, check the budget, approve recurring transactions, the monthly checklist, add a food from a label, log a meal, change a goal). Plus **2 tasks tools** (§4.3; endpoints in [api-overview.md §7.3](../api/api-overview.md), data model in [tasks.md](../db/tasks.md)), scoped by the user's decision to reading every task and logging completions ("what's due today?", "I did my jaw exercises"). Creating, editing and undoing tasks stay in the web app for now.
-
-**Open**
-
-- (d) **Disci settings page** showing each user the MCP URL, client ID and shared secret. The secret is shared across invited users, which is acceptable now; Anthropic-held credentials (directory listing) or a DCR provider would remove the paste step later.
-- (e) **CloudWatch alarms / alerting.** None exist yet, including for `disci-jobs` and `disci-mcp` failures.
-- (f) **API Gateway limits.** 30 s HTTP API timeout and no streaming (fine for stateless tools; the Lambda times out at 25 s).
-- (g) **The mid-handshake 400: explained, harmless, not yet fixed.** The request log (§4.2) showed it on 2026-10-26: Claude (`ua=Claude-User`) opens with a `server/discover` request, which mcp 1.30 doesn't know (its latest protocol version is 2025-11-25). The SDK fails to validate the message and answers HTTP 400 instead of a JSON-RPC "method not found" error. Claude then carries on (`notifications/initialized`, `tools/call`, both fine). Other clients don't send it: Instinct AI (`ua=python-requests`) does the standard `initialize` → `notifications/initialized` → `tools/call`. Likely fix: move to mcp 2.x (breaking API changes, so its own change), which may support `server/discover`.
+- **Hosting:** a separate Lambda with routes on the existing HTTP API, **outside the VPC** (`mcp.tf`). The VPC has no NAT, so a Lambda inside it couldn't call the public API URL. The `/mcp` and `/.well-known/*` routes have no authorizer, because the server does its own auth.
+- **Data access: forward the caller's access token to the API.** The server never touches the database, so RLS, validation and business rules stay in one place. The authorizer's audience includes the `disci-mcp` client, and the API accepts access tokens whose `client_id` is `DISCI_MCP_CLIENT_ID`.
+- **Users: identified by Cognito `sub`, with no change to the users table.** `core.users.cognito_sub` already existed. The lookup-only `core.find_user(sub)` ([db/shared.md](../db/shared.md)) maps a request to an existing user and never creates one.
+- **Tool surface: task-shaped tools** (§4.3), designed from how the user talks to Claude: log a purchase, check the budget, handle the Inbox, the monthly checklist, add a food from a label, log a meal, change a goal, "what's due today?", "I did my jaw exercises". Tasks tools only read tasks and log completions. Creating, editing and undoing tasks stays in the web app.
 
 **Limits to design within**
 
-- About 150,000 chars max tool result and 240 s per tool call on claude.ai.
-- Claude's egress range is `160.79.104.0/21`.
+- About 150,000 characters max per tool result, and 240 s per tool call on claude.ai. API Gateway's HTTP API times out at 30 s with no response streaming (the Lambda times out at 25 s), which is fine for stateless tools.
+- Claude's egress range is `160.79.104.0/21`, if allow-listing is ever needed.
 - OAuth discovery and token endpoints must answer within 10 s.
-- The 401 must be a real 401 (Claude ignores `WWW-Authenticate` on a 200).
+- The 401 must be a real 401: Claude ignores `WWW-Authenticate` on a 200.
 - Only the first `authorization_servers` entry is used.
 
 Reference: <https://claude.com/docs/connectors/building/authentication.md> and <https://claude.com/docs/connectors/building/testing.md>
-
----
-
-## Appendix: stub server source (historical)
-
-Throwaway reference from the 2026-10-25 auth test, kept for repeating that test (§2). **Superseded by `mcp_server/`; not production code.** Dependencies (installed with uv): `mcp>=1.12,<2`, `pyjwt[crypto]`, `httpx`, `uvicorn`.
-
-```python
-"""Throwaway MCP server to test Claude's custom connector against Cognito OAuth.
-
-Env: PUBLIC_URL (tunnel base, no trailing slash), COGNITO_CLIENT_ID (the test client).
-"""
-import logging
-import os
-import time
-
-import jwt
-import uvicorn
-from jwt import PyJWKClient
-from mcp.server.auth.provider import AccessToken
-from mcp.server.auth.settings import AuthSettings
-from mcp.server.fastmcp import FastMCP
-from mcp.server.transport_security import TransportSecuritySettings
-from starlette.middleware.base import BaseHTTPMiddleware
-
-POOL_ID = "us-east-2_fNVWgEaJ5"
-ISSUER = f"https://cognito-idp.us-east-2.amazonaws.com/{POOL_ID}"
-PUBLIC_URL = os.environ["PUBLIC_URL"].rstrip("/")
-CLIENT_ID = os.environ["COGNITO_CLIENT_ID"]
-
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
-log = logging.getLogger("stub")
-jwks = PyJWKClient(f"{ISSUER}/.well-known/jwks.json")
-
-
-class CognitoVerifier:
-    async def verify_token(self, token: str) -> AccessToken | None:
-        try:
-            key = jwks.get_signing_key_from_jwt(token).key
-            claims = jwt.decode(token, key, algorithms=["RS256"], issuer=ISSUER, options={"verify_aud": False})
-        except Exception as e:
-            log.info("token rejected: %s", e)
-            return None
-        if claims.get("token_use") != "access" or claims.get("client_id") != CLIENT_ID:
-            log.info("token rejected: token_use=%s client_id=%s", claims.get("token_use"), claims.get("client_id"))
-            return None
-        log.info("token ok: sub=%s iat=%s exp=%s (life %ss) jti=%s", claims["sub"][:8], time.strftime("%H:%M:%S", time.localtime(claims["iat"])), time.strftime("%H:%M:%S", time.localtime(claims["exp"])), claims["exp"] - claims["iat"], claims.get("jti", "")[:8])
-        return AccessToken(
-            token=token,
-            client_id=claims["client_id"],
-            scopes=claims.get("scope", "").split(),
-            expires_at=claims.get("exp"),
-            subject=claims["sub"],
-            claims=claims,
-        )
-
-
-mcp = FastMCP(
-    "disci-stub",
-    token_verifier=CognitoVerifier(),
-    auth=AuthSettings(
-        issuer_url=ISSUER,
-        resource_server_url=f"{PUBLIC_URL}/mcp",
-        required_scopes=["openid"],
-        validate_token_resource=False,  # Cognito access tokens carry no aud
-    ),
-    transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
-    stateless_http=True,
-)
-
-
-@mcp.tool()
-def ping() -> str:
-    """Return 'pong' and the server time."""
-    return f"pong {time.strftime('%Y-%m-%d %H:%M:%S')}"
-
-
-@mcp.tool()
-def whoami() -> dict:
-    """Return the identity claims from the caller's Cognito access token."""
-    from mcp.server.auth.middleware.auth_context import get_access_token
-
-    t = get_access_token()
-    return {"sub": t.subject, "scopes": t.scopes, "username": (t.claims or {}).get("username")}
-
-
-class LogRequests(BaseHTTPMiddleware):
-    async def dispatch(self, request, call_next):
-        resp = await call_next(request)
-        log.info("%s %s -> %s (auth header: %s, UA: %s)", request.method, request.url.path, resp.status_code,
-                 "yes" if request.headers.get("authorization") else "no", request.headers.get("user-agent", "")[:40])
-        return resp
-
-
-app = mcp.streamable_http_app()
-app.add_middleware(LogRequests)
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8765, log_level="warning")
-```

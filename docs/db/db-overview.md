@@ -1,6 +1,6 @@
 # Data Model Overview
 
-*Status: the **`core` schema is implemented** (`db/migrations/20261025134012_core__init.sql`), and so is **`finance`** (`db/migrations/20261025150312_finance__init.sql`, then recurring transactions, approvals and the monthly checklist in `db/migrations/20261025155734_finance__recurring_and_checklist.sql`, the deprecated `satisfies_checklist` columns dropped in `db/migrations/20261025170608_finance__drop_satisfies_checklist.sql`, and per-item checklist modes plus display preferences in `db/migrations/20261027150000_finance__checklist_mode_and_preferences.sql`, and the Inbox's `inbox_entries` plus recurring rules' `item_name` in `db/migrations/20261027200000_finance__inbox_entries.sql`). **`nutrition`** is implemented too (`db/migrations/20261025190000_nutrition__init.sql`, then food values widened to 6 decimal places in `db/migrations/20261026001500_nutrition__more_precision.sql` and quick-add log entries in `db/migrations/20261027150100_nutrition__quick_add_logs.sql`). So is **`tasks`** (`db/migrations/20261027120000_tasks__init.sql`: `tasks` and `task_completions`). For the exact current schema, read the auto-generated `db/schema.sql`.*
+*Status: **all four schemas are implemented** (`core`, `finance`, `nutrition`, `tasks`). Migrations are in `db/migrations/` (dbmate, named `<timestamp>_<module>__<change>.sql`); the exact current schema is the auto-generated `db/schema.sql`. Each module doc describes its tables as they are now.*
 
 This is the entry point for the Postgres data model. It covers how the model is split into modules, the conventions every table follows, and how the modules relate. Each module has its own doc with full table definitions.
 
@@ -22,7 +22,7 @@ Each module is a self-contained slice of the app and gets its **own Postgres sch
 | Module | Postgres schema | Tables | Status | Doc |
 |---|---|---|---|---|
 | Shared | `core` | `users`, `user_modules` | Implemented | [shared.md](shared.md) |
-| Finance | `finance` | `budgets`, `budget_categories`, `budget_items`, `transactions`, `transaction_allocations`, `recurring_transactions`, `preferences`, `inbox_entries` | Implemented (two slices) | [finance.md](finance.md) |
+| Finance | `finance` | `budgets`, `budget_categories`, `budget_items`, `transactions`, `transaction_allocations`, `recurring_transactions`, `preferences`, `inbox_entries` | Implemented | [finance.md](finance.md) |
 | Tasks | `tasks` | `tasks`, `task_completions` | Implemented | [tasks.md](tasks.md) |
 | Nutrition | `nutrition` | `food_items`, `food_item_logs`, `macro_goals`, `preferences` | Implemented | [nutrition.md](nutrition.md) |
 
@@ -88,12 +88,3 @@ These come straight from the design principles in `docs/project_plans/project-in
 
 ### Seeded defaults
 Some modules ship with defaults: finance's `budget_categories` and nutrition's tracked nutrients (`nutrition.preferences`). Defaults are **copied into each user's own rows when they first enable the module** (the module's `setup`; see `core.user_modules`) instead of living as shared global rows. Seeded categories are flagged `is_default = true`. The user can then rename, recolor, delete or untick them freely, and RLS stays simple.
-
----
-
-## 3. Open questions (cross-cutting)
-
-Module-specific questions live at the bottom of each module doc.
-
-1. ~~Postgres version on RDS~~. Decided: Postgres 18 (native `uuidv7()`).
-2. ~~Week start day~~. Decided: a per-user setting, `core.users.week_starts_on` (default Monday).
