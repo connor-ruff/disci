@@ -9,6 +9,10 @@ docs/
 ├── project_plans/                 # Historical: the plans written before the build (not kept up to date)
 │   ├── project-inspiration.md     # Why Disci exists: the old trackers, the vision, design principles
 │   └── disci-infrastructure.md    # Original infra & cost plan (as built: ops/deployment.md)
+├── research/                      # Point-in-time studies of options not built yet (dated, not kept up to date)
+│   ├── log-export-to-snowflake.md            # Goal, constraints and comparison of ways to get logs into Snowflake
+│   ├── log-export-option-a-firehose-s3.md    # Option A: Firehose → S3 → external table
+│   └── log-export-option-b-cloudwatch-s3-tables.md  # Option B: CloudWatch S3 Tables (Iceberg) → Snowflake catalog integration
 ├── ops/
 │   ├── deployment.md              # Production on AWS: architecture, resources, logs, alarms, deploys, snapshots, DB access, security
 │   └── cost.md                    # Monthly cost, the free-tier ledger (what Disci uses of each allowance), checking spend, guardrails
@@ -46,3 +50,4 @@ These keep the docs accurate and stop them filling up with forgotten notes.
 5. **One home per fact.** If two docs need the same detail, keep it in one and link to it from the other.
 6. **`project_plans/` is frozen.** It records the reasoning before the build. Don't update it to match the code; current docs supersede it.
 7. **Every AWS change is costed.** A change that adds an AWS resource (an alarm, a metric, a Lambda, a secret...) or noticeably more usage updates [ops/cost.md](ops/cost.md) in the same change: its §1 cost table if it costs money, and its free-tier ledger if it uses an allowance. The free tier is shared across the whole account, so check the ledger before adding.
+8. **`research/` is point-in-time.** It saves the research behind a roadmap decision that hasn't been made yet: options, sources, costs, risks. Each file is dated and isn't updated as AWS or Snowflake change; re-check before acting on it. The roadmap item links to it. When the item is built, the result is documented in the normal docs and the research file can be deleted (git keeps it).

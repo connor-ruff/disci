@@ -51,6 +51,7 @@ From [project-inspiration.md](project_plans/project-inspiration.md) §3, these a
 - Custom domain: Route 53, an ACM certificate in us-east-1 for CloudFront (plus one in us-east-2 for an API custom domain), and new Cognito callback and logout URLs and CORS origins.
 - Cognito login from `localhost`, which needs `http://localhost:5173` callback URLs or a second client.
 - Snowflake reporting layer: a nightly export to S3, then Snowpipe ([disci-infrastructure.md](project_plans/disci-infrastructure.md)).
+- **Log export to Snowflake:** query the Lambda logs from Snowflake (history past 14 days, dashboards, joins with app data), keeping AWS lean and spending Snowflake compute only at query time. Researched in [research/log-export-to-snowflake.md](research/log-export-to-snowflake.md). CloudWatch's S3 Tables integration (Iceberg) is preferred, but needs a test that Snowflake can read CloudWatch's AWS-managed table bucket. **Open:** which option, and when.
 - A mobile app. For now, the home-screen web app.
 
 ## 4. Open questions
@@ -60,3 +61,4 @@ The questions above that need a decision, gathered here:
 1. Should a resumed recurring rule skip the dates it missed while paused? (§3)
 2. Should the module menu have a fixed order or one the user can arrange? Today it uses the order the API returns.
 3. Is one summary card per module the right Home page?
+4. How should the logs reach Snowflake: CloudWatch's S3 Tables integration, Firehose → S3, or not at all for now? (§3, [research](research/log-export-to-snowflake.md))
