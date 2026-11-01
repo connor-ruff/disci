@@ -261,13 +261,17 @@ An item is **done** depending on its **Done when** setting (§4.2, `checklist_mo
 
 ## 7. Recurring page
 
-A help button (**?**, `CircleHelp`) and a **New** button in the header, then the rules in sections by frequency, in the order **Monthly**, **Weekly**, **Quarterly**, **Yearly**, each under a small uppercase heading. A section with no rules is hidden. Within a section, rules are sorted by when they land (`landsOn`), then by name: monthly by day of the month, weekly by day of the week counted from the user's week-start setting (`week_starts_on`), quarterly by the day of the month of the start date, yearly by the month and then the day of the start date. Each rule is a card (paused rules are dimmed) showing:
+A help button (**?**, `CircleHelp`) and a **New** button in the header, then (when there are rules) a **List / Condensed** toggle (`Segmented`), then the rules in sections by frequency, in the order **Monthly**, **Weekly**, **Quarterly**, **Yearly**, each under a small uppercase heading. A section with no rules is hidden. Within a section, rules are sorted by when they land (`landsOn`), then by name: monthly by day of the month, weekly by day of the week counted from the user's week-start setting (`week_starts_on`), quarterly by the day of the month of the start date, yearly by the month and then the day of the start date. The toggle's choice is **remembered per device** in `localStorage` (`disci.finance.recurring-view`), defaulting to List when nothing is stored or storage is unavailable. Both views use the same sections and ordering.
+
+**List** shows each rule as a card (`RuleCard`; paused rules are dimmed) with:
 
 - The name and the amount (`+` teal for income, `−` for expense).
 - The schedule ("Monthly on the 12th", "Every Monday", "Quarterly from Feb 10", "Yearly on Feb 10"), then **Next Oct 30** (`next_occurrence`) or **Paused**.
 - Chips: the budget item it's meant for and its category ("<item> · <category>", or "· Uncategorized"), and **Auto-applies** or **Approve in Inbox**.
 
-Tapping a card opens the recurring sheet (§4.4). Empty state: "Nothing recurring yet".
+**Condensed** shows each section as a compact table (`RuleTable`) with the columns **Name**, **Next due** (the short date, or "Paused") and **Amount** (`+` teal for income, `−` for expense); paused rows are dimmed. Under each table a totals footer adds up the section's active rules, leaving paused ones out: a single **Total** of the expenses, or, when the section has active income, **Total spend** and **Total income** rows.
+
+Tapping a card or a table row opens the recurring sheet (§4.4). Empty state: "Nothing recurring yet".
 
 The help button opens **How recurring works** (`components/RecurringGuide.tsx`), a sheet explaining: what a rule does (logs on its date, never before it was created); name vs. budget item (matched by name, ignoring case and extra spaces, and category); Auto-apply on (no approval, counts in every covering budget, a ledger note per budget, a pick-an-item entry where nothing matches, waits in the Inbox if no budget covers the date); Auto-apply off (waits under Needs you, approve with the real amount and pick where it counts, or reject); which to use (on for fixed amounts, off for bills that vary); and that edits and deletes don't change transactions already logged.
 
