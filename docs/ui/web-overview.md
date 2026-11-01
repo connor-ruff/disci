@@ -1,6 +1,6 @@
 # Web App Overview
 
-*Status: **shell implemented and deployed** to S3 + CloudFront (https://d2j30iivfr2al9.cloudfront.net) with Cognito sign-in. The shell pages (Home, Manage modules, Settings) work; the finance module has budgets, categories, the monthly checklist, recurring transactions and the inbox (see [finance-ui.md](finance-ui.md)), the nutrition module has the daily food sheet, history, the food repo and macro goals (see [nutrition-ui.md](nutrition-ui.md)), and the tasks module has Today, All tasks and the Kinds guide (see [tasks-ui.md](tasks-ui.md)). Deploying: [deployment.md](../ops/deployment.md).*
+*Status: **shell implemented and deployed** to S3 + CloudFront (https://d2j30iivfr2al9.cloudfront.net) with Cognito sign-in. The shell pages (Home, Manage modules, Settings) work; the finance module has budgets, categories, the monthly checklist, recurring transactions and the inbox (see [finance-ui.md](finance-ui.md)), the nutrition module has the daily food sheet, history, the food repo and macro goals (see [nutrition-ui.md](nutrition-ui.md)), the tasks module has Today, All tasks and the Kinds guide (see [tasks-ui.md](tasks-ui.md)), and the shopping list module has the list and common items (see [shopping-ui.md](shopping-ui.md)). Deploying: [deployment.md](../ops/deployment.md).*
 
 The engineering entry point for the web app (`web/`): stack, layout, conventions and local workflow. What the shell looks like and how modules plug into it is in [app-shell.md](app-shell.md); the brand palette is in [ui-overview.md](ui-overview.md).
 
@@ -60,7 +60,8 @@ web/
     │   ├── ui/                    # button, card, drawer, switch, page (header/loading/error),
     │   │                          # sheet (bottom-sheet form panel), field (Field + inputClasses), segmented,
     │   │                          # checkbox (Checkbox), sortable (SortableList: drag-to-reorder),
-    │   │                          # module-card (ModuleCard + Meter for Home cards)
+    │   │                          # module-card (ModuleCard + Meter for Home cards),
+    │   │                          # reorder-toggle (ReorderToggle: Reorder / Done)
     │   └── lib/                   # cn.ts, money.ts (formatMoney, parseMoneyInput),
     │                              # dates.ts (todayIn, formatShortDate, formatDateRange, addDays, formatLongDate)
     └── modules/
@@ -72,7 +73,7 @@ web/
         │   │                      # ChecklistPage, RecurringPage, InboxPage
         │   └── components/        # FinanceHomeCard, ActiveBadge, BudgetKpis, ItemSheet, TransactionSheet,
         │                          # TransactionDetailSheet, TransactionList, RecurringSheet,
-        │                          # RecurringGuide, ReorderToggle, FinanceSettings
+        │                          # RecurringGuide, FinanceSettings
         ├── nutrition/
         │   ├── index.ts           # ModuleManifest (sub-nav: Daily, History, Food repo, Goals; SettingsPanel)
         │   ├── routes.tsx         # route tree under /nutrition
@@ -81,13 +82,21 @@ web/
         │   ├── pages/             # DailyPage, DayPage, HistoryPage, FoodsPage, GoalsPage
         │   └── components/        # DaySheet, LogSheet, FoodForm (+ NutrientFields), QuickAddForm,
         │                          # NutritionSettings, NutritionHomeCard
-        └── tasks/
-            ├── index.ts           # ModuleManifest (sub-nav: Today, All tasks, Kinds)
-            ├── routes.tsx         # route tree under /tasks
-            ├── api.ts             # TanStack Query hooks + tasksKeys
-            ├── format.ts          # TYPE_LABELS, TYPE_ORDER, UNITS, describeCadence, describeDue
-            ├── pages/             # TodayPage, AllTasksPage, TypesPage
-            └── components/        # TaskRow (+ check control), Section, TaskSheet, NewTaskButton, TasksHomeCard
+        ├── tasks/
+        │   ├── index.ts           # ModuleManifest (sub-nav: Today, All tasks, Kinds)
+        │   ├── routes.tsx         # route tree under /tasks
+        │   ├── api.ts             # TanStack Query hooks + tasksKeys
+        │   ├── format.ts          # TYPE_LABELS, TYPE_ORDER, UNITS, describeCadence, describeDue
+        │   ├── pages/             # TodayPage, AllTasksPage, TypesPage
+        │   └── components/        # TaskRow (+ check control), Section, TaskSheet, NewTaskButton, TasksHomeCard
+        └── shopping/
+            ├── index.ts           # ModuleManifest (sub-nav: Shopping list, Common items)
+            ├── routes.tsx         # route tree under /shopping
+            ├── api.ts             # TanStack Query hooks + shoppingKeys
+            ├── groups.ts          # groupByType: rows by type, Uncategorized last
+            ├── pages/             # ListPage, CommonPage
+            └── components/        # QuickAdd, ItemSheet, CommonRow, AddFromCommonSheet, TypesSheet,
+                                   # EditTypesButton, ShoppingHomeCard
 ```
 
 **Rule of thumb:** `app/` is the shell, `shared/` is anything two or more places use, and `modules/<key>/` holds everything specific to one module. A module may import from `shared/` and `app/` (its manifest type, the root route); `shared/` never imports from a module.
@@ -125,7 +134,7 @@ web/
 | `useSetModuleEnabled()` | `PUT` / `DELETE /me/modules/{key}` | invalidates `['me', 'modules']` |
 
 - **Query keys** are defined once, in the `queryKeys` object, never as inline arrays. Keys are hierarchical (`['me', 'modules']` sits under `['me']`) so a whole branch can be invalidated at once.
-- A module's hooks live in that module's folder (e.g. `modules/finance/api.ts`, keys in `financeKeys`; `modules/nutrition/api.ts`, keys in `nutritionKeys`; `modules/tasks/api.ts`, keys in `tasksKeys`), with keys starting with the module key (e.g. `['finance', ...]`).
+- A module's hooks live in that module's folder (e.g. `modules/finance/api.ts`, keys in `financeKeys`; `modules/nutrition/api.ts`, keys in `nutritionKeys`; `modules/tasks/api.ts`, keys in `tasksKeys`; `modules/shopping/api.ts`, keys in `shoppingKeys`), with keys starting with the module key (e.g. `['finance', ...]`).
 - Pages handle `isPending` / `isError` with the shared `LoadingState` / `ErrorState` from `shared/ui/page.tsx`.
 
 ---
@@ -163,7 +172,7 @@ The app will mostly be used on phones, so:
 - **Forms open in a `Sheet`** (`shared/ui/sheet.tsx`, Radix Dialog): it slides up from the bottom on phones (max 90% of the screen height, safe-area padding) and is a centred dialog from `sm` up. Inputs use `text-base` (16 px) so iOS doesn't zoom on focus.
 - **Don't autofocus inputs**; the user taps the field. No `autoFocus` on form fields, and `Sheet` sets Radix's `onOpenAutoFocus` to focus the panel itself rather than its first field. On iOS, focusing an input while the sheet is still sliding up raises the keyboard and scrolls to where the input was mid-animation, which leaves the field hidden behind the keyboard.
 - **Safe-area insets**: `viewport-fit=cover` in `index.html`, with `env(safe-area-inset-*)` padding on the top bar, drawer and page bottom for notched phones.
-- **Reordering lists**: `SortableList` (`shared/ui/sortable.tsx`, on @dnd-kit) renders a vertical list where each row gets a 44 px grip handle; `onReorder` receives the items in their new order after a drop. Touch needs a short press-and-hold (120 ms) so normal scrolling still works; the keyboard works too (focus a handle, Space, arrows, Space). Pages put lists into a separate reorder mode (finance's `ReorderToggle`: Reorder / Done) rather than making rows always draggable, and save each drop with an optimistic cache update.
+- **Reordering lists**: `SortableList` (`shared/ui/sortable.tsx`, on @dnd-kit) renders a vertical list where each row gets a 44 px grip handle; `onReorder` receives the items in their new order after a drop. Touch needs a short press-and-hold (120 ms) so normal scrolling still works; the keyboard works too (focus a handle, Space, arrows, Space). Pages put lists into a separate reorder mode (`ReorderToggle` in `shared/ui/reorder-toggle.tsx`: Reorder / Done; finance's budget and categories pages and the shopping list use it) rather than making rows always draggable, and save each drop with an optimistic cache update.
 - **Full-height drawer** for the module menu (`w-72`, at most 85% of the screen width).
 - **Sub-nav scrolls sideways** instead of wrapping. A tab is active when the URL **starts with** its path (prefix match, not exact), so Budgets stays highlighted on `/finance/budgets/<id>`.
 - `min-h-dvh` for the page frame (handles mobile browser chrome), and the tap highlight is turned off.

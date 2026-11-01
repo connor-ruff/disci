@@ -6,6 +6,7 @@ import { Button } from '@/shared/ui/button'
 import { Card } from '@/shared/ui/card'
 import { inputClasses } from '@/shared/ui/field'
 import { ErrorState, LoadingState, PageHeader } from '@/shared/ui/page'
+import { ReorderToggle } from '@/shared/ui/reorder-toggle'
 import { SortableList } from '@/shared/ui/sortable'
 
 import {
@@ -17,7 +18,6 @@ import {
   useRenameCategory,
   useReorderCategories,
 } from '../api'
-import { ReorderToggle } from '../components/ReorderToggle'
 
 export function CategoriesPage() {
   const categories = useCategories()

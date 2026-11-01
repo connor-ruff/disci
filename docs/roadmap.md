@@ -4,7 +4,7 @@ The **one place** for everything Disci doesn't do yet: unbuilt features, cleanup
 
 When something here gets built, delete its line and document the result in the relevant doc. When an open question is decided, record the decision in that module's **Decisions** table and delete it here.
 
-Last reviewed: 2026-10-27.
+Last reviewed: 2026-10-31.
 
 ---
 
@@ -44,6 +44,10 @@ From [project-inspiration.md](project_plans/project-inspiration.md) §3, these a
 - Reorder tasks within a list: a `sort_order` column like finance's.
 - Check off a past day, and a "what I did today" view, in the UI. The API supports both (`{on}`, `GET /tasks/completions`).
 - Creating, editing and undoing tasks through Claude. The MCP tools only read tasks and log completions today.
+
+**Shopping list**
+- Managing shopping types and common items through Claude. The MCP tools only work with the list itself.
+- Sharing a list with another user (a partner or housemate). Lists are per user today.
 
 **Shell and platform**
 - An "everything" dashboard across modules.

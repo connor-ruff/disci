@@ -26,14 +26,16 @@ docs/
 │   ├── shared.md                  # core: users, user_modules, helper functions
 │   ├── finance.md                 # budgets, items, transactions, allocations, recurring rules, Inbox entries, preferences
 │   ├── nutrition.md               # food repo, food log and quick adds, goals, tracked nutrients
-│   └── tasks.md                   # four fixed task types, tasks + task_completions
+│   ├── tasks.md                   # four fixed task types, tasks + task_completions
+│   └── shopping.md                # user-defined shopping types, list items, common items
 └── ui/                            # Front end
     ├── ui-overview.md             # Brand palette and look
     ├── app-shell.md               # Shell, module menu, opt-in modules, Settings page, how modules plug in
     ├── web-overview.md            # Web app engineering: stack, folder layout, API client, theming, mobile conventions, local dev
     ├── finance-ui.md              # Finance screens
     ├── nutrition-ui.md            # Nutrition screens
-    └── tasks-ui.md                # Tasks screens
+    ├── tasks-ui.md                # Tasks screens
+    └── shopping-ui.md             # Shopping list screens
 ```
 
 **Where to start:** to change a module, read its `db/` doc, its section of `api/api-overview.md` §7 and its `ui/` doc. For anything about production, read `ops/deployment.md`, and `ops/cost.md` before adding AWS resources. For what to build next, read `roadmap.md`.
