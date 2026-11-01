@@ -71,10 +71,11 @@ function SubNav({ items }: { items: ModuleManifest['subNav'] }) {
         <Link
           key={item.to}
           to={item.to}
-          className="shrink-0 rounded-full px-4 py-2 text-sm font-medium text-muted"
+          className="flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium text-muted"
           activeProps={{ className: 'bg-highlight text-foreground' }}
         >
           {item.label}
+          {item.Alert && <item.Alert />}
         </Link>
       ))}
     </nav>

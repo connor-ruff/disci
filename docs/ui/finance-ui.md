@@ -19,9 +19,11 @@ What the Finance screens look like and how they behave. The data model is in [fi
 | `/finance/inbox` | **Inbox** (`InboxPage`) | See §8. |
 | `/finance/categories` | **Categories** (`CategoriesPage`) | See §5. |
 
-**Sub-nav tabs:** Budgets, Checklist, Recurring, Inbox, Categories. Tabs match by URL prefix, so **Budgets stays active** on a budget page and on New budget.
+**Sub-nav tabs:** Budgets, Checklist, Recurring, Inbox, Categories. Tabs match by URL prefix, so **Budgets stays active** on a budget page and on New budget. The Inbox tab carries an alert (`InboxTabAlert`): a small amber circle with "!" while the Inbox has things to sort out; screen readers hear the count. "To sort out" (`useInboxToDo` in `api.ts`) is the **Needs you** count plus the **Unassigned** count from `GET /finance/inbox`; unread entries in the Applied automatically ledger don't count.
 
 **Home card** (`FinanceHomeCard`, built on the shared `ModuleCard` / `Meter`): finds the most recent **monthly** budget whose dates include today (in the user's timezone) and links straight to it (`/finance/budgets/<id>`). It shows the budget name, the **% of budget spent** (expense actual ÷ expense planned) in large type, a meter (amber when over) and "$spent of $planned · $left left", or "· $X over" in amber when over. If nothing is planned for expenses it shows the spent amount and "spent, nothing budgeted". With **no active monthly budget** the subtitle reads "No budget for this month yet" and the card links to `/finance/budgets`.
+
+When the Inbox has things to sort out (same count as the Inbox tab alert), the card ends with an amber banner (`InboxBanner`): "N things need you in the Inbox", linking to `/finance/inbox`. The banner is a separate link laid over the bottom of the card (absolutely positioned, with a spacer reserved inside the card), so the rest of the card still opens the budget.
 
 ---
 
@@ -259,7 +261,7 @@ An item is **done** depending on its **Done when** setting (§4.2, `checklist_mo
 
 ## 7. Recurring page
 
-A help button (**?**, `CircleHelp`) and a **New** button in the header, then one card per rule (income first, then by name; paused rules are dimmed). Each card shows:
+A help button (**?**, `CircleHelp`) and a **New** button in the header, then the rules in sections by frequency, in the order **Monthly**, **Weekly**, **Quarterly**, **Yearly**, each under a small uppercase heading. A section with no rules is hidden. Within a section, rules are sorted by when they land (`landsOn`), then by name: monthly by day of the month, weekly by day of the week counted from the user's week-start setting (`week_starts_on`), quarterly by the day of the month of the start date, yearly by the month and then the day of the start date. Each rule is a card (paused rules are dimmed) showing:
 
 - The name and the amount (`+` teal for income, `−` for expense).
 - The schedule ("Monthly on the 12th", "Every Monday", "Quarterly from Feb 10", "Yearly on Feb 10"), then **Next Oct 30** (`next_occurrence`) or **Paused**.

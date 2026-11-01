@@ -45,7 +45,7 @@ The **shell** is the frame around every page: the top bar, the module menu, and 
 └───────────────────────┘
 ```
 
-- **Module sub-nav**: each module lists its own tabs in its manifest (`subNav`). The row renders **only when a module has more than one tab**, so a single-page module gets no tab bar. It is a horizontally scrolling pill row on every screen size (works on phones without wrapping). A tab is active when the URL starts with its path, so a detail page (e.g. `/finance/budgets/<id>`) keeps its list tab highlighted.
+- **Module sub-nav**: each module lists its own tabs in its manifest (`subNav`). The row renders **only when a module has more than one tab**, so a single-page module gets no tab bar. It is a horizontally scrolling pill row on every screen size (works on phones without wrapping). A tab is active when the URL starts with its path, so a detail page (e.g. `/finance/budgets/<id>`) keeps its list tab highlighted. A tab can show a small alert next to its label: a `subNav` entry's optional `Alert` component, which renders nothing when there is nothing to flag.
 - **Pull-to-refresh** (`PullToRefresh.tsx`, rendered by the shell): in the home-screen app only, pulling down from the top of any page reloads the app. Details in [web-overview.md](web-overview.md) §7.
 - **[👤] account icon**: links straight to `/settings`. There's no account dropdown; **Sign out** is a button on the Settings page (production/Cognito only; local dev auth has no sign-in).
 
@@ -74,7 +74,7 @@ Each module folder (`web/src/modules/<key>/`) exports a **manifest** (`ModuleMan
 | `key` | `'finance'` | Matches the API module key (`core.user_modules.module_key`), the Postgres schema and the URL prefix `/<key>` |
 | `icon` | `Wallet` (lucide-react) | Module menu, manage-modules page, disabled-module gate |
 | `route` | `financeRoute`: the TanStack Router tree under `/finance` (`routes.tsx`) | Added to the router's route tree |
-| `subNav` | Budgets, Checklist, Recurring, Inbox, Categories (`/finance/budgets`, `/finance/checklist`, ...) | Module sub-nav (shown only when > 1 entry) |
+| `subNav` | Budgets, Checklist, Recurring, Inbox, Categories (`/finance/budgets`, `/finance/checklist`, ...) | Module sub-nav (shown only when > 1 entry). An entry may also set an optional `Alert` component, rendered next to its tab label (finance uses it for the Inbox tab) |
 | `HomeCard` | `FinanceHomeCard` component | Home page |
 | `SettingsPanel` (optional) | `FinanceSettings` (budget page subtotals); Nutrition has `NutritionSettings`, tasks and shopping list have none | A section on the Settings page, rendered below the Account section while the module is **enabled**. The Settings page supplies the section heading (module name and icon), so the panel doesn't render its own; it's just its card(s), saving through its own endpoints. |
 
