@@ -4,6 +4,7 @@ import type { ModuleManifest } from '@/app/module'
 
 import { FinanceHomeCard } from './components/FinanceHomeCard'
 import { FinanceSettings } from './components/FinanceSettings'
+import { InboxTabAlert } from './components/InboxAlert'
 import { financeRoute } from './routes'
 
 export const financeModule: ModuleManifest = {
@@ -14,7 +15,7 @@ export const financeModule: ModuleManifest = {
     { label: 'Budgets', to: '/finance/budgets' },
     { label: 'Checklist', to: '/finance/checklist' },
     { label: 'Recurring', to: '/finance/recurring' },
-    { label: 'Inbox', to: '/finance/inbox' },
+    { label: 'Inbox', to: '/finance/inbox', Alert: InboxTabAlert },
     { label: 'Categories', to: '/finance/categories' },
   ],
   HomeCard: FinanceHomeCard,

@@ -13,8 +13,11 @@ export type ModuleManifest = {
   icon: LucideIcon
   /** The module's route tree, mounted at /<key>. */
   route: AnyRoute
-  /** Tabs under the top bar. Shown only when a module has more than one section. */
-  subNav: { label: string; to: string }[]
+  /**
+   * Tabs under the top bar. Shown only when a module has more than one section. A tab's
+   * optional `Alert` renders next to its label (e.g. a "!" when there's something to do).
+   */
+  subNav: { label: string; to: string; Alert?: ComponentType }[]
   /** Summary card on the Home page. */
   HomeCard: ComponentType
   /** Optional section on the Settings page, shown while the module is enabled. */

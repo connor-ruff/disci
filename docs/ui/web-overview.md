@@ -73,7 +73,7 @@ web/
         │   │                      # ChecklistPage, RecurringPage, InboxPage
         │   └── components/        # FinanceHomeCard, ActiveBadge, BudgetKpis, ItemSheet, TransactionSheet,
         │                          # TransactionDetailSheet, TransactionList, RecurringSheet,
-        │                          # RecurringGuide, FinanceSettings
+        │                          # RecurringGuide, InboxAlert, FinanceSettings
         ├── nutrition/
         │   ├── index.ts           # ModuleManifest (sub-nav: Daily, History, Food repo, Goals; SettingsPanel)
         │   ├── routes.tsx         # route tree under /nutrition

@@ -299,6 +299,12 @@ export function useInbox() {
   })
 }
 
+/** How many things in the Inbox need the user: open decisions plus unassigned transactions. */
+export function useInboxToDo() {
+  const inbox = useInbox()
+  return inbox.data ? inbox.data.needs_you.length + inbox.data.unassigned.length : 0
+}
+
 /** Anything that changes transactions refreshes budgets, the inbox and the checklist. */
 function useInvalidateMoney() {
   const queryClient = useQueryClient()
