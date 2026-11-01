@@ -37,6 +37,13 @@ CREATE SCHEMA nutrition;
 
 
 --
+-- Name: shopping; Type: SCHEMA; Schema: -; Owner: -
+--
+
+CREATE SCHEMA shopping;
+
+
+--
 -- Name: tasks; Type: SCHEMA; Schema: -; Owner: -
 --
 
@@ -144,7 +151,7 @@ CREATE TABLE core.user_modules (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     deleted_at timestamp with time zone,
-    CONSTRAINT user_modules_module_key_check CHECK ((module_key = ANY (ARRAY['finance'::text, 'tasks'::text, 'nutrition'::text])))
+    CONSTRAINT user_modules_module_key_check CHECK ((module_key = ANY (ARRAY['finance'::text, 'tasks'::text, 'nutrition'::text, 'shopping'::text])))
 );
 
 
@@ -487,6 +494,57 @@ CREATE TABLE public.schema_migrations (
 
 
 --
+-- Name: common_items; Type: TABLE; Schema: shopping; Owner: -
+--
+
+CREATE TABLE shopping.common_items (
+    id uuid DEFAULT uuidv7() NOT NULL,
+    user_id uuid NOT NULL,
+    shopping_type_id uuid,
+    name text NOT NULL,
+    notes text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    deleted_at timestamp with time zone,
+    CONSTRAINT common_items_name_check CHECK ((length(TRIM(BOTH FROM name)) > 0))
+);
+
+
+--
+-- Name: list_items; Type: TABLE; Schema: shopping; Owner: -
+--
+
+CREATE TABLE shopping.list_items (
+    id uuid DEFAULT uuidv7() NOT NULL,
+    user_id uuid NOT NULL,
+    shopping_type_id uuid,
+    name text NOT NULL,
+    notes text,
+    sort_order integer DEFAULT 0 NOT NULL,
+    done_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT list_items_name_check CHECK ((length(TRIM(BOTH FROM name)) > 0))
+);
+
+
+--
+-- Name: shopping_types; Type: TABLE; Schema: shopping; Owner: -
+--
+
+CREATE TABLE shopping.shopping_types (
+    id uuid DEFAULT uuidv7() NOT NULL,
+    user_id uuid NOT NULL,
+    name text NOT NULL,
+    sort_order integer DEFAULT 0 NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    deleted_at timestamp with time zone,
+    CONSTRAINT shopping_types_name_check CHECK ((length(TRIM(BOTH FROM name)) > 0))
+);
+
+
+--
 -- Name: task_completions; Type: TABLE; Schema: tasks; Owner: -
 --
 
@@ -725,6 +783,38 @@ ALTER TABLE ONLY public.schema_migrations
 
 
 --
+-- Name: common_items common_items_pkey; Type: CONSTRAINT; Schema: shopping; Owner: -
+--
+
+ALTER TABLE ONLY shopping.common_items
+    ADD CONSTRAINT common_items_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: list_items list_items_pkey; Type: CONSTRAINT; Schema: shopping; Owner: -
+--
+
+ALTER TABLE ONLY shopping.list_items
+    ADD CONSTRAINT list_items_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: shopping_types shopping_types_id_user_id_key; Type: CONSTRAINT; Schema: shopping; Owner: -
+--
+
+ALTER TABLE ONLY shopping.shopping_types
+    ADD CONSTRAINT shopping_types_id_user_id_key UNIQUE (id, user_id);
+
+
+--
+-- Name: shopping_types shopping_types_pkey; Type: CONSTRAINT; Schema: shopping; Owner: -
+--
+
+ALTER TABLE ONLY shopping.shopping_types
+    ADD CONSTRAINT shopping_types_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: task_completions task_completions_pkey; Type: CONSTRAINT; Schema: tasks; Owner: -
 --
 
@@ -875,6 +965,27 @@ CREATE UNIQUE INDEX macro_goals_active_key ON nutrition.macro_goals USING btree 
 
 
 --
+-- Name: common_items_user_type_name; Type: INDEX; Schema: shopping; Owner: -
+--
+
+CREATE UNIQUE INDEX common_items_user_type_name ON shopping.common_items USING btree (user_id, shopping_type_id, lower(name)) NULLS NOT DISTINCT WHERE (deleted_at IS NULL);
+
+
+--
+-- Name: list_items_user_idx; Type: INDEX; Schema: shopping; Owner: -
+--
+
+CREATE INDEX list_items_user_idx ON shopping.list_items USING btree (user_id);
+
+
+--
+-- Name: shopping_types_user_name; Type: INDEX; Schema: shopping; Owner: -
+--
+
+CREATE UNIQUE INDEX shopping_types_user_name ON shopping.shopping_types USING btree (user_id, lower(name)) WHERE (deleted_at IS NULL);
+
+
+--
 -- Name: task_completions_task_idx; Type: INDEX; Schema: tasks; Owner: -
 --
 
@@ -991,6 +1102,27 @@ CREATE TRIGGER set_updated_at BEFORE UPDATE ON nutrition.macro_goals FOR EACH RO
 --
 
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON nutrition.preferences FOR EACH ROW EXECUTE FUNCTION core.set_updated_at();
+
+
+--
+-- Name: common_items set_updated_at; Type: TRIGGER; Schema: shopping; Owner: -
+--
+
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON shopping.common_items FOR EACH ROW EXECUTE FUNCTION core.set_updated_at();
+
+
+--
+-- Name: list_items set_updated_at; Type: TRIGGER; Schema: shopping; Owner: -
+--
+
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON shopping.list_items FOR EACH ROW EXECUTE FUNCTION core.set_updated_at();
+
+
+--
+-- Name: shopping_types set_updated_at; Type: TRIGGER; Schema: shopping; Owner: -
+--
+
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON shopping.shopping_types FOR EACH ROW EXECUTE FUNCTION core.set_updated_at();
 
 
 --
@@ -1189,6 +1321,46 @@ ALTER TABLE ONLY nutrition.macro_goals
 
 ALTER TABLE ONLY nutrition.preferences
     ADD CONSTRAINT preferences_user_id_fkey FOREIGN KEY (user_id) REFERENCES core.users(id);
+
+
+--
+-- Name: common_items common_items_shopping_type_id_user_id_fkey; Type: FK CONSTRAINT; Schema: shopping; Owner: -
+--
+
+ALTER TABLE ONLY shopping.common_items
+    ADD CONSTRAINT common_items_shopping_type_id_user_id_fkey FOREIGN KEY (shopping_type_id, user_id) REFERENCES shopping.shopping_types(id, user_id);
+
+
+--
+-- Name: common_items common_items_user_id_fkey; Type: FK CONSTRAINT; Schema: shopping; Owner: -
+--
+
+ALTER TABLE ONLY shopping.common_items
+    ADD CONSTRAINT common_items_user_id_fkey FOREIGN KEY (user_id) REFERENCES core.users(id);
+
+
+--
+-- Name: list_items list_items_shopping_type_id_user_id_fkey; Type: FK CONSTRAINT; Schema: shopping; Owner: -
+--
+
+ALTER TABLE ONLY shopping.list_items
+    ADD CONSTRAINT list_items_shopping_type_id_user_id_fkey FOREIGN KEY (shopping_type_id, user_id) REFERENCES shopping.shopping_types(id, user_id);
+
+
+--
+-- Name: list_items list_items_user_id_fkey; Type: FK CONSTRAINT; Schema: shopping; Owner: -
+--
+
+ALTER TABLE ONLY shopping.list_items
+    ADD CONSTRAINT list_items_user_id_fkey FOREIGN KEY (user_id) REFERENCES core.users(id);
+
+
+--
+-- Name: shopping_types shopping_types_user_id_fkey; Type: FK CONSTRAINT; Schema: shopping; Owner: -
+--
+
+ALTER TABLE ONLY shopping.shopping_types
+    ADD CONSTRAINT shopping_types_user_id_fkey FOREIGN KEY (user_id) REFERENCES core.users(id);
 
 
 --
@@ -1398,6 +1570,45 @@ CREATE POLICY owner ON nutrition.preferences TO disci_app USING ((user_id = core
 ALTER TABLE nutrition.preferences ENABLE ROW LEVEL SECURITY;
 
 --
+-- Name: common_items; Type: ROW SECURITY; Schema: shopping; Owner: -
+--
+
+ALTER TABLE shopping.common_items ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: list_items; Type: ROW SECURITY; Schema: shopping; Owner: -
+--
+
+ALTER TABLE shopping.list_items ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: common_items owner; Type: POLICY; Schema: shopping; Owner: -
+--
+
+CREATE POLICY owner ON shopping.common_items TO disci_app USING ((user_id = core.current_user_id())) WITH CHECK ((user_id = core.current_user_id()));
+
+
+--
+-- Name: list_items owner; Type: POLICY; Schema: shopping; Owner: -
+--
+
+CREATE POLICY owner ON shopping.list_items TO disci_app USING ((user_id = core.current_user_id())) WITH CHECK ((user_id = core.current_user_id()));
+
+
+--
+-- Name: shopping_types owner; Type: POLICY; Schema: shopping; Owner: -
+--
+
+CREATE POLICY owner ON shopping.shopping_types TO disci_app USING ((user_id = core.current_user_id())) WITH CHECK ((user_id = core.current_user_id()));
+
+
+--
+-- Name: shopping_types; Type: ROW SECURITY; Schema: shopping; Owner: -
+--
+
+ALTER TABLE shopping.shopping_types ENABLE ROW LEVEL SECURITY;
+
+--
 -- Name: task_completions owner; Type: POLICY; Schema: tasks; Owner: -
 --
 
@@ -1448,4 +1659,6 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('20261027150100'),
     ('20261027200000'),
     ('20261028120000'),
-    ('20261028130000');
+    ('20261028130000'),
+    ('20261031120000'),
+    ('20261031120100');

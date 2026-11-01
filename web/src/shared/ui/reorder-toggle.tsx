@@ -1,6 +1,6 @@
 import { ArrowUpDown, Check } from 'lucide-react'
 
-import { Button } from '@/shared/ui/button'
+import { Button } from './button'
 
 /** "Reorder" / "Done" button that puts a page into drag-to-reorder mode. */
 export function ReorderToggle({

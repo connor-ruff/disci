@@ -8,6 +8,7 @@ import { formatMoney } from '@/shared/lib/money'
 import { Button } from '@/shared/ui/button'
 import { Card } from '@/shared/ui/card'
 import { ErrorState, LoadingState, PageHeader } from '@/shared/ui/page'
+import { ReorderToggle } from '@/shared/ui/reorder-toggle'
 import { SortableList } from '@/shared/ui/sortable'
 
 import {
@@ -27,7 +28,6 @@ import {
 import { ActiveBadge } from '../components/ActiveBadge'
 import { BudgetKpis } from '../components/BudgetKpis'
 import { ItemSheet, ordinal } from '../components/ItemSheet'
-import { ReorderToggle } from '../components/ReorderToggle'
 import { TransactionDetailSheet } from '../components/TransactionDetailSheet'
 import { TransactionList } from '../components/TransactionList'
 import { TransactionSheet } from '../components/TransactionSheet'

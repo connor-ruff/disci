@@ -1,6 +1,6 @@
 # API Overview
 
-*Runs on AWS Lambda behind API Gateway (https://molrqp0ch5.execute-api.us-east-2.amazonaws.com): the core endpoints and the finance, nutrition and tasks modules (§7), plus scheduled jobs in `app/jobs/` in their own Lambda (§9). Deploying and operating it: [deployment.md](../ops/deployment.md).*
+*Runs on AWS Lambda behind API Gateway (https://molrqp0ch5.execute-api.us-east-2.amazonaws.com): the core endpoints and the finance, nutrition, tasks and shopping list modules (§7), plus scheduled jobs in `app/jobs/` in their own Lambda (§9). Deploying and operating it: [deployment.md](../ops/deployment.md).*
 
 The API is the only thing that talks to the database. The web app and the MCP server go through it over HTTP; scheduled jobs (`app/jobs/`) are part of the same codebase and zip, run in their own Lambda, and use the same database role, queries and row-level security (see §9 and [disci-infrastructure.md](../project_plans/disci-infrastructure.md)). It is **FastAPI** on Python 3.13, with plain SQL through **psycopg 3** (no ORM), managed with **uv**.
 
@@ -68,12 +68,19 @@ api/
 │           ├── service.py         # TASK_TYPES guide, type_fields, add_interval, due_status, progress
 │           ├── sql.py             # `queries = Queries(__file__)`
 │           └── queries/           # one .sql per query
+│       └── shopping/              # mounted at /shopping
+│           ├── __init__.py        # `module` + `setup` (seeds a "Groceries" type on first enable)
+│           ├── routes/__init__.py # `router`: every shopping route (one area, so one file)
+│           ├── schemas.py         # Pydantic models (ShoppingTypeOut, ItemCreate, ItemOut, CommonOut, ClearDone)
+│           ├── sql.py             # `queries = Queries(__file__)`
+│           └── queries/           # one .sql per query
 └── tests/                         # pytest, against the disci_test database
     ├── conftest.py
     ├── core/                      # test_users.py, test_user_modules.py, test_aws.py
     ├── modules/finance/           # test_finance.py, test_recurring.py
     ├── modules/nutrition/         # test_nutrition.py
-    └── modules/tasks/             # test_tasks.py
+    ├── modules/tasks/             # test_tasks.py
+    └── modules/shopping/          # test_shopping.py
 ```
 
 A small module has `router.py` (thin HTTP routes), `schemas.py` (Pydantic models), `service.py` (business rules that don't belong in SQL) and `queries/` (one `.sql` per query); `core/users/` is a minimal example (no service).
@@ -156,7 +163,7 @@ The dependency uses `Depends(get_db, scope="function")`, so the commit happens *
    ```
 3. Add it to the tuple in `app/modules/__init__.py` (`MODULES`).
 
-The router is mounted at `/<key>` automatically. `setup(conn, user_id)`, if given, runs **once**, in the same transaction, the first time a user enables the module (e.g. seeding default categories). It never runs on re-enable. The module also needs a migration that creates its schema and its grants (see [db-overview.md](../db/db-overview.md)) and its key must be allowed by the `module_key` CHECK on `core.user_modules` (finance, tasks and nutrition already are).
+The router is mounted at `/<key>` automatically. `setup(conn, user_id)`, if given, runs **once**, in the same transaction, the first time a user enables the module (e.g. seeding default categories). It never runs on re-enable. The module also needs a migration that creates its schema and its grants (see [db-overview.md](../db/db-overview.md)) and its key must be allowed by the `module_key` CHECK on `core.user_modules` (finance, tasks, nutrition and shopping already are).
 
 ---
 
@@ -175,6 +182,7 @@ Interactive docs: http://localhost:8000/docs while `make api` is running.
 | * | `/finance/...` | Finance module, see §7.1. |
 | * | `/nutrition/...` | Nutrition module, see §7.2. |
 | * | `/tasks/...` | Tasks module, see §7.3. |
+| * | `/shopping/...` | Shopping list module, see §7.4. |
 
 ### 7.1 Finance (`/finance`)
 
@@ -292,6 +300,35 @@ Complete and undo lock the task row first, so concurrent taps apply one after th
 - **409**: checking off a to-do that's already done.
 - **422**: request validation (unknown type or unit, out-of-range numbers, over-long text), a type's required field missing, checking off a keep-in-mind task, or a check-off on a future day.
 
+### 7.4 Shopping list (`/shopping`)
+
+Data model: [shopping.md](../db/shopping.md). Types are the user's own (`shopping_types`); a `shopping_type_id` of **null means Uncategorized**. Names are trimmed and can't be blank; blank notes become null.
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/shopping/types` | The user's types (`ShoppingTypeOut`: `id`, `name`, `sort_order`), in their order. |
+| POST | `/shopping/types` | Create (`{name}`, 1–100 chars). Goes last. 201. |
+| PUT | `/shopping/types/order` | Reorder (`{ids}`: the types in their new order). Returns the types. |
+| PUT | `/shopping/types/{id}` | Rename (`{name}`). |
+| DELETE | `/shopping/types/{id}` | Soft-delete. Its list items and common items become Uncategorized. 204. |
+| GET | `/shopping/items` | Everything on the list, crossed off or not (`ItemOut`: `id`, `shopping_type_id`, `name`, `notes`, `sort_order`, `done`, `done_at`), by `sort_order`. |
+| POST | `/shopping/items` | Add (`ItemCreate`: `name` 1–200 chars, `shopping_type_id?`, `notes?` ≤300, `save_as_common?`). Goes last in its type. With `save_as_common`, also saves it as a common item unless one already exists. 201. |
+| PUT | `/shopping/items/order` | Reorder (`{ids}`: every item, in the new order). Returns the list. |
+| POST | `/shopping/items/clear-done` | Remove crossed-off items for good: `{all_types: true}` for every type, otherwise `{shopping_type_id}` for one (null = Uncategorized). Returns `{removed}`. |
+| PUT | `/shopping/items/{id}` | Replace `name`, `shopping_type_id`, `notes` (sent in full). Moving it to another type puts it last there. |
+| PUT | `/shopping/items/{id}/done` | `{done: true}` crosses it off (it stays on the list), `{done: false}` puts it back. Returns `ItemOut`. |
+| DELETE | `/shopping/items/{id}` | Remove it for good (hard delete). 204. |
+| GET | `/shopping/common` | Common items (`CommonOut`: `id`, `shopping_type_id`, `name`, `notes`, `on_list`), by name. `on_list`: an item with the same name (any case) and type is on the list, not crossed off. |
+| POST | `/shopping/common` | Create (same fields as a list item, without `save_as_common`). 201. |
+| PUT | `/shopping/common/{id}` | Replace `name`, `shopping_type_id`, `notes`. |
+| DELETE | `/shopping/common/{id}` | Soft-delete. The list isn't affected. 204. |
+| POST | `/shopping/common/{id}/add` | Put a copy (name, type, notes) on the list; no link is kept. **201** with the new item, or **200** with the existing one when a matching item is already on the list, not crossed off. |
+
+**Errors:**
+- **404**: the type, item or common item doesn't exist, is deleted, or belongs to another user.
+- **409**: a duplicate type name (any case), or a common item with the same name (any case) in the same type.
+- **422**: request validation (blank names, over-long text), or a `shopping_type_id` that doesn't exist or is deleted.
+
 ---
 
 ## 8. Run, test, lint
@@ -317,6 +354,7 @@ Requires Docker (for Postgres) and **uv**.
 | `tests/modules/finance/test_recurring.py` | Schedules and occurrence dates, rule validation, auto-apply and the Inbox (matching items, `pick_item` and `place` entries, the ledger, never creating items), pending transactions from before the Inbox, the hourly job, the checklist and its modes, reordering. |
 | `tests/modules/nutrition/test_nutrition.py` | Tracked nutrients, the food repo, day totals and unknown values, precision, log entries and quick adds, history paging, cross-user isolation, effective-dated goals. |
 | `tests/modules/tasks/test_tasks.py` | The four types and their fields, check-off and undo per type, due dates and `add_interval`, cross-user isolation. |
+| `tests/modules/shopping/test_shopping.py` | The seeded Groceries type, types (order, uniqueness, rename, delete to Uncategorized), item order and moving between types, crossing off and clearing, common items (uniqueness per type, adding once, save as common), cross-user isolation. |
 
 A new behavior gets a test in its module's file.
 
@@ -336,7 +374,7 @@ Built into one zip by `scripts/build-api-zip.sh` (no Docker) and shipped by `scr
 | `disci-migrator` | `app.migrator.handler` | Connects as the RDS master user (`DISCI_MIGRATOR_DATABASE_URL`), runs `db/aws/roles.sql` (idempotent: ensures `disci_app`, `disci_api`, `rds_iam` grant), then the bundled `bin/dbmate --no-dump-schema --migrations-dir db/migrations up`. Raises if dbmate fails, which stops the deploy before the API is updated. Returns dbmate's output. |
 | `disci-jobs` | `app.jobs.recurring.handler` | Scheduled work, triggered hourly by EventBridge Scheduler. Today it only creates due recurring transactions (§9.1). Same environment variables as `disci-api`. |
 
-The MCP server (`disci-mcp`) is a separate project and zip (`mcp_server/`, [mcp-overview.md](../mcp/mcp-overview.md)) that calls this API over HTTP. Its finance, nutrition and tasks tools wrap the §7.1, §7.2 and §7.3 endpoints (the tasks tools only read tasks and log completions); nothing in the API is MCP-specific beyond accepting its access tokens (§3).
+The MCP server (`disci-mcp`) is a separate project and zip (`mcp_server/`, [mcp-overview.md](../mcp/mcp-overview.md)) that calls this API over HTTP. Its finance, nutrition, tasks and shopping tools wrap the §7.1–§7.4 endpoints (the tasks tools only read tasks and log completions; the shopping tools only work with the list, not types or common items); nothing in the API is MCP-specific beyond accepting its access tokens (§3).
 
 The deploy runs the migrator **before** updating the API, so migrations must be backward compatible with the live API (expand/contract). `disci-jobs` gets the same zip right after `disci-api`.
 

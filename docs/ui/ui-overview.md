@@ -23,3 +23,4 @@ Look: mostly white and calming (white and off-white backgrounds, greens used as 
 - finance-ui.md
 - nutrition-ui.md
 - tasks-ui.md
+- shopping-ui.md
