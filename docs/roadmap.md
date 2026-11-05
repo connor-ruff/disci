@@ -21,7 +21,7 @@ From [project-inspiration.md](project_plans/project-inspiration.md) §3, these a
 
 | Item | Notes |
 |---|---|
-| **Training module: plans, dashboard, lift progression** | The workout log is built ([training.md](db/training.md)). Still to come, one PR each: **Plans**: `plans` (many per user, at most one active), `plan_days` (planned miles + notes per day) and optional `plan_weeks` (weekly targets), a grid paste import (week start + Mon–Sun miles), plan editing (a Plan tab shown only when the user has a plan, "Start a plan" on the Calendar), plan vs. done on the Calendar with a week detail, and the weekly band (target ± 10%) and status (under / in range / over) with the cross-training suggestion. **Dashboard and brief**: a Dashboard tab (This week / Overall, weekly mileage chart, totals, % of plan, days to race), `GET /training/brief` and a `get_training_brief` MCP tool for daily agent messages, and a user guide with suggested Instinct instructions. **Open:** what the dashboard shows without a plan (§4). **Lift progression**: a per-lift history and progression page (top set, volume, estimated 1RM), opened from a lift in the log; the API's `GET /training/lifts/{id}` already returns its sessions. Decisions, the draft plan model, metrics and phases are in [project_plans/training-module.md](project_plans/training-module.md). |
+| **Training module: dashboard and lift progression** | The workout log and training plans are built ([training.md](db/training.md)). Still to come, one PR each: **Dashboard and brief**: a Dashboard tab (This week / Overall, weekly mileage chart, totals, % of plan, days to race), `GET /training/brief` and a `get_training_brief` MCP tool for daily agent messages (today's planned workout, yesterday, the week's status and cross-training cue from the existing week rules, plan progress, recent reflections), and a user guide with suggested Instinct instructions. **Open:** what the dashboard shows without a plan (§4). **Lift progression**: a per-lift history and progression page (top set, volume, estimated 1RM), opened from a lift in the log; the API's `GET /training/lifts/{id}` already returns its sessions. The draft brief shape, metrics and phases are in [project_plans/training-module.md](project_plans/training-module.md). |
 | **Connector setup in Settings** | A Settings section showing each user the MCP URL, client ID and shared secret, plus the setup steps for Claude and for Instinct AI. Draft notes for the Instinct steps are in `docs/user_guides/` (not committed). |
 
 ## 3. Later: feature backlog
@@ -53,6 +53,10 @@ From [project-inspiration.md](project_plans/project-inspiration.md) §3, these a
 **Training**
 - Editing a workout through Claude (an `update_workout` tool). The MCP tools log, list and delete workouts.
 - Managing the lift catalog in the app: rename, describe or delete a lift. The API has the endpoints (`/training/lifts`); today lifts are only added by logging them.
+- Reading and managing plans through Claude: plan vs. done for a week (a `get_training_week` tool), and creating or editing a plan. No MCP tool touches plans today; they're managed in the web app.
+- Plan vs. done on the Home card: this week's miles against the band and days to race, when there's an active plan. The card shows workouts only today.
+- Ending the active plan, or deleting it, from the Plan page without starting or activating another. The API supports both (`PUT /training/plans/{id}/active` with `false`, `DELETE /training/plans/{id}`).
+- The ±10% band width as a per-plan rule setting, next to `count_walk_miles` and `cross_train_at_pct`.
 
 **Shell and platform**
 - An "everything" dashboard across modules.

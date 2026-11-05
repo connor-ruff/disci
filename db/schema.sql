@@ -636,6 +636,61 @@ CREATE TABLE training.lifts (
 
 
 --
+-- Name: plan_days; Type: TABLE; Schema: training; Owner: -
+--
+
+CREATE TABLE training.plan_days (
+    id uuid DEFAULT uuidv7() NOT NULL,
+    user_id uuid NOT NULL,
+    plan_id uuid NOT NULL,
+    day_on date NOT NULL,
+    planned_miles numeric(6,2) NOT NULL,
+    notes text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT plan_days_planned_miles_check CHECK ((planned_miles > (0)::numeric))
+);
+
+
+--
+-- Name: plan_weeks; Type: TABLE; Schema: training; Owner: -
+--
+
+CREATE TABLE training.plan_weeks (
+    id uuid DEFAULT uuidv7() NOT NULL,
+    user_id uuid NOT NULL,
+    plan_id uuid NOT NULL,
+    week_starts_on date NOT NULL,
+    target_miles numeric(6,2) NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT plan_weeks_target_miles_check CHECK ((target_miles > (0)::numeric))
+);
+
+
+--
+-- Name: plans; Type: TABLE; Schema: training; Owner: -
+--
+
+CREATE TABLE training.plans (
+    id uuid DEFAULT uuidv7() NOT NULL,
+    user_id uuid NOT NULL,
+    name text NOT NULL,
+    race_name text,
+    race_on date,
+    starts_on date NOT NULL,
+    is_active boolean DEFAULT false NOT NULL,
+    count_walk_miles boolean DEFAULT false NOT NULL,
+    cross_train_at_pct smallint DEFAULT 90 NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    deleted_at timestamp with time zone,
+    CONSTRAINT plans_cross_train_at_pct_check CHECK (((cross_train_at_pct >= 1) AND (cross_train_at_pct <= 200))),
+    CONSTRAINT plans_name_check CHECK ((length(TRIM(BOTH FROM name)) > 0))
+);
+
+
+--
 -- Name: workouts; Type: TABLE; Schema: training; Owner: -
 --
 
@@ -945,6 +1000,54 @@ ALTER TABLE ONLY training.lifts
 
 
 --
+-- Name: plan_days plan_days_pkey; Type: CONSTRAINT; Schema: training; Owner: -
+--
+
+ALTER TABLE ONLY training.plan_days
+    ADD CONSTRAINT plan_days_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: plan_days plan_days_plan_id_day_on_key; Type: CONSTRAINT; Schema: training; Owner: -
+--
+
+ALTER TABLE ONLY training.plan_days
+    ADD CONSTRAINT plan_days_plan_id_day_on_key UNIQUE (plan_id, day_on);
+
+
+--
+-- Name: plan_weeks plan_weeks_pkey; Type: CONSTRAINT; Schema: training; Owner: -
+--
+
+ALTER TABLE ONLY training.plan_weeks
+    ADD CONSTRAINT plan_weeks_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: plan_weeks plan_weeks_plan_id_week_starts_on_key; Type: CONSTRAINT; Schema: training; Owner: -
+--
+
+ALTER TABLE ONLY training.plan_weeks
+    ADD CONSTRAINT plan_weeks_plan_id_week_starts_on_key UNIQUE (plan_id, week_starts_on);
+
+
+--
+-- Name: plans plans_id_user_id_key; Type: CONSTRAINT; Schema: training; Owner: -
+--
+
+ALTER TABLE ONLY training.plans
+    ADD CONSTRAINT plans_id_user_id_key UNIQUE (id, user_id);
+
+
+--
+-- Name: plans plans_pkey; Type: CONSTRAINT; Schema: training; Owner: -
+--
+
+ALTER TABLE ONLY training.plans
+    ADD CONSTRAINT plans_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: workouts workouts_id_user_id_type_key; Type: CONSTRAINT; Schema: training; Owner: -
 --
 
@@ -1143,6 +1246,13 @@ CREATE UNIQUE INDEX lifts_user_name ON training.lifts USING btree (user_id, lowe
 
 
 --
+-- Name: plans_one_active; Type: INDEX; Schema: training; Owner: -
+--
+
+CREATE UNIQUE INDEX plans_one_active ON training.plans USING btree (user_id) WHERE (is_active AND (deleted_at IS NULL));
+
+
+--
 -- Name: workouts_user_date_idx; Type: INDEX; Schema: training; Owner: -
 --
 
@@ -1294,6 +1404,27 @@ CREATE TRIGGER set_updated_at BEFORE UPDATE ON training.lift_sets FOR EACH ROW E
 --
 
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON training.lifts FOR EACH ROW EXECUTE FUNCTION core.set_updated_at();
+
+
+--
+-- Name: plan_days set_updated_at; Type: TRIGGER; Schema: training; Owner: -
+--
+
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON training.plan_days FOR EACH ROW EXECUTE FUNCTION core.set_updated_at();
+
+
+--
+-- Name: plan_weeks set_updated_at; Type: TRIGGER; Schema: training; Owner: -
+--
+
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON training.plan_weeks FOR EACH ROW EXECUTE FUNCTION core.set_updated_at();
+
+
+--
+-- Name: plans set_updated_at; Type: TRIGGER; Schema: training; Owner: -
+--
+
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON training.plans FOR EACH ROW EXECUTE FUNCTION core.set_updated_at();
 
 
 --
@@ -1584,6 +1715,46 @@ ALTER TABLE ONLY training.lifts
 
 
 --
+-- Name: plan_days plan_days_plan_id_user_id_fkey; Type: FK CONSTRAINT; Schema: training; Owner: -
+--
+
+ALTER TABLE ONLY training.plan_days
+    ADD CONSTRAINT plan_days_plan_id_user_id_fkey FOREIGN KEY (plan_id, user_id) REFERENCES training.plans(id, user_id);
+
+
+--
+-- Name: plan_days plan_days_user_id_fkey; Type: FK CONSTRAINT; Schema: training; Owner: -
+--
+
+ALTER TABLE ONLY training.plan_days
+    ADD CONSTRAINT plan_days_user_id_fkey FOREIGN KEY (user_id) REFERENCES core.users(id);
+
+
+--
+-- Name: plan_weeks plan_weeks_plan_id_user_id_fkey; Type: FK CONSTRAINT; Schema: training; Owner: -
+--
+
+ALTER TABLE ONLY training.plan_weeks
+    ADD CONSTRAINT plan_weeks_plan_id_user_id_fkey FOREIGN KEY (plan_id, user_id) REFERENCES training.plans(id, user_id);
+
+
+--
+-- Name: plan_weeks plan_weeks_user_id_fkey; Type: FK CONSTRAINT; Schema: training; Owner: -
+--
+
+ALTER TABLE ONLY training.plan_weeks
+    ADD CONSTRAINT plan_weeks_user_id_fkey FOREIGN KEY (user_id) REFERENCES core.users(id);
+
+
+--
+-- Name: plans plans_user_id_fkey; Type: FK CONSTRAINT; Schema: training; Owner: -
+--
+
+ALTER TABLE ONLY training.plans
+    ADD CONSTRAINT plans_user_id_fkey FOREIGN KEY (user_id) REFERENCES core.users(id);
+
+
+--
 -- Name: workouts workouts_user_id_fkey; Type: FK CONSTRAINT; Schema: training; Owner: -
 --
 
@@ -1865,11 +2036,50 @@ CREATE POLICY owner ON training.lifts TO disci_app USING ((user_id = core.curren
 
 
 --
+-- Name: plan_days owner; Type: POLICY; Schema: training; Owner: -
+--
+
+CREATE POLICY owner ON training.plan_days TO disci_app USING ((user_id = core.current_user_id())) WITH CHECK ((user_id = core.current_user_id()));
+
+
+--
+-- Name: plan_weeks owner; Type: POLICY; Schema: training; Owner: -
+--
+
+CREATE POLICY owner ON training.plan_weeks TO disci_app USING ((user_id = core.current_user_id())) WITH CHECK ((user_id = core.current_user_id()));
+
+
+--
+-- Name: plans owner; Type: POLICY; Schema: training; Owner: -
+--
+
+CREATE POLICY owner ON training.plans TO disci_app USING ((user_id = core.current_user_id())) WITH CHECK ((user_id = core.current_user_id()));
+
+
+--
 -- Name: workouts owner; Type: POLICY; Schema: training; Owner: -
 --
 
 CREATE POLICY owner ON training.workouts TO disci_app USING ((user_id = core.current_user_id())) WITH CHECK ((user_id = core.current_user_id()));
 
+
+--
+-- Name: plan_days; Type: ROW SECURITY; Schema: training; Owner: -
+--
+
+ALTER TABLE training.plan_days ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: plan_weeks; Type: ROW SECURITY; Schema: training; Owner: -
+--
+
+ALTER TABLE training.plan_weeks ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: plans; Type: ROW SECURITY; Schema: training; Owner: -
+--
+
+ALTER TABLE training.plans ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: workouts; Type: ROW SECURITY; Schema: training; Owner: -
@@ -1906,4 +2116,5 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('20261031120000'),
     ('20261031120100'),
     ('20261105120000'),
-    ('20261105120100');
+    ('20261105120100'),
+    ('20261105180000');
