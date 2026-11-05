@@ -21,6 +21,7 @@ From [project-inspiration.md](project_plans/project-inspiration.md) §3, these a
 
 | Item | Notes |
 |---|---|
+| **Training module** | One module for running, walking, biking and lifting: a workout log that works with or without a race training plan, plan vs. done calendar, dashboards, and a `get_training_brief` MCP tool for daily agent messages. Planning in progress; decisions, open questions, phases and handover in [project_plans/training-module.md](project_plans/training-module.md). Replaces the separate Lifting module idea. |
 | **Connector setup in Settings** | A Settings section showing each user the MCP URL, client ID and shared secret, plus the setup steps for Claude and for Instinct AI. Draft notes for the Instinct steps are in `docs/user_guides/` (not committed). |
 
 ## 3. Later: feature backlog

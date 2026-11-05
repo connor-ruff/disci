@@ -8,7 +8,8 @@ docs/
 ├── roadmap.md                     # Everything not built yet, cleanup steps and open questions (the only backlog)
 ├── project_plans/                 # Historical: the plans written before the build (not kept up to date)
 │   ├── project-inspiration.md     # Why Disci exists: the old trackers, the vision, design principles
-│   └── disci-infrastructure.md    # Original infra & cost plan (as built: ops/deployment.md)
+│   ├── disci-infrastructure.md    # Original infra & cost plan (as built: ops/deployment.md)
+│   └── training-module.md         # Training module plan: decisions, draft model, open questions, phases, handover
 ├── research/                      # Point-in-time studies of options not built yet (dated, not kept up to date)
 │   ├── log-export-to-snowflake.md            # Goal, constraints and comparison of ways to get logs into Snowflake
 │   ├── log-export-option-a-firehose-s3.md    # Option A: Firehose → S3 → external table
