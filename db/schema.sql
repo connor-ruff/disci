@@ -51,6 +51,13 @@ CREATE SCHEMA tasks;
 
 
 --
+-- Name: training; Type: SCHEMA; Schema: -; Owner: -
+--
+
+CREATE SCHEMA training;
+
+
+--
 -- Name: current_user_id(); Type: FUNCTION; Schema: core; Owner: -
 --
 
@@ -151,7 +158,7 @@ CREATE TABLE core.user_modules (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     deleted_at timestamp with time zone,
-    CONSTRAINT user_modules_module_key_check CHECK ((module_key = ANY (ARRAY['finance'::text, 'tasks'::text, 'nutrition'::text, 'shopping'::text])))
+    CONSTRAINT user_modules_module_key_check CHECK ((module_key = ANY (ARRAY['finance'::text, 'tasks'::text, 'nutrition'::text, 'shopping'::text, 'training'::text])))
 );
 
 
@@ -591,6 +598,73 @@ CREATE TABLE tasks.tasks (
 
 
 --
+-- Name: lift_sets; Type: TABLE; Schema: training; Owner: -
+--
+
+CREATE TABLE training.lift_sets (
+    id uuid DEFAULT uuidv7() NOT NULL,
+    user_id uuid NOT NULL,
+    workout_id uuid NOT NULL,
+    workout_type text DEFAULT 'lift'::text NOT NULL,
+    lift_id uuid NOT NULL,
+    set_number integer NOT NULL,
+    reps integer NOT NULL,
+    weight_num numeric(6,2),
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT lift_sets_reps_check CHECK (((reps >= 1) AND (reps <= 1000))),
+    CONSTRAINT lift_sets_set_number_check CHECK ((set_number >= 1)),
+    CONSTRAINT lift_sets_weight_num_check CHECK ((weight_num >= (0)::numeric)),
+    CONSTRAINT lift_sets_workout_type_check CHECK ((workout_type = 'lift'::text))
+);
+
+
+--
+-- Name: lifts; Type: TABLE; Schema: training; Owner: -
+--
+
+CREATE TABLE training.lifts (
+    id uuid DEFAULT uuidv7() NOT NULL,
+    user_id uuid NOT NULL,
+    name text NOT NULL,
+    description text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    deleted_at timestamp with time zone,
+    CONSTRAINT lifts_name_check CHECK ((length(TRIM(BOTH FROM name)) > 0))
+);
+
+
+--
+-- Name: workouts; Type: TABLE; Schema: training; Owner: -
+--
+
+CREATE TABLE training.workouts (
+    id uuid DEFAULT uuidv7() NOT NULL,
+    user_id uuid NOT NULL,
+    type text NOT NULL,
+    date date NOT NULL,
+    location text,
+    miles numeric(6,2),
+    time_in_sec integer,
+    elevation_gain_ft integer,
+    avg_heart_rate smallint,
+    description text,
+    reflection text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    deleted_at timestamp with time zone,
+    CONSTRAINT workouts_avg_heart_rate_check CHECK (((avg_heart_rate >= 20) AND (avg_heart_rate <= 250))),
+    CONSTRAINT workouts_check CHECK (((type <> 'lift'::text) OR ((miles IS NULL) AND (elevation_gain_ft IS NULL) AND (avg_heart_rate IS NULL)))),
+    CONSTRAINT workouts_check1 CHECK (((type <> ALL (ARRAY['run'::text, 'walk'::text])) OR (miles IS NOT NULL))),
+    CONSTRAINT workouts_elevation_gain_ft_check CHECK ((elevation_gain_ft >= 0)),
+    CONSTRAINT workouts_miles_check CHECK ((miles > (0)::numeric)),
+    CONSTRAINT workouts_time_in_sec_check CHECK ((time_in_sec > 0)),
+    CONSTRAINT workouts_type_check CHECK ((type = ANY (ARRAY['run'::text, 'walk'::text, 'bike'::text, 'lift'::text])))
+);
+
+
+--
 -- Name: user_modules user_modules_pkey; Type: CONSTRAINT; Schema: core; Owner: -
 --
 
@@ -839,6 +913,54 @@ ALTER TABLE ONLY tasks.tasks
 
 
 --
+-- Name: lift_sets lift_sets_pkey; Type: CONSTRAINT; Schema: training; Owner: -
+--
+
+ALTER TABLE ONLY training.lift_sets
+    ADD CONSTRAINT lift_sets_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: lift_sets lift_sets_workout_id_set_number_key; Type: CONSTRAINT; Schema: training; Owner: -
+--
+
+ALTER TABLE ONLY training.lift_sets
+    ADD CONSTRAINT lift_sets_workout_id_set_number_key UNIQUE (workout_id, set_number);
+
+
+--
+-- Name: lifts lifts_id_user_id_key; Type: CONSTRAINT; Schema: training; Owner: -
+--
+
+ALTER TABLE ONLY training.lifts
+    ADD CONSTRAINT lifts_id_user_id_key UNIQUE (id, user_id);
+
+
+--
+-- Name: lifts lifts_pkey; Type: CONSTRAINT; Schema: training; Owner: -
+--
+
+ALTER TABLE ONLY training.lifts
+    ADD CONSTRAINT lifts_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: workouts workouts_id_user_id_type_key; Type: CONSTRAINT; Schema: training; Owner: -
+--
+
+ALTER TABLE ONLY training.workouts
+    ADD CONSTRAINT workouts_id_user_id_type_key UNIQUE (id, user_id, type);
+
+
+--
+-- Name: workouts workouts_pkey; Type: CONSTRAINT; Schema: training; Owner: -
+--
+
+ALTER TABLE ONLY training.workouts
+    ADD CONSTRAINT workouts_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: user_modules_user_module_key; Type: INDEX; Schema: core; Owner: -
 --
 
@@ -1007,6 +1129,27 @@ CREATE INDEX tasks_user_idx ON tasks.tasks USING btree (user_id) WHERE (deleted_
 
 
 --
+-- Name: lift_sets_lift_idx; Type: INDEX; Schema: training; Owner: -
+--
+
+CREATE INDEX lift_sets_lift_idx ON training.lift_sets USING btree (lift_id);
+
+
+--
+-- Name: lifts_user_name; Type: INDEX; Schema: training; Owner: -
+--
+
+CREATE UNIQUE INDEX lifts_user_name ON training.lifts USING btree (user_id, lower(name)) WHERE (deleted_at IS NULL);
+
+
+--
+-- Name: workouts_user_date_idx; Type: INDEX; Schema: training; Owner: -
+--
+
+CREATE INDEX workouts_user_date_idx ON training.workouts USING btree (user_id, date) WHERE (deleted_at IS NULL);
+
+
+--
 -- Name: user_modules set_updated_at; Type: TRIGGER; Schema: core; Owner: -
 --
 
@@ -1137,6 +1280,27 @@ CREATE TRIGGER set_updated_at BEFORE UPDATE ON tasks.task_completions FOR EACH R
 --
 
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON tasks.tasks FOR EACH ROW EXECUTE FUNCTION core.set_updated_at();
+
+
+--
+-- Name: lift_sets set_updated_at; Type: TRIGGER; Schema: training; Owner: -
+--
+
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON training.lift_sets FOR EACH ROW EXECUTE FUNCTION core.set_updated_at();
+
+
+--
+-- Name: lifts set_updated_at; Type: TRIGGER; Schema: training; Owner: -
+--
+
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON training.lifts FOR EACH ROW EXECUTE FUNCTION core.set_updated_at();
+
+
+--
+-- Name: workouts set_updated_at; Type: TRIGGER; Schema: training; Owner: -
+--
+
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON training.workouts FOR EACH ROW EXECUTE FUNCTION core.set_updated_at();
 
 
 --
@@ -1388,6 +1552,46 @@ ALTER TABLE ONLY tasks.tasks
 
 
 --
+-- Name: lift_sets lift_sets_lift_id_user_id_fkey; Type: FK CONSTRAINT; Schema: training; Owner: -
+--
+
+ALTER TABLE ONLY training.lift_sets
+    ADD CONSTRAINT lift_sets_lift_id_user_id_fkey FOREIGN KEY (lift_id, user_id) REFERENCES training.lifts(id, user_id);
+
+
+--
+-- Name: lift_sets lift_sets_user_id_fkey; Type: FK CONSTRAINT; Schema: training; Owner: -
+--
+
+ALTER TABLE ONLY training.lift_sets
+    ADD CONSTRAINT lift_sets_user_id_fkey FOREIGN KEY (user_id) REFERENCES core.users(id);
+
+
+--
+-- Name: lift_sets lift_sets_workout_id_user_id_workout_type_fkey; Type: FK CONSTRAINT; Schema: training; Owner: -
+--
+
+ALTER TABLE ONLY training.lift_sets
+    ADD CONSTRAINT lift_sets_workout_id_user_id_workout_type_fkey FOREIGN KEY (workout_id, user_id, workout_type) REFERENCES training.workouts(id, user_id, type);
+
+
+--
+-- Name: lifts lifts_user_id_fkey; Type: FK CONSTRAINT; Schema: training; Owner: -
+--
+
+ALTER TABLE ONLY training.lifts
+    ADD CONSTRAINT lifts_user_id_fkey FOREIGN KEY (user_id) REFERENCES core.users(id);
+
+
+--
+-- Name: workouts workouts_user_id_fkey; Type: FK CONSTRAINT; Schema: training; Owner: -
+--
+
+ALTER TABLE ONLY training.workouts
+    ADD CONSTRAINT workouts_user_id_fkey FOREIGN KEY (user_id) REFERENCES core.users(id);
+
+
+--
 -- Name: user_modules; Type: ROW SECURITY; Schema: core; Owner: -
 --
 
@@ -1635,6 +1839,45 @@ ALTER TABLE tasks.task_completions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tasks.tasks ENABLE ROW LEVEL SECURITY;
 
 --
+-- Name: lift_sets; Type: ROW SECURITY; Schema: training; Owner: -
+--
+
+ALTER TABLE training.lift_sets ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: lifts; Type: ROW SECURITY; Schema: training; Owner: -
+--
+
+ALTER TABLE training.lifts ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: lift_sets owner; Type: POLICY; Schema: training; Owner: -
+--
+
+CREATE POLICY owner ON training.lift_sets TO disci_app USING ((user_id = core.current_user_id())) WITH CHECK ((user_id = core.current_user_id()));
+
+
+--
+-- Name: lifts owner; Type: POLICY; Schema: training; Owner: -
+--
+
+CREATE POLICY owner ON training.lifts TO disci_app USING ((user_id = core.current_user_id())) WITH CHECK ((user_id = core.current_user_id()));
+
+
+--
+-- Name: workouts owner; Type: POLICY; Schema: training; Owner: -
+--
+
+CREATE POLICY owner ON training.workouts TO disci_app USING ((user_id = core.current_user_id())) WITH CHECK ((user_id = core.current_user_id()));
+
+
+--
+-- Name: workouts; Type: ROW SECURITY; Schema: training; Owner: -
+--
+
+ALTER TABLE training.workouts ENABLE ROW LEVEL SECURITY;
+
+--
 -- PostgreSQL database dump complete
 --
 
@@ -1661,4 +1904,6 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('20261028120000'),
     ('20261028130000'),
     ('20261031120000'),
-    ('20261031120100');
+    ('20261031120100'),
+    ('20261105120000'),
+    ('20261105120100');

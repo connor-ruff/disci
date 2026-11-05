@@ -36,7 +36,7 @@ Which modules a user has turned on. Modules are opt-in so new users aren't overw
 | Column | Type | Null | Notes |
 |---|---|---|---|
 | `id`, `user_id` | `uuid` | no | |
-| `module_key` | `text` | no | `CHECK IN ('finance','tasks','nutrition','shopping')`. Extended as modules are added. Matches the Postgres schema and code folder names. |
+| `module_key` | `text` | no | `CHECK IN ('finance','tasks','nutrition','shopping','training')`. Extended as modules are added. Matches the Postgres schema and code folder names. |
 | `enabled_at` | `timestamptz` | no | When the module was (most recently) turned on. |
 | `disabled_at` | `timestamptz` | yes | NULL means enabled. Turning a module off sets this and turning it back on clears it. |
 | `created_at` / `updated_at` / `deleted_at` | `timestamptz` | | Standard audit columns. `created_at` = the first time the module was ever enabled. |

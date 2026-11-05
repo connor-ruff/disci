@@ -1,6 +1,6 @@
 # MCP Server
 
-*Status: **live** since 2026-10-26, with 23 tools (9 finance, 8 nutrition, 2 tasks, 4 shopping list; §4.3). The server lives in `mcp_server/` and deploys with every push to `main`, alongside the API and web app ([deployment.md](../ops/deployment.md) §3). Infrastructure: [deployment.md](../ops/deployment.md) §2.2.*
+*Status: **live** since 2026-10-26, with 27 tools (9 finance, 8 nutrition, 2 tasks, 4 shopping list, 4 training; §4.3). The server lives in `mcp_server/` and deploys with every push to `main`, alongside the API and web app ([deployment.md](../ops/deployment.md) §3). Infrastructure: [deployment.md](../ops/deployment.md) §2.2.*
 
 The MCP server lets Claude (and other MCP clients, such as Instinct AI) read and change a user's Disci data. This doc covers how it authenticates with Cognito, how it's built and run, how to connect Claude, and the decisions behind it. What's not built yet is in [roadmap.md](../roadmap.md).
 
@@ -59,6 +59,7 @@ mcp_server/
 │   ├── nutrition.py       # nutrition tools (register(mcp))
 │   ├── tasks.py           # tasks tools (register(mcp))
 │   ├── shopping.py        # shopping list tools (register(mcp))
+│   ├── training.py        # training tools (register(mcp))
 │   ├── request_log.py     # RequestLog: ASGI middleware, one log line per HTTP request (§4.2)
 │   ├── server.py          # build_mcp(settings), create_app() (a fresh Starlette app)
 │   └── lambda_handler.py  # Lambda entry point `handler` (disci-mcp)
@@ -94,7 +95,7 @@ API errors become tool errors: **403** → "Sign in to the Disci web app once fi
 
 ### 4.3 Tools
 
-Kind = the MCP annotation from `common.py`: **R** read (`readOnlyHint`; clients run it without asking), **W** write, **D** destructive (`destructiveHint`; clients confirm first). All finance endpoints are under `/finance`, nutrition under `/nutrition`, tasks under `/tasks`, shopping list under `/shopping` ([api-overview.md §7](../api/api-overview.md)).
+Kind = the MCP annotation from `common.py`: **R** read (`readOnlyHint`; clients run it without asking), **W** write, **D** destructive (`destructiveHint`; clients confirm first). All finance endpoints are under `/finance`, nutrition under `/nutrition`, tasks under `/tasks`, shopping list under `/shopping`, training under `/training` ([api-overview.md §7](../api/api-overview.md)).
 
 | Tool | Kind | What it does | API endpoints |
 |---|---|---|---|
@@ -121,10 +122,14 @@ Kind = the MCP annotation from `common.py`: **R** read (`readOnlyHint`; clients 
 | `add_shopping_items(items)` | W | Each item `{name, type?, notes?}`. `type` is a type's name, matched case-insensitively (left out or "Uncategorized" = Uncategorized); an unknown type is a per-item error listing the user's types. An item already on that list (same name, any case, not crossed off) is skipped and reported `already_on_list`. Per-item outcomes. | `GET /shopping/types`, `GET /shopping/items`, then `POST /shopping/items` each |
 | `check_off_shopping_items(item_ids, done?)` | W | Crosses items off (default), or puts them back with `done=False`. Crossed-off items stay on the list. Per-item outcomes. | `PUT /shopping/items/{id}/done` each |
 | `remove_shopping_items(item_ids?, clear_crossed_off?)` | D | Removes items for good: the given ids (per-item outcomes) and/or, with `clear_crossed_off`, every crossed-off item in every type (returns how many). Needs at least one of the two. | `DELETE /shopping/items/{id}` each, `POST /shopping/items/clear-done` (`all_types`) |
+| `log_workout(type, date?, miles?, minutes?, location?, avg_heart_rate?, elevation_gain_ft?, description?, reflection?, sets?)` | W | Logs a run, walk, bike ride or lift. Runs and walks need `miles`; lifts take no miles, heart rate or elevation. `minutes` becomes the workout's time (48.5 = 48:30). Each set is `{lift, reps, weight_lb?}` in the order done: `lift` is a name (any case; a new name is added to the catalog), and no weight means bodyweight. `description` holds a lift's body parts or split. Returns the workout as in `list_workouts`. | `POST /training/workouts` |
+| `list_workouts(start?, end?, type?, limit?)` | R | Workouts newest first (default 30, at most 200), each with `id`, `date`, `type`, and when set `miles`, `time` and `pace_per_mile` (as `48:50`), location, heart rate, elevation, description and reflection; a lift's sets grouped by lift in order (`"185 × 5"`, `"BW × 8"`). | `GET /training/workouts` |
+| `get_lift_history(lift, sessions?)` | R | One lift's sets in each past workout, newest first (default 10, at most 50): "what did I bench last time?". The lift is matched by name, any case; an unknown name is an error listing the user's lifts. | `GET /training/lifts`, `GET /training/lifts/{id}` |
+| `delete_workout(workout_id)` | D | Deletes a workout (e.g. one logged by mistake) and its sets. | `DELETE /training/workouts/{id}` |
 
 **Conventions**
 
-- **Task-shaped wrappers over existing endpoints.** Each tool answers one request an assistant gets ("I just spent $69.12 at Trader Joe's", "how's my budget this month?", "log 6 oz of yogurt and an apple", "limit calories to 1800"), combining API calls as needed. The API and database are unchanged. Docstrings tell Claude which tool to call first (e.g. `get_budget_summary` for item ids, `search_foods` before `log_foods` / `add_food`, `get_tasks` before `log_task_completion`, `get_shopping_list` for item ids).
+- **Task-shaped wrappers over existing endpoints.** Each tool answers one request an assistant gets ("I just spent $69.12 at Trader Joe's", "how's my budget this month?", "log 6 oz of yogurt and an apple", "limit calories to 1800"), combining API calls as needed. The API and database are unchanged. Docstrings tell Claude which tool to call first (e.g. `get_budget_summary` for item ids, `search_foods` before `log_foods` / `add_food`, `get_tasks` before `log_task_completion`, `get_shopping_list` for item ids, `list_workouts` for workout ids).
 - **Dates default to today in the user's timezone** (`api.today()`, from `GET /me`).
 - **Batches report per-item outcomes** (`common.each()`): every call is its own API transaction, so one failure comes back as `{"id", "ok": false, "error"}` instead of failing the rest.
 - **Unknown nutrient values are omitted, not shown as 0** (food `nutrients` leave out null keys; day totals list `missing_foods`). Decimals are trimmed of trailing zeros (`common.num()`: `"170.000000"` → `"170"`).
@@ -155,7 +160,7 @@ The tests run against a routed `FakeApi` (`tests/conftest.py`), which returns ca
 |---|---|
 | `test_server.py` | Repeated Lambda invocations on one warm handler (§4.4), the cognito-mode 401 and protected-resource metadata, dev auth refused in prod, the request log line and its fields, tools sending the Lambda request ID to the API. |
 | `test_api.py` | How API errors become tool errors (§4.2). |
-| `test_finance.py`, `test_nutrition.py`, `test_tasks.py`, `test_shopping.py` | Each module's tools: the API calls they make, merging updates with current values, per-item batch outcomes, and the shape of what they return. |
+| `test_finance.py`, `test_nutrition.py`, `test_tasks.py`, `test_shopping.py`, `test_training.py` | Each module's tools: the API calls they make, merging updates with current values, per-item batch outcomes, and the shape of what they return. |
 
 Run `make mcp-test` for the current count. New tools get a test in their module's file. Beyond the tests, every tool has been smoke-tested end to end against the local API (`make api` + `make mcp`).
 
@@ -178,7 +183,7 @@ Logs: `/aws/lambda/disci-mcp` (14 days); how to tail and query them is in [deplo
 - **Hosting:** a separate Lambda with routes on the existing HTTP API, **outside the VPC** (`mcp.tf`). The VPC has no NAT, so a Lambda inside it couldn't call the public API URL. The `/mcp` and `/.well-known/*` routes have no authorizer, because the server does its own auth.
 - **Data access: forward the caller's access token to the API.** The server never touches the database, so RLS, validation and business rules stay in one place. The authorizer's audience includes the `disci-mcp` client, and the API accepts access tokens whose `client_id` is `DISCI_MCP_CLIENT_ID`.
 - **Users: identified by Cognito `sub`, with no change to the users table.** `core.users.cognito_sub` already existed. The lookup-only `core.find_user(sub)` ([db/shared.md](../db/shared.md)) maps a request to an existing user and never creates one.
-- **Tool surface: task-shaped tools** (§4.3), designed from how the user talks to Claude: log a purchase, check the budget, handle the Inbox, the monthly checklist, add a food from a label, log a meal, change a goal, "what's due today?", "I did my jaw exercises". Tasks tools only read tasks and log completions. Creating, editing and undoing tasks stays in the web app. Shopping list tools read the list, add to it, cross items off and remove them; managing shopping types and common items stays in the web app.
+- **Tool surface: task-shaped tools** (§4.3), designed from how the user talks to Claude: log a purchase, check the budget, handle the Inbox, the monthly checklist, add a food from a label, log a meal, change a goal, "what's due today?", "I did my jaw exercises". Tasks tools only read tasks and log completions. Creating, editing and undoing tasks stays in the web app. Shopping list tools read the list, add to it, cross items off and remove them; managing shopping types and common items stays in the web app. Training tools log, list and delete workouts and look up a lift's history; editing a workout stays in the web app, and new lifts join the catalog by being logged.
 - **Scheduled reports belong to the user's AI client, not Disci.** Disci serves data through the MCP tools and doesn't push morning or night summaries. A user who wants regular updates sets up a scheduled task in their own agent (Claude, Instinct AI) that reads these tools.
 
 **Limits to design within**

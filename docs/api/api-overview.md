@@ -1,6 +1,6 @@
 # API Overview
 
-*Runs on AWS Lambda behind API Gateway (https://molrqp0ch5.execute-api.us-east-2.amazonaws.com): the core endpoints and the finance, nutrition, tasks and shopping list modules (§7), plus scheduled jobs in `app/jobs/` in their own Lambda (§9). Deploying and operating it: [deployment.md](../ops/deployment.md).*
+*Runs on AWS Lambda behind API Gateway (https://molrqp0ch5.execute-api.us-east-2.amazonaws.com): the core endpoints and the finance, nutrition, tasks, shopping list and training modules (§7), plus scheduled jobs in `app/jobs/` in their own Lambda (§9). Deploying and operating it: [deployment.md](../ops/deployment.md).*
 
 The API is the only thing that talks to the database. The web app and the MCP server go through it over HTTP; scheduled jobs (`app/jobs/`) are part of the same codebase and zip, run in their own Lambda, and use the same database role, queries and row-level security (see §9 and [disci-infrastructure.md](../project_plans/disci-infrastructure.md)). It is **FastAPI** on Python 3.13, with plain SQL through **psycopg 3** (no ORM), managed with **uv**.
 
@@ -74,13 +74,21 @@ api/
 │           ├── schemas.py         # Pydantic models (ShoppingTypeOut, ItemCreate, ItemOut, CommonOut, ClearDone)
 │           ├── sql.py             # `queries = Queries(__file__)`
 │           └── queries/           # one .sql per query
+│       └── training/              # mounted at /training
+│           ├── __init__.py        # `module` (no setup: nothing is seeded)
+│           ├── routes/__init__.py # `router`: every training route (one area, so one file)
+│           ├── schemas.py         # Pydantic models (WorkoutIn, WorkoutOut, SetIn, SetOut, LiftIn, LiftOut, LiftDetail)
+│           ├── service.py         # check_fields (which fields each type uses), clean_text, pace
+│           ├── sql.py             # `queries = Queries(__file__)`
+│           └── queries/           # one .sql per query
 └── tests/                         # pytest, against the disci_test database
     ├── conftest.py
     ├── core/                      # test_users.py, test_user_modules.py, test_aws.py
     ├── modules/finance/           # test_finance.py, test_recurring.py
     ├── modules/nutrition/         # test_nutrition.py
     ├── modules/tasks/             # test_tasks.py
-    └── modules/shopping/          # test_shopping.py
+    ├── modules/shopping/          # test_shopping.py
+    └── modules/training/          # test_training.py
 ```
 
 A small module has `router.py` (thin HTTP routes), `schemas.py` (Pydantic models), `service.py` (business rules that don't belong in SQL) and `queries/` (one `.sql` per query); `core/users/` is a minimal example (no service).
@@ -163,7 +171,7 @@ The dependency uses `Depends(get_db, scope="function")`, so the commit happens *
    ```
 3. Add it to the tuple in `app/modules/__init__.py` (`MODULES`).
 
-The router is mounted at `/<key>` automatically. `setup(conn, user_id)`, if given, runs **once**, in the same transaction, the first time a user enables the module (e.g. seeding default categories). It never runs on re-enable. The module also needs a migration that creates its schema and its grants (see [db-overview.md](../db/db-overview.md)) and its key must be allowed by the `module_key` CHECK on `core.user_modules` (finance, tasks, nutrition and shopping already are).
+The router is mounted at `/<key>` automatically. `setup(conn, user_id)`, if given, runs **once**, in the same transaction, the first time a user enables the module (e.g. seeding default categories). It never runs on re-enable. The module also needs a migration that creates its schema and its grants (see [db-overview.md](../db/db-overview.md)) and its key must be allowed by the `module_key` CHECK on `core.user_modules` (finance, tasks, nutrition, shopping and training already are).
 
 ---
 
@@ -183,6 +191,7 @@ Interactive docs: http://localhost:8000/docs while `make api` is running.
 | * | `/nutrition/...` | Nutrition module, see §7.2. |
 | * | `/tasks/...` | Tasks module, see §7.3. |
 | * | `/shopping/...` | Shopping list module, see §7.4. |
+| * | `/training/...` | Training module, see §7.5. |
 
 ### 7.1 Finance (`/finance`)
 
@@ -329,6 +338,31 @@ Data model: [shopping.md](../db/shopping.md). Types are the user's own (`shoppin
 - **409**: a duplicate type name (any case), or a common item with the same name (any case) in the same type.
 - **422**: request validation (blank names, over-long text), or a `shopping_type_id` that doesn't exist or is deleted.
 
+### 7.5 Training (`/training`)
+
+Data model: [training.md](../db/training.md). A workout is a `run`, `walk`, `bike` or `lift`; fields its type doesn't use must be left out (or null). Text fields are trimmed and blank becomes null. Weights are pounds; a `weight_num` of **null means bodyweight**.
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/training/workouts` | Workouts with their sets, newest first (by `date`, then `created_at`). Optional filters: `start` / `end` (inclusive days), `type`; paging `limit` (1–500, default 100) and `offset`. Each `WorkoutOut`: `id`, `type`, `date`, `location`, `miles`, `time_in_sec`, `elevation_gain_ft`, `avg_heart_rate`, `description`, `reflection`, `pace_sec_per_mile` (derived: `time_in_sec / miles`, rounded; null without both), `sets`, `created_at`. Each set (`SetOut`): `set_number`, `lift_id`, `lift_name` (a deleted lift still shows its name), `reps`, `weight_num`. |
+| POST | `/training/workouts` | Log one (`WorkoutIn`: `type`, `date?` (default today in the user's timezone; not in the future), `location?` ≤100, `miles?`, `time_in_sec?` (≤ 2 days), `elevation_gain_ft?`, `avg_heart_rate?` (20–250), `description?` ≤300, `reflection?` ≤5000, `sets?` (≤200)). Runs and walks need `miles`; a lift can't have `miles`, `elevation_gain_ft` or `avg_heart_rate`; only a lift has `sets`. Each set (`SetIn`) is `reps` (1–1000), `weight_num?` and exactly one of `lift_id` or `lift_name`: a name is matched case-insensitively in the catalog, or added to it. Sets are numbered 1, 2, 3… in the order sent. 201. |
+| GET | `/training/workouts/{id}` | One workout (`WorkoutOut`). |
+| PUT | `/training/workouts/{id}` | Replace it, sets included (same body as POST, sent in full). The type may change; a lift's old sets are deleted and the sent ones written. |
+| DELETE | `/training/workouts/{id}` | Soft-delete. Its sets stop counting for "last time" and history. 204. |
+| GET | `/training/locations` | Locations used before, most recently used first (`limit` 1–50, default 10). A list of strings, for the log form's suggestions. |
+| GET | `/training/lifts` | The catalog (`LiftOut`: `id`, `name`, `description`, `last_done_on`, `last_sets`), most recently done first, never-done lifts last by name. `last_sets` (`reps`, `weight_num`) are its sets in the latest workout it was in ("last time"). |
+| POST | `/training/lifts` | Add one (`{name, description?}`: name 1–100 chars, description ≤300). 201. |
+| GET | `/training/lifts/{id}` | `LiftDetail`: the `LiftOut` fields plus `sessions`, its sets in each workout it was in (`workout_id`, `date`, `sets`), newest first, up to 50. |
+| PUT | `/training/lifts/{id}` | Replace `name`, `description`. |
+| DELETE | `/training/lifts/{id}` | Soft-delete. It leaves the catalog; past workouts still show its sets under its name. 204. |
+
+Editing a workout locks its row first, so concurrent saves of its sets apply one after the other.
+
+**Errors:**
+- **404**: the workout or lift doesn't exist, is deleted, or belongs to another user.
+- **409**: a duplicate lift name (any case) on create or rename.
+- **422**: request validation (unknown type, out-of-range numbers, over-long text, blank lift name), a field that doesn't fit the workout's type, a run or walk with no miles, a future date, a set with both or neither of `lift_id` and `lift_name`, or a `lift_id` that doesn't exist or is deleted.
+
 ---
 
 ## 8. Run, test, lint
@@ -355,6 +389,7 @@ Requires Docker (for Postgres) and **uv**.
 | `tests/modules/nutrition/test_nutrition.py` | Tracked nutrients, the food repo, day totals and unknown values, precision, log entries and quick adds, history paging, cross-user isolation, effective-dated goals. |
 | `tests/modules/tasks/test_tasks.py` | The four types and their fields, check-off and undo per type, due dates and `add_interval`, cross-user isolation. |
 | `tests/modules/shopping/test_shopping.py` | The seeded Groceries type, types (order, uniqueness, rename, delete to Uncategorized), item order and moving between types, crossing off and clearing, common items (uniqueness per type, adding once, save as common), cross-user isolation. |
+| `tests/modules/training/test_training.py` | Which fields each workout type needs or refuses, pace, the default and future dates, sets building the lift catalog and keeping their order, "last time", editing (replacing sets, changing type), the database refusing sets on a non-lift, list filters and order, deleting and recent locations, the lift catalog, cross-user isolation. |
 
 A new behavior gets a test in its module's file.
 
@@ -374,7 +409,7 @@ Built into one zip by `scripts/build-api-zip.sh` (no Docker) and shipped by `scr
 | `disci-migrator` | `app.migrator.handler` | Connects as the RDS master user (`DISCI_MIGRATOR_DATABASE_URL`), runs `db/aws/roles.sql` (idempotent: ensures `disci_app`, `disci_api`, `rds_iam` grant), then the bundled `bin/dbmate --no-dump-schema --migrations-dir db/migrations up`. Raises if dbmate fails, which stops the deploy before the API is updated. Returns dbmate's output. |
 | `disci-jobs` | `app.jobs.recurring.handler` | Scheduled work, triggered hourly by EventBridge Scheduler. Today it only creates due recurring transactions (§9.1). Same environment variables as `disci-api`. |
 
-The MCP server (`disci-mcp`) is a separate project and zip (`mcp_server/`, [mcp-overview.md](../mcp/mcp-overview.md)) that calls this API over HTTP. Its finance, nutrition, tasks and shopping tools wrap the §7.1–§7.4 endpoints (the tasks tools only read tasks and log completions; the shopping tools only work with the list, not types or common items); nothing in the API is MCP-specific beyond accepting its access tokens (§3).
+The MCP server (`disci-mcp`) is a separate project and zip (`mcp_server/`, [mcp-overview.md](../mcp/mcp-overview.md)) that calls this API over HTTP. Its finance, nutrition, tasks, shopping and training tools wrap the §7.1–§7.5 endpoints (the tasks tools only read tasks and log completions; the shopping tools only work with the list, not types or common items; the training tools log, list and delete workouts and read a lift's history); nothing in the API is MCP-specific beyond accepting its access tokens (§3).
 
 The deploy runs the migrator **before** updating the API, so migrations must be backward compatible with the live API (expand/contract). `disci-jobs` gets the same zip right after `disci-api`.
 
