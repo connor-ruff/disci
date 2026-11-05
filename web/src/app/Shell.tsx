@@ -68,17 +68,27 @@ function SubNav({ items }: { items: ModuleManifest['subNav'] }) {
   return (
     <nav className="mx-auto flex w-full max-w-3xl gap-1 overflow-x-auto px-2 pb-2">
       {items.map((item) => (
-        <Link
-          key={item.to}
-          to={item.to}
-          className="flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium text-muted"
-          activeProps={{ className: 'bg-highlight text-foreground' }}
-        >
-          {item.label}
-          {item.Alert && <item.Alert />}
-        </Link>
+        <SubNavTab key={item.to} item={item} />
       ))}
     </nav>
+  )
+}
+
+const alwaysShown = () => true
+
+function SubNavTab({ item }: { item: ModuleManifest['subNav'][number] }) {
+  // Each tab is its own component, so a tab's useShown hook runs on every render.
+  const shown = (item.useShown ?? alwaysShown)()
+  if (!shown) return null
+  return (
+    <Link
+      to={item.to}
+      className="flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium text-muted"
+      activeProps={{ className: 'bg-highlight text-foreground' }}
+    >
+      {item.label}
+      {item.Alert && <item.Alert />}
+    </Link>
   )
 }
 

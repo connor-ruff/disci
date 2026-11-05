@@ -15,9 +15,16 @@ export type ModuleManifest = {
   route: AnyRoute
   /**
    * Tabs under the top bar. Shown only when a module has more than one section. A tab's
-   * optional `Alert` renders next to its label (e.g. a "!" when there's something to do).
+   * optional `Alert` renders next to its label (e.g. a "!" when there's something to do),
+   * and its optional `useShown` hook can hide it.
    */
-  subNav: { label: string; to: string; Alert?: ComponentType }[]
+  subNav: {
+    label: string
+    to: string
+    Alert?: ComponentType
+    /** A hook deciding whether the tab shows (e.g. only once the user has a plan). Default: always. */
+    useShown?: () => boolean
+  }[]
   /** Summary card on the Home page. */
   HomeCard: ComponentType
   /** Optional section on the Settings page, shown while the module is enabled. */

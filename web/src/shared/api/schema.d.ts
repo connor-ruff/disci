@@ -1157,10 +1157,168 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/training/plans/grid": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Read Grid
+         * @description Reads a pasted plan grid (week start date, then Monday..Sunday miles) without saving
+         *     anything: the days it found, and the rows and cells it couldn't read.
+         */
+        post: operations["read_grid_training_plans_grid_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/training/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Plans
+         * @description Every plan, the active one first, then newest first.
+         */
+        get: operations["list_plans_training_plans_get"];
+        put?: never;
+        /**
+         * Create Plan
+         * @description Creates a plan with its days and weekly targets. With `active` (the default) it
+         *     becomes the active plan and any other plan stops being active.
+         */
+        post: operations["create_plan_training_plans_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/training/plans/{plan_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Plan */
+        get: operations["get_plan_training_plans__plan_id__get"];
+        /**
+         * Update Plan
+         * @description Replaces the plan's details and rule settings. Its days and weeks don't change.
+         */
+        put: operations["update_plan_training_plans__plan_id__put"];
+        post?: never;
+        /**
+         * Delete Plan
+         * @description Soft delete. Workouts are untouched (they never belong to a plan).
+         */
+        delete: operations["delete_plan_training_plans__plan_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/training/plans/{plan_id}/active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Active
+         * @description Makes the plan the active one (any other stops being active), or not active.
+         */
+        put: operations["set_active_training_plans__plan_id__active_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/training/plans/{plan_id}/days": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Replace Days
+         * @description Replaces every planned day (e.g. re-importing the sheet). Weekly targets stay.
+         */
+        put: operations["replace_days_training_plans__plan_id__days_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/training/plans/{plan_id}/weeks/{starts_on}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Edit Week
+         * @description Replaces one week (`starts_on` + 6 days): its planned days and its target.
+         */
+        put: operations["edit_week_training_plans__plan_id__weeks__starts_on__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/training/weeks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Plan Vs Done
+         * @description Plan vs. done for every week overlapping the range (weeks start on the user's
+         *     week_starts_on): target, band, miles done, runs, status and the cross-training cue,
+         *     plus the active plan's days in the range. Works without a plan (status `none`).
+         */
+        get: operations["plan_vs_done_training_weeks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ActiveIn */
+        ActiveIn: {
+            /** Active */
+            active: boolean;
+        };
         /** AllocationIn */
         AllocationIn: {
             /**
@@ -1432,6 +1590,28 @@ export interface components {
             name: string;
             /** Notes */
             notes?: string | null;
+        };
+        /** CalendarOut */
+        CalendarOut: {
+            /**
+             * Today
+             * Format: date
+             */
+            today: string;
+            /** @description The active plan, if any. */
+            plan: components["schemas"]["PlanOut"] | null;
+            /** Days To Race */
+            days_to_race: number | null;
+            /**
+             * Days
+             * @description The active plan's days in the range.
+             */
+            days: components["schemas"]["PlanDayOut"][];
+            /**
+             * Weeks
+             * @description Every week overlapping the range.
+             */
+            weeks: components["schemas"]["WeekOut"][];
         };
         /** CategoryCreate */
         CategoryCreate: {
@@ -1842,6 +2022,31 @@ export interface components {
         GoalUpdate: {
             /** Amount */
             amount: number | string;
+        };
+        /** GridIn */
+        GridIn: {
+            /**
+             * Text
+             * @description Rows of: week start date, then Monday..Sunday miles; tab- or comma-separated.
+             */
+            text: string;
+        };
+        /** GridOut */
+        GridOut: {
+            /** Days */
+            days: components["schemas"]["PlanDayOut"][];
+            /**
+             * Weeks
+             * @description Rows read.
+             */
+            weeks: number;
+            /** Total Miles */
+            total_miles: string;
+            /**
+             * Skipped
+             * @description Rows and cells that couldn't be read.
+             */
+            skipped: string[];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -2255,6 +2460,265 @@ export interface components {
              * @description Every id, in the new order.
              */
             ids: string[];
+        };
+        /** PlanCreate */
+        PlanCreate: {
+            /** Name */
+            name: string;
+            /** Race Name */
+            race_name?: string | null;
+            /**
+             * Race On
+             * @description Race day, for days to race.
+             */
+            race_on?: string | null;
+            /**
+             * Starts On
+             * Format: date
+             * @description The plan's first day.
+             */
+            starts_on: string;
+            /**
+             * Count Walk Miles
+             * @description Walk miles count toward weekly miles and % complete.
+             * @default false
+             */
+            count_walk_miles: boolean;
+            /**
+             * Cross Train At Pct
+             * @description Once weekly miles reach this % of the week's target, suggest cross-training instead of another run (90 = the bottom of the ±10% band).
+             * @default 90
+             */
+            cross_train_at_pct: number;
+            /**
+             * Days
+             * @default []
+             */
+            days: components["schemas"]["PlanDayIn"][];
+            /**
+             * Weeks
+             * @default []
+             */
+            weeks: components["schemas"]["PlanWeekIn-Input"][];
+            /**
+             * Active
+             * @description Make it the active plan (the old one isn't).
+             * @default true
+             */
+            active: boolean;
+        };
+        /** PlanDayIn */
+        PlanDayIn: {
+            /**
+             * Day On
+             * Format: date
+             */
+            day_on: string;
+            /** Planned Miles */
+            planned_miles: number | string;
+            /**
+             * Notes
+             * @description e.g. "long run", "tempo".
+             */
+            notes?: string | null;
+        };
+        /** PlanDayOut */
+        PlanDayOut: {
+            /**
+             * Day On
+             * Format: date
+             */
+            day_on: string;
+            /** Planned Miles */
+            planned_miles: string;
+            /**
+             * Notes
+             * @description e.g. "long run", "tempo".
+             */
+            notes?: string | null;
+        };
+        /**
+         * PlanDaysIn
+         * @description Every planned day, replacing the plan's current ones (e.g. a fresh import).
+         */
+        PlanDaysIn: {
+            /** Days */
+            days: components["schemas"]["PlanDayIn"][];
+        };
+        /** PlanDetail */
+        PlanDetail: {
+            /** Name */
+            name: string;
+            /** Race Name */
+            race_name?: string | null;
+            /**
+             * Race On
+             * @description Race day, for days to race.
+             */
+            race_on?: string | null;
+            /**
+             * Starts On
+             * Format: date
+             * @description The plan's first day.
+             */
+            starts_on: string;
+            /**
+             * Count Walk Miles
+             * @description Walk miles count toward weekly miles and % complete.
+             * @default false
+             */
+            count_walk_miles: boolean;
+            /**
+             * Cross Train At Pct
+             * @description Once weekly miles reach this % of the week's target, suggest cross-training instead of another run (90 = the bottom of the ±10% band).
+             * @default 90
+             */
+            cross_train_at_pct: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Active */
+            is_active: boolean;
+            /**
+             * Ends On
+             * @description The race day, or else the last planned day.
+             */
+            ends_on: string | null;
+            /**
+             * Total Miles
+             * @description All planned days added up.
+             */
+            total_miles: string;
+            /**
+             * Day Count
+             * @description Days with miles planned.
+             */
+            day_count: number;
+            /** Days */
+            days: components["schemas"]["PlanDayOut"][];
+            /**
+             * Weeks
+             * @description Weekly targets set by hand.
+             */
+            weeks: components["schemas"]["PlanWeekIn-Output"][];
+        };
+        /**
+         * PlanIn
+         * @description A plan's details and rule settings (not its days), sent in full.
+         */
+        PlanIn: {
+            /** Name */
+            name: string;
+            /** Race Name */
+            race_name?: string | null;
+            /**
+             * Race On
+             * @description Race day, for days to race.
+             */
+            race_on?: string | null;
+            /**
+             * Starts On
+             * Format: date
+             * @description The plan's first day.
+             */
+            starts_on: string;
+            /**
+             * Count Walk Miles
+             * @description Walk miles count toward weekly miles and % complete.
+             * @default false
+             */
+            count_walk_miles: boolean;
+            /**
+             * Cross Train At Pct
+             * @description Once weekly miles reach this % of the week's target, suggest cross-training instead of another run (90 = the bottom of the ±10% band).
+             * @default 90
+             */
+            cross_train_at_pct: number;
+        };
+        /** PlanOut */
+        PlanOut: {
+            /** Name */
+            name: string;
+            /** Race Name */
+            race_name?: string | null;
+            /**
+             * Race On
+             * @description Race day, for days to race.
+             */
+            race_on?: string | null;
+            /**
+             * Starts On
+             * Format: date
+             * @description The plan's first day.
+             */
+            starts_on: string;
+            /**
+             * Count Walk Miles
+             * @description Walk miles count toward weekly miles and % complete.
+             * @default false
+             */
+            count_walk_miles: boolean;
+            /**
+             * Cross Train At Pct
+             * @description Once weekly miles reach this % of the week's target, suggest cross-training instead of another run (90 = the bottom of the ±10% band).
+             * @default 90
+             */
+            cross_train_at_pct: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Active */
+            is_active: boolean;
+            /**
+             * Ends On
+             * @description The race day, or else the last planned day.
+             */
+            ends_on: string | null;
+            /**
+             * Total Miles
+             * @description All planned days added up.
+             */
+            total_miles: string;
+            /**
+             * Day Count
+             * @description Days with miles planned.
+             */
+            day_count: number;
+        };
+        /**
+         * PlanWeekEdit
+         * @description One week of a plan, replacing what it had: its days (all inside the week) and its
+         *     target (null = the sum of the days).
+         */
+        PlanWeekEdit: {
+            /** Days */
+            days: components["schemas"]["PlanDayIn"][];
+            /** Target Miles */
+            target_miles?: number | string | null;
+        };
+        /** PlanWeekIn */
+        "PlanWeekIn-Input": {
+            /**
+             * Week Starts On
+             * Format: date
+             */
+            week_starts_on: string;
+            /** Target Miles */
+            target_miles: number | string;
+        };
+        /** PlanWeekIn */
+        "PlanWeekIn-Output": {
+            /**
+             * Week Starts On
+             * Format: date
+             */
+            week_starts_on: string;
+            /** Target Miles */
+            target_miles: string;
         };
         /** PreferencesIn */
         PreferencesIn: {
@@ -2851,6 +3315,56 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /** WeekOut */
+        WeekOut: {
+            /**
+             * Starts On
+             * Format: date
+             */
+            starts_on: string;
+            /**
+             * Target Miles
+             * @description Set target, or the sum of the planned days.
+             */
+            target_miles: string | null;
+            /**
+             * Target Is Set
+             * @description The target was set by hand (plan_weeks).
+             */
+            target_is_set: boolean;
+            /**
+             * Band Low
+             * @description Target − 10%.
+             */
+            band_low: string | null;
+            /**
+             * Band High
+             * @description Target + 10%.
+             */
+            band_high: string | null;
+            /**
+             * Miles Done
+             * @description Run miles, plus walks if the plan counts them.
+             */
+            miles_done: string;
+            /** Runs Done */
+            runs_done: number;
+            /**
+             * Runs Planned
+             * @description Days with miles planned.
+             */
+            runs_planned: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "none" | "upcoming" | "in_progress" | "under" | "in_range" | "over";
+            /**
+             * Cross Train
+             * @description Weekly miles reached the plan's cross_train_at_pct of the target.
+             */
+            cross_train: boolean;
         };
         /**
          * WorkoutIn
@@ -5684,6 +6198,327 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_grid_training_plans_grid_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GridIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GridOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_plans_training_plans_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanOut"][];
+                };
+            };
+        };
+    };
+    create_plan_training_plans_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_plan_training_plans__plan_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_plan_training_plans__plan_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_plan_training_plans__plan_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_active_training_plans__plan_id__active_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActiveIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replace_days_training_plans__plan_id__days_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanDaysIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    edit_week_training_plans__plan_id__weeks__starts_on__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+                starts_on: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanWeekEdit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    plan_vs_done_training_weeks_get: {
+        parameters: {
+            query: {
+                /** @description First day of the range. */
+                start: string;
+                /** @description Last day of the range. */
+                end: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarOut"];
+                };
             };
             /** @description Validation Error */
             422: {

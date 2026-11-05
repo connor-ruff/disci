@@ -76,9 +76,14 @@ api/
 │           └── queries/           # one .sql per query
 │       └── training/              # mounted at /training
 │           ├── __init__.py        # `module` (no setup: nothing is seeded)
-│           ├── routes/__init__.py # `router`: every training route (one area, so one file)
-│           ├── schemas.py         # Pydantic models (WorkoutIn, WorkoutOut, SetIn, SetOut, LiftIn, LiftOut, LiftDetail)
+│           ├── routes/
+│           │   ├── __init__.py    # `router`: composes the area routers
+│           │   ├── _common.py     # not_found, invalid, unique_errors (→ 409), today_for, today_and_week_start
+│           │   ├── log.py         # the workout log: workouts, recent locations, the lift catalog
+│           │   └── plans.py       # plans, the grid preview, plan vs. done by week
+│           ├── schemas.py         # Pydantic models (workouts and lifts; PlanIn, PlanCreate, PlanOut, PlanDetail, GridOut, WeekOut, CalendarOut)
 │           ├── service.py         # check_fields (which fields each type uses), clean_text, pace
+│           ├── plans.py           # plan rules: parse_grid, week_start, score_week (target, band, status)
 │           ├── sql.py             # `queries = Queries(__file__)`
 │           └── queries/           # one .sql per query
 └── tests/                         # pytest, against the disci_test database
@@ -88,7 +93,7 @@ api/
     ├── modules/nutrition/         # test_nutrition.py
     ├── modules/tasks/             # test_tasks.py
     ├── modules/shopping/          # test_shopping.py
-    └── modules/training/          # test_training.py
+    └── modules/training/          # test_training.py, test_plans.py, test_plan_rules.py
 ```
 
 A small module has `router.py` (thin HTTP routes), `schemas.py` (Pydantic models), `service.py` (business rules that don't belong in SQL) and `queries/` (one `.sql` per query); `core/users/` is a minimal example (no service).
@@ -356,12 +361,27 @@ Data model: [training.md](../db/training.md). A workout is a `run`, `walk`, `bik
 | PUT | `/training/lifts/{id}` | Replace `name`, `description`. |
 | DELETE | `/training/lifts/{id}` | Soft-delete. It leaves the catalog; past workouts still show its sets under its name. 204. |
 
-Editing a workout locks its row first, so concurrent saves of its sets apply one after the other.
+**Plans.** A plan's details and rule settings (`PlanIn`): `name` (1–100), `race_name?` ≤100, `race_on?`, `starts_on`, `count_walk_miles` (default false), `cross_train_at_pct` (1–200, default 90). A planned day (`PlanDayIn`): `day_on`, `planned_miles` (> 0), `notes?` ≤200. A weekly target (`PlanWeekIn`): `week_starts_on`, `target_miles` (> 0). `PlanOut` is the `PlanIn` fields plus `id`, `is_active`, `ends_on` (the race day, or else the last planned day), `total_miles` (all planned days) and `day_count` (days with miles); `PlanDetail` adds `days` (in date order) and `weeks` (the targets set by hand). The rules behind the grid and the week scores are in [training.md](../db/training.md) §4.1–§4.2.
+
+| Method | Path | What it does |
+|---|---|---|
+| POST | `/training/plans/grid` | Reads pasted sheet rows (`{text}`, ≤200,000 chars: week start date, then the week's seven days of miles; tab- or comma-separated) and **saves nothing**. Returns `GridOut`: `days` (`PlanDayOut`), `weeks` (rows read), `total_miles` and `skipped` (readable messages for the rows and cells it couldn't read). The web app previews a paste with it, then sends the days to create or replace. |
+| GET | `/training/plans` | Every plan (`PlanOut`), the active one first, then by `starts_on`, newest first. |
+| POST | `/training/plans` | Create one (`PlanCreate`: the `PlanIn` fields, `days` (≤2000), `weeks` (≤300), `active` (default true)). With `active`, any other plan stops being active. 201 with the `PlanDetail`. |
+| GET | `/training/plans/{id}` | One plan (`PlanDetail`). |
+| PUT | `/training/plans/{id}` | Replace its details and rule settings (`PlanIn`, sent in full). Days and weeks don't change. |
+| DELETE | `/training/plans/{id}` | Soft-delete; a deleted plan isn't active. Workouts are untouched. 204. |
+| PUT | `/training/plans/{id}/active` | `{active}`: true makes it the active plan (any other stops being active); false leaves the user with no active plan. Returns the `PlanDetail`. |
+| PUT | `/training/plans/{id}/days` | Replace **every** planned day (`{days}`, ≤2000), e.g. a fresh paste. Weekly targets stay. |
+| PUT | `/training/plans/{id}/weeks/{starts_on}` | Replace **one week**, `starts_on` through `starts_on + 6`: its days (`{days}`, ≤7, each inside the week) and its target (`target_miles?`; null removes it, so the target is the sum of the days). |
+| GET | `/training/weeks` | Plan vs. done for `start` to `end` (required; at most 400 days). `CalendarOut`: `today` (the user's timezone), `plan` (the active `PlanOut`, or null), `days_to_race` (null without a race day), `days` (the active plan's days within `start`–`end`) and `weeks`, one `WeekOut` for every week overlapping the range (weeks start on the user's `week_starts_on`): `starts_on`, `target_miles`, `target_is_set` (from `plan_weeks`), `band_low` / `band_high` (± 10%), `miles_done`, `runs_done`, `runs_planned`, `status` (`none`, `upcoming`, `in_progress`, `under`, `in_range`, `over`) and `cross_train`. Works without a plan: every week is `none`, with its miles and runs. |
+
+Editing a workout, a plan's days or a week locks the workout or plan row first, so concurrent saves apply one after the other.
 
 **Errors:**
-- **404**: the workout or lift doesn't exist, is deleted, or belongs to another user.
+- **404**: the workout, lift or plan doesn't exist, is deleted, or belongs to another user.
 - **409**: a duplicate lift name (any case) on create or rename.
-- **422**: request validation (unknown type, out-of-range numbers, over-long text, blank lift name), a field that doesn't fit the workout's type, a run or walk with no miles, a future date, a set with both or neither of `lift_id` and `lift_name`, or a `lift_id` that doesn't exist or is deleted.
+- **422**: request validation (unknown type, out-of-range numbers, over-long text, blank lift name), a field that doesn't fit the workout's type, a run or walk with no miles, a future date, a set with both or neither of `lift_id` and `lift_name`, or a `lift_id` that doesn't exist or is deleted. For plans: a blank name, a day (or a week) listed twice, a week edit with a day outside the week, or a `/training/weeks` range that ends before it starts or spans more than 400 days.
 
 ---
 
@@ -390,6 +410,8 @@ Requires Docker (for Postgres) and **uv**.
 | `tests/modules/tasks/test_tasks.py` | The four types and their fields, check-off and undo per type, due dates and `add_interval`, cross-user isolation. |
 | `tests/modules/shopping/test_shopping.py` | The seeded Groceries type, types (order, uniqueness, rename, delete to Uncategorized), item order and moving between types, crossing off and clearing, common items (uniqueness per type, adding once, save as common), cross-user isolation. |
 | `tests/modules/training/test_training.py` | Which fields each workout type needs or refuses, pace, the default and future dates, sets building the lift catalog and keeping their order, "last time", editing (replacing sets, changing type), the database refusing sets on a non-lift, list filters and order, deleting and recent locations, the lift catalog, cross-user isolation. |
+| `tests/modules/training/test_plans.py` | The plan endpoints: the grid preview saving nothing, creating with days and totals, one active plan at a time, editing details and rules, editing one week and replacing all days, plan vs. done by week (with and without a plan), deleting, cross-user isolation. |
+| `tests/modules/training/test_plan_rules.py` | The rules in `plans.py` without a database: reading sheet copies (dates, rest cells, notes, duplicates), week starts, each week status, counting walks, set targets and the cross-training cue. |
 
 A new behavior gets a test in its module's file.
 

@@ -1,4 +1,4 @@
-import type { Workout, WorkoutType } from './api'
+import type { WeekStatus, Workout, WorkoutType } from './api'
 
 export const TYPE_LABELS: Record<WorkoutType, string> = { run: 'Run', walk: 'Walk', bike: 'Bike', lift: 'Lift' }
 export const TYPE_ORDER: WorkoutType[] = ['run', 'walk', 'bike', 'lift']
@@ -31,7 +31,7 @@ export function parseClock(text: string): number | null {
 }
 
 /** "5.00" → "5", "5.10" → "5.1". */
-export function formatMiles(miles: string): string {
+export function formatMiles(miles: string | number): string {
   return String(Number(miles))
 }
 
@@ -78,4 +78,15 @@ export function weekStart(isoDate: string, weekStartsOn: number): string {
   const back = (isoDay - weekStartsOn + 7) % 7
   date.setUTCDate(date.getUTCDate() - back)
   return date.toISOString().slice(0, 10)
+}
+
+
+/** The week total's colors by status: green in range, red over, yellow under (Q7). */
+export const STATUS_STYLE: Record<WeekStatus, string> = {
+  none: 'bg-background',
+  upcoming: 'border border-dashed border-border bg-surface text-muted',
+  in_progress: 'bg-teal-50 text-teal-800',
+  under: 'bg-amber-50 text-amber-900 border border-amber-200',
+  in_range: 'bg-green-50 text-green-800 border border-green-200',
+  over: 'bg-red-50 text-red-800 border border-red-200',
 }

@@ -1,6 +1,6 @@
 # Training Module (`training` schema)
 
-*Status: **implemented** (`workouts`, `lifts`, `lift_sets`): the workout log. Every table and column below is built. Training plans are not built yet ([roadmap.md](../roadmap.md)). See [db-overview.md](db-overview.md) for conventions (audit columns, soft deletes, RLS) that apply to every table below. The API is in [api-overview.md](../api/api-overview.md) §7.5 and the screens in [training-ui.md](../ui/training-ui.md). The reasoning before the build is in [project_plans/training-module.md](../project_plans/training-module.md).*
+*Status: **implemented**: the workout log (`workouts`, `lifts`, `lift_sets`) and training plans (`plans`, `plan_days`, `plan_weeks`). Every table and column below is built; what's still to come (the dashboard, the training brief, lift progression) is in [roadmap.md](../roadmap.md). See [db-overview.md](db-overview.md) for conventions (audit columns, soft deletes, RLS) that apply to every table below. The API is in [api-overview.md](../api/api-overview.md) §7.5 and the screens in [training-ui.md](../ui/training-ui.md). The reasoning before the build is in [project_plans/training-module.md](../project_plans/training-module.md).*
 
 **Replaces:** the separate Lifting module idea, which this module folds in.
 
@@ -12,6 +12,7 @@
 - A lift can carry **sets**: which lift, reps and weight, one row per set, in the order done.
 - **Lifts** are the user's own catalog ("Bench press", "Squat"). It grows as the user logs: a set given by a new name adds that lift.
 - **"Last time"** for a lift is its sets in the latest workout it was in. It's computed from the sets, not stored.
+- A user can keep training **plans**: planned miles per day, with optional weekly targets, usually pasted from a spreadsheet. A user can have many plans (old ones stay as history) but **at most one active**. The active plan is laid over the log by date: each week is scored against its target (plan vs. done, §4.1). Workouts never point at a plan.
 
 ---
 
@@ -21,9 +22,11 @@
 erDiagram
     workouts ||--o{ lift_sets : "lift detail (optional)"
     lifts ||--o{ lift_sets : ""
+    plans ||--o{ plan_days : "planned miles per day"
+    plans ||--o{ plan_weeks : "weekly targets (optional)"
 ```
 
-(Every table also has `user_id → core.users`, omitted for readability. Workouts have no link to any plan; see §5.)
+(Every table also has `user_id → core.users`, omitted for readability. There is no link between workouts and plans: plan vs. done is matched by date when read; see §4.1 and §5.)
 
 ---
 
@@ -80,11 +83,57 @@ One row per set of a lift within a lift workout.
 - Index `lift_sets_lift_idx` on `(lift_id)` (a lift's history and "last time").
 - **No `deleted_at`**: a workout's sets are replaced as a whole when it's edited (§3.2).
 
+### `plans`
+A training plan. Many per user; at most one active.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `id`, `user_id` | `uuid` | no | |
+| `name` | `text` | no | Non-blank (CHECK). API cap 100 chars; trimmed. "NYC Marathon 2027". |
+| `race_name` | `text` | yes | API cap 100 chars; trimmed, blank becomes null. |
+| `race_on` | `date` | yes | Race day, for days to race. |
+| `starts_on` | `date` | no | The plan's first day. |
+| `is_active` | `boolean` | no | Default false. **At most one active plan per user**: partial unique index `plans_one_active` on `(user_id) WHERE is_active AND deleted_at IS NULL`. The API clears the old active plan before setting a new one. |
+| `count_walk_miles` | `boolean` | no | Rule setting, default false: walk miles count toward weekly miles alongside run miles. |
+| `cross_train_at_pct` | `smallint` | no | Rule setting, default 90, CHECK 1–200: once weekly miles reach this % of the week's target, the week gets the cross-training cue (§4.1). 90 is the bottom of the ±10% band, 100 the target itself. |
+
+- `count_walk_miles` and `cross_train_at_pct` are **rule settings**: they change how the log is scored against this plan, not what's planned.
+- Unique `(id, user_id)`: target of `plan_days`' and `plan_weeks`' composite FKs.
+- Soft-deleted (`deleted_at`).
+- The API derives, never stores: `ends_on` (the race day, or else the last planned day), `total_miles` (all planned days added up) and `day_count` (days with miles planned).
+
+### `plan_days`
+One row per day with miles planned. **A day with no row is a rest day** (or simply unplanned; the two are the same).
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `id`, `user_id` | `uuid` | no | |
+| `plan_id` | `uuid` | no | → `plans`. |
+| `day_on` | `date` | no | Unique `(plan_id, day_on)`. |
+| `planned_miles` | `numeric(6,2)` | no | `> 0`. |
+| `notes` | `text` | yes | "long run", "tempo". API cap 200 chars; trimmed, blank becomes null. |
+
+- `FOREIGN KEY (plan_id, user_id) REFERENCES plans (id, user_id)`.
+- **No `deleted_at`**: days are replaced a week at a time or all at once (§3.2).
+
+### `plan_weeks`
+Optional weekly targets set by hand. A plan can have daily miles, weekly targets or both, and a week's target doesn't have to equal the sum of its days.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `id`, `user_id` | `uuid` | no | |
+| `plan_id` | `uuid` | no | → `plans`. |
+| `week_starts_on` | `date` | no | Unique `(plan_id, week_starts_on)`. Only counts when it is the first day of one of the user's weeks (`core.users.week_starts_on`); see §4.1. |
+| `target_miles` | `numeric(6,2)` | no | `> 0`. |
+
+- `FOREIGN KEY (plan_id, user_id) REFERENCES plans (id, user_id)`.
+- **No `deleted_at`**: replaced with its week (§3.2).
+
 ### 3.1 Integrity, RLS and grants
 
-- All three tables have the `set_updated_at` trigger, RLS enabled and an `owner` policy (`user_id = core.current_user_id()`, for `USING` and `WITH CHECK`) for `disci_app`.
-- The migration grants `USAGE` on the schema and `SELECT, INSERT, UPDATE, DELETE` on its tables to `disci_app`, plus default privileges for tables created later.
-- Both child FKs include `user_id` (tenant guard, see [db-overview.md](db-overview.md) §2).
+- All six tables have the `set_updated_at` trigger, RLS enabled and an `owner` policy (`user_id = core.current_user_id()`, for `USING` and `WITH CHECK`) for `disci_app`.
+- The first training migration grants `USAGE` on the schema and `SELECT, INSERT, UPDATE, DELETE` on its tables to `disci_app`, plus default privileges, which cover the plan tables.
+- Every child FK includes `user_id` (tenant guard, see [db-overview.md](db-overview.md) §2).
 - **Sets can only belong to a lift workout.** `lift_sets`' key to `workouts` includes the workout's type, pinned to `'lift'` by `workout_type`, so the database refuses a set on a run. It also means a workout's type can't change while it has sets: the API deletes the sets before updating the workout, then writes the new ones.
 - The API checks that a set's `lift_id` exists and isn't deleted (a 422 otherwise), since the FK alone would accept a soft-deleted lift.
 - **No seeded defaults**: the module has no `setup`. The lift catalog starts empty.
@@ -96,6 +145,8 @@ One row per set of a lift within a lift workout.
 | A workout | Soft-deleted. Its sets stay in the table, hidden with it: they no longer count for "last time" or a lift's history. |
 | A workout's sets (on edit) | **Hard-deleted** and rewritten, an exception to the soft-delete convention (like `finance.transaction_allocations`). Saving a workout sends its sets in full, so the old rows have no history worth keeping. |
 | A lift | Soft-deleted. Past sets keep pointing at it, so old workouts still show its name. It leaves the catalog, and logging the same name again adds a new lift. |
+| A plan | Soft-deleted, and made inactive (`is_active` is cleared). Its days and weeks stay with it. Workouts are untouched. |
+| A plan's days (on edit or re-import) | **Hard-deleted** and rewritten: editing a week replaces that week's `plan_days` and its `plan_weeks` row; replacing all days (a fresh paste) replaces every `plan_days` row and keeps the weekly targets. Like `lift_sets`, the rows are always sent in full, so the old ones have no history worth keeping. |
 
 ---
 
@@ -110,6 +161,43 @@ One row per set of a lift within a lift workout.
 | **Catalog order** | Most recently done first; lifts never done go last, by name. |
 | **Recent locations** | Distinct `location` values of undeleted workouts, most recently used first (`list_locations.sql`). |
 | **Week and month totals** | Computed in the web app from the workouts in range (run miles, workout counts, minutes). Nothing is stored. |
+| **Import a plan from a sheet** | The pasted grid is read into days (§4.2) and previewed without saving; creating the plan (or replacing its days) then inserts one `plan_days` row per day. |
+| **Start a plan** | Insert the `plans` row with its days (and any weekly targets). A new plan is active by default: the old active plan is cleared first, in the same transaction. |
+| **Switch the active plan** | Clear `is_active` on the user's plans, then set it on the chosen one. |
+| **Edit a week** | Lock the plan row, delete the week's `plan_days` and `plan_weeks` rows (`starts_on` to `starts_on + 6`), insert the new ones. |
+| **Plan vs. done** | Computed when read, by date, from the active plan's days and weeks and the workouts in range (§4.1). Nothing is stored. |
+
+### 4.1 Weeks: target, band and status
+
+The rules live in one place, `api/app/modules/training/plans.py` (`score_week`), so every screen and (later) the training brief agree.
+
+- **Weeks** follow the user's week start (`core.users.week_starts_on`). A `plan_weeks` row counts only when its `week_starts_on` is the first day of one of those weeks.
+- **Miles done**: the week's run miles, plus walk miles when the plan's `count_walk_miles` is on. Bikes and lifts never count.
+- **Target**: the week's `plan_weeks.target_miles` if set, otherwise the sum of its `plan_days`. A week with neither has no target.
+- **Band**: target ± 10%.
+- **Status**:
+
+| Status | When |
+|---|---|
+| `none` | No active plan, or the week has no target. |
+| `upcoming` | The week starts after today. |
+| `over` | Miles done are above the band (a finished week, or the current week as soon as it gets there). |
+| `in_range` | Miles done are inside the band (same: finished, or the current week once it gets there). |
+| `under` | A finished week below the band. |
+| `in_progress` | The current week, not yet in the band. |
+
+- **Cross-training cue**: the week has started and miles done have reached `cross_train_at_pct`% of the target. The suggestion is then a bike, walk or lift instead of another run.
+- **Runs**: run workouts in the week vs. planned days in the week ("3 of 4 runs"). Runs on unplanned days still count.
+
+### 4.2 The plan grid
+
+`parse_grid` in `plans.py` reads rows pasted from a spreadsheet: a **week start date, then the miles for that day and the six after it** (Monday through Sunday when the sheet's weeks start on Monday).
+
+- Cells are tab-separated (a spreadsheet copy) or comma-separated. Dates may be `2027-04-26`, `4/26/2027`, `4/26/27`, `4-26-2027`, `Apr 26, 2027` or `April 26, 2027`.
+- A blank cell, `0`, `-`, `rest`, `off` or `x` is a rest day (no row).
+- A cell may add a note after the number: `6 long run`, `5 mi tempo`, `8 - easy` become 6 miles with the note "long run", and so on.
+- A row whose first cell isn't a date (a header) and a cell that isn't a number of miles are skipped and reported back in `skipped`. Cells after the seventh day (a Total column) are ignored.
+- A day given twice keeps the later value.
 
 ---
 
@@ -118,7 +206,7 @@ One row per set of a lift within a lift workout.
 | Question | Decision |
 |---|---|
 | One module or separate Running and Lifting modules? | **One module, Training**, for running, walking, biking and lifting. Logged lifting and logged running are the same kind of thing at different levels of detail, and as separate modules cross-training could never count toward a training week. |
-| Does a workout belong to a plan? | **No.** Workouts never hold a foreign key to a plan. When plans are built, plan vs. done is computed by date when read, so changing or replacing a plan never touches the log, and a user with no plan gets a plain history log. |
+| Does a workout belong to a plan? | **No.** Workouts never hold a foreign key to a plan. Plan vs. done is computed by date when read, so changing or replacing a plan never touches the log, a workout logged before the plan was imported still counts, and a user with no plan gets a plain history log. |
 | One workouts table or one per activity? | **One table**, with columns a type doesn't use left null. CHECKs keep lifts free of distance, elevation and heart rate. |
 | Activity types | **Run, walk, bike, lift.** No `other` for now. |
 | Are miles required? | **For runs and walks, yes**, as a CHECK as well as in the API and form. Bikes may leave them out. Time is optional for every type. |
@@ -130,6 +218,17 @@ One row per set of a lift within a lift workout.
 | Soft- or hard-delete sets? | **Hard delete**, replaced as a whole when the workout is saved. The workout itself is soft-deleted. |
 | Sets on a non-lift workout? | **Refused by the database**: the FK to `workouts` includes `type`, pinned to `'lift'`. |
 | Pace | **Derived** from time and miles when read, never stored. |
+| How many plans? | **Many per user, at most one active** (partial unique index). Old plans stay as history and can be made active again. |
+| Plan granularity | **Planned miles per day**, modeled on the requester's spreadsheet (a week start date, then Monday–Sunday miles). No planned cross-training and no day `kind`: miles planned means a run, no row means rest. Notes per day ("tempo") are wanted, so they're a column. |
+| Weekly targets | **Optional `plan_weeks`**, an override of the sum of the days. A plan can have daily miles, weekly targets or both. |
+| Rest days | **No row.** `planned_miles` is required and > 0, so a rest day and an unplanned day are the same thing. |
+| Do walk miles count? | **A per-plan setting**, `count_walk_miles`, off by default. Several such rule settings are expected over time, so they're columns on `plans`. |
+| When to suggest cross-training | **A per-plan setting**, `cross_train_at_pct`, default 90 (the bottom of the band). |
+| The band and its colors | **Target ± 10%.** In range green, over red, a finished week under the band yellow. |
+| Where the rules live | **In the API** (`plans.py`), not the web app, so the calendar and the training brief share them and they're testable. The API says `over`; the screen (or an agent) chooses the words. |
+| Soft- or hard-delete plan days and weeks? | **Hard delete.** They're replaced a week at a time or all at once, always sent in full. The plan itself is soft-deleted. |
+| Importing a plan | **Paste the sheet's rows**, previewed by the API before anything is saved, instead of a file upload: the plan lives in a Google Sheet and copying a block of cells is the easiest way out of it. |
+| Where plans are managed | **A Plan tab shown only once the user has a plan**, plus "Start a plan" on the Calendar, so a user who only logs workouts never sees plan screens. |
 
 ## 6. Not built yet
 

@@ -29,7 +29,7 @@ docs/
 │   ├── nutrition.md               # food repo, food log and quick adds, goals, tracked nutrients
 │   ├── tasks.md                   # four fixed task types, tasks + task_completions
 │   ├── shopping.md                # user-defined shopping types, list items, common items
-│   └── training.md                # workouts (run, walk, bike, lift), lift catalog, lift sets
+│   └── training.md                # workouts (run, walk, bike, lift), lift catalog, lift sets, training plans, week scoring
 └── ui/                            # Front end
     ├── ui-overview.md             # Brand palette and look
     ├── app-shell.md               # Shell, module menu, opt-in modules, Settings page, how modules plug in
@@ -38,7 +38,7 @@ docs/
     ├── nutrition-ui.md            # Nutrition screens
     ├── tasks-ui.md                # Tasks screens
     ├── shopping-ui.md             # Shopping list screens
-    └── training-ui.md             # Training screens (calendar, history, log workout)
+    └── training-ui.md             # Training screens (calendar with plan vs. done, history, log workout, plans)
 ```
 
 **Where to start:** to change a module, read its `db/` doc, its section of `api/api-overview.md` §7 and its `ui/` doc. For anything about production, read `ops/deployment.md`, and `ops/cost.md` before adding AWS resources. For what to build next, read `roadmap.md`.
