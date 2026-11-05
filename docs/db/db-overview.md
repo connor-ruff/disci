@@ -1,6 +1,6 @@
 # Data Model Overview
 
-*Status: **all five schemas are implemented** (`core`, `finance`, `nutrition`, `tasks`, `shopping`). Migrations are in `db/migrations/` (dbmate, named `<timestamp>_<module>__<change>.sql`); the exact current schema is the auto-generated `db/schema.sql`. Each module doc describes its tables as they are now.*
+*Status: **all six schemas are implemented** (`core`, `finance`, `nutrition`, `tasks`, `shopping`, `training`). Migrations are in `db/migrations/` (dbmate, named `<timestamp>_<module>__<change>.sql`); the exact current schema is the auto-generated `db/schema.sql`. Each module doc describes its tables as they are now.*
 
 This is the entry point for the Postgres data model. It covers how the model is split into modules, the conventions every table follows, and how the modules relate. Each module has its own doc with full table definitions.
 
@@ -11,7 +11,8 @@ docs/db/
 ├── finance.md         # Budgets, categories, items, transactions, recurring bills
 ├── tasks.md           # Tasks (four fixed types) and their check-offs (task_completions)
 ├── nutrition.md       # Food repo, food log, macro goals, tracked nutrients
-└── shopping.md        # Shopping types, the shopping list and common items
+├── shopping.md        # Shopping types, the shopping list and common items
+└── training.md        # Workouts, the lift catalog and lift sets
 ```
 
 ---
@@ -27,6 +28,7 @@ Each module is a self-contained slice of the app and gets its **own Postgres sch
 | Tasks | `tasks` | `tasks`, `task_completions` | Implemented | [tasks.md](tasks.md) |
 | Nutrition | `nutrition` | `food_items`, `food_item_logs`, `macro_goals`, `preferences` | Implemented | [nutrition.md](nutrition.md) |
 | Shopping list | `shopping` | `shopping_types`, `list_items`, `common_items` | Implemented | [shopping.md](shopping.md) |
+| Training | `training` | `workouts`, `lifts`, `lift_sets` | Implemented (the workout log; plans are on the [roadmap](../roadmap.md)) | [training.md](training.md) |
 
 **Module boundary rule:** the only foreign key that crosses a module boundary is `user_id → core.users.id`. Modules never reference each other's tables. Cross-module features (like the "everything" dashboard) **read** from several modules through the API and don't need tables of their own.
 
@@ -37,6 +39,7 @@ flowchart LR
     users --> tasks["tasks.*"]
     users --> nutrition["nutrition.*"]
     users --> shopping["shopping.*"]
+    users --> training["training.*"]
 ```
 
 ---
@@ -58,7 +61,7 @@ These come straight from the design principles in `docs/project_plans/project-in
 ### Naming
 - `snake_case`, **plural** table names, singular column names.
 - FKs are `<singular_table>_id` (e.g. `budget_item_id`).
-- Booleans start with `is_` / `has_`. Timestamps end in `_at`, dates end in `_on`.
+- Booleans start with `is_` / `has_`. Timestamps end in `_at`, dates end in `_on` (one exception: `training.workouts.date`; see [training.md](training.md) §5).
 
 ### Types
 - **Money:** `numeric(12,2)`, always **positive**. Direction comes from a `kind` column (`'income'` / `'expense'`), never from a negative sign. USD only in v1.
@@ -69,8 +72,8 @@ These come straight from the design principles in `docs/project_plans/project-in
 ### Integrity
 - **Unique constraints are partial indexes** with `WHERE deleted_at IS NULL`, so a soft-deleted row doesn't block re-creating something with the same name.
 - **Row-level security** on every user-owned table (see below).
-- **Tenant guard: composite foreign keys.** RLS limits what a user can see, but **FK checks bypass RLS**, so a plain `FOREIGN KEY (budget_id) REFERENCES budgets (id)` would let a user who guessed another user's id link to it. Every parent table a user-owned child points at gets a unique `(id, user_id)`, and **every child FK includes `user_id`**: `FOREIGN KEY (budget_id, user_id) REFERENCES finance.budgets (id, user_id)`. Together with RLS's `WITH CHECK`, a row can only reference parents owned by the same user. Extra columns can join the key when they must match too (finance's `(category_id, kind, user_id)` also forces an item's category to be of the item's kind). A nullable FK uses the default `MATCH SIMPLE`, so NULL skips the check. Applies to all modules; see [finance.md](finance.md) §3.1 for the first use.
-- **Soft deletes everywhere, with narrow exceptions.** Pure link rows that are replaced rather than edited and carry no history may be hard-deleted and skip `deleted_at` (currently only `finance.transaction_allocations`). One-row-per-user settings that are only ever upserted, never deleted, also skip it (`nutrition.preferences`, `finance.preferences`). Records that are resolved rather than deleted skip it too (`finance.inbox_entries`, closed by its `resolution`). Shopping list items are hard-deleted when removed, since a crossed-off item cleared from the list has nothing worth keeping (`shopping.list_items`). Each exception is called out in its module doc.
+- **Tenant guard: composite foreign keys.** RLS limits what a user can see, but **FK checks bypass RLS**, so a plain `FOREIGN KEY (budget_id) REFERENCES budgets (id)` would let a user who guessed another user's id link to it. Every parent table a user-owned child points at gets a unique `(id, user_id)`, and **every child FK includes `user_id`**: `FOREIGN KEY (budget_id, user_id) REFERENCES finance.budgets (id, user_id)`. Together with RLS's `WITH CHECK`, a row can only reference parents owned by the same user. Extra columns can join the key when they must match too (finance's `(category_id, kind, user_id)` also forces an item's category to be of the item's kind, and training's `(workout_id, user_id, workout_type)` only lets sets hang off a lift workout). A nullable FK uses the default `MATCH SIMPLE`, so NULL skips the check. Applies to all modules; see [finance.md](finance.md) §3.1 for the first use.
+- **Soft deletes everywhere, with narrow exceptions.** Pure link rows that are replaced rather than edited and carry no history may be hard-deleted and skip `deleted_at` (`finance.transaction_allocations`, and `training.lift_sets`, rewritten whenever their workout is saved). One-row-per-user settings that are only ever upserted, never deleted, also skip it (`nutrition.preferences`, `finance.preferences`). Records that are resolved rather than deleted skip it too (`finance.inbox_entries`, closed by its `resolution`). Shopping list items are hard-deleted when removed, since a crossed-off item cleared from the list has nothing worth keeping (`shopping.list_items`). Each exception is called out in its module doc.
 - **Derived numbers aren't stored as the only record.** Totals (budget actuals, daily macros, task completion counts) are computed by queries or views from the raw rows.
 
 ### Row-level security & privileges

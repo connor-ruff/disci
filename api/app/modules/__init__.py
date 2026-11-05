@@ -5,8 +5,9 @@ and add it to the tuple below. Its router is mounted at /<key>.
 """
 
 from app.core.module import Module
-from app.modules import finance, nutrition, shopping, tasks
+from app.modules import finance, nutrition, shopping, tasks, training
 
 MODULES: dict[str, Module] = {
-    m.key: m for m in (finance.module, nutrition.module, tasks.module, shopping.module)
+    m.key: m
+    for m in (finance.module, nutrition.module, tasks.module, shopping.module, training.module)
 }

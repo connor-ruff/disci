@@ -3,7 +3,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 from starlette.applications import Starlette
 
-from disci_mcp import finance, nutrition, shopping, tasks
+from disci_mcp import finance, nutrition, shopping, tasks, training
 from disci_mcp.auth import CognitoVerifier
 from disci_mcp.request_log import RequestLog
 from disci_mcp.settings import Settings, get_settings
@@ -43,6 +43,7 @@ def build_mcp(settings: Settings) -> FastMCP:
     nutrition.register(mcp)
     tasks.register(mcp)
     shopping.register(mcp)
+    training.register(mcp)
     return mcp
 
 

@@ -8,7 +8,8 @@ docs/
 ├── roadmap.md                     # Everything not built yet, cleanup steps and open questions (the only backlog)
 ├── project_plans/                 # Historical: the plans written before the build (not kept up to date)
 │   ├── project-inspiration.md     # Why Disci exists: the old trackers, the vision, design principles
-│   └── disci-infrastructure.md    # Original infra & cost plan (as built: ops/deployment.md)
+│   ├── disci-infrastructure.md    # Original infra & cost plan (as built: ops/deployment.md)
+│   └── training-module.md         # Training module plan: decisions, draft model, open questions, phases, handover
 ├── research/                      # Point-in-time studies of options not built yet (dated, not kept up to date)
 │   ├── log-export-to-snowflake.md            # Goal, constraints and comparison of ways to get logs into Snowflake
 │   ├── log-export-option-a-firehose-s3.md    # Option A: Firehose → S3 → external table
@@ -27,7 +28,8 @@ docs/
 │   ├── finance.md                 # budgets, items, transactions, allocations, recurring rules, Inbox entries, preferences
 │   ├── nutrition.md               # food repo, food log and quick adds, goals, tracked nutrients
 │   ├── tasks.md                   # four fixed task types, tasks + task_completions
-│   └── shopping.md                # user-defined shopping types, list items, common items
+│   ├── shopping.md                # user-defined shopping types, list items, common items
+│   └── training.md                # workouts (run, walk, bike, lift), lift catalog, lift sets
 └── ui/                            # Front end
     ├── ui-overview.md             # Brand palette and look
     ├── app-shell.md               # Shell, module menu, opt-in modules, Settings page, how modules plug in
@@ -35,7 +37,8 @@ docs/
     ├── finance-ui.md              # Finance screens
     ├── nutrition-ui.md            # Nutrition screens
     ├── tasks-ui.md                # Tasks screens
-    └── shopping-ui.md             # Shopping list screens
+    ├── shopping-ui.md             # Shopping list screens
+    └── training-ui.md             # Training screens (calendar, history, log workout)
 ```
 
 **Where to start:** to change a module, read its `db/` doc, its section of `api/api-overview.md` §7 and its `ui/` doc. For anything about production, read `ops/deployment.md`, and `ops/cost.md` before adding AWS resources. For what to build next, read `roadmap.md`.

@@ -1048,6 +1048,115 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/training/workouts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Workouts
+         * @description Workouts with their sets, newest first.
+         */
+        get: operations["list_workouts_training_workouts_get"];
+        put?: never;
+        /** Create Workout */
+        post: operations["create_workout_training_workouts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/training/workouts/{workout_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Workout */
+        get: operations["get_workout_training_workouts__workout_id__get"];
+        /**
+         * Update Workout
+         * @description Replaces the workout, sets included. Its type may change (a lift's sets go with it).
+         */
+        put: operations["update_workout_training_workouts__workout_id__put"];
+        post?: never;
+        /** Delete Workout */
+        delete: operations["delete_workout_training_workouts__workout_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/training/locations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Locations
+         * @description Locations used before, most recently used first (suggestions for the log form).
+         */
+        get: operations["list_locations_training_locations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/training/lifts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Lifts
+         * @description The catalog, most recently done first, each with what was done last time.
+         */
+        get: operations["list_lifts_training_lifts_get"];
+        put?: never;
+        /** Create Lift */
+        post: operations["create_lift_training_lifts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/training/lifts/{lift_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Lift
+         * @description The lift, last time, and its sets in each workout it was in (newest first).
+         */
+        get: operations["get_lift_training_lifts__lift_id__get"];
+        /** Update Lift */
+        put: operations["update_lift_training_lifts__lift_id__put"];
+        post?: never;
+        /**
+         * Delete Lift
+         * @description Soft delete: past workouts keep showing its sets under its name.
+         */
+        delete: operations["delete_lift_training_lifts__lift_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1940,6 +2049,77 @@ export interface components {
             /** Actual */
             actual: string;
         };
+        /** LiftDetail */
+        LiftDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string | null;
+            /**
+             * Last Done On
+             * @description The latest workout it was in.
+             */
+            last_done_on: string | null;
+            /**
+             * Last Sets
+             * @description Its sets that time ("last time").
+             */
+            last_sets: components["schemas"]["SetSummary"][];
+            /**
+             * Sessions
+             * @description Newest first, up to 50.
+             */
+            sessions: components["schemas"]["LiftSession"][];
+        };
+        /** LiftIn */
+        LiftIn: {
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+        };
+        /** LiftOut */
+        LiftOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string | null;
+            /**
+             * Last Done On
+             * @description The latest workout it was in.
+             */
+            last_done_on: string | null;
+            /**
+             * Last Sets
+             * @description Its sets that time ("last time").
+             */
+            last_sets: components["schemas"]["SetSummary"][];
+        };
+        /** LiftSession */
+        LiftSession: {
+            /**
+             * Workout Id
+             * Format: uuid
+             */
+            workout_id: string;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Sets */
+            sets: components["schemas"]["SetSummary"][];
+        };
         /** LogCreate */
         LogCreate: {
             /**
@@ -2261,6 +2441,50 @@ export interface components {
             category_name: string | null;
             /** Next Occurrence */
             next_occurrence: string | null;
+        };
+        /**
+         * SetIn
+         * @description One set. Name the lift by `lift_id`, or by `lift_name` (found case-insensitively in
+         *     the catalog, or added to it).
+         */
+        SetIn: {
+            /** Lift Id */
+            lift_id?: string | null;
+            /** Lift Name */
+            lift_name?: string | null;
+            /** Reps */
+            reps: number;
+            /**
+             * Weight Num
+             * @description Pounds; null = bodyweight.
+             */
+            weight_num?: number | string | null;
+        };
+        /** SetOut */
+        SetOut: {
+            /**
+             * Set Number
+             * @description 1, 2, 3… across the whole workout, in the order done.
+             */
+            set_number: number;
+            /**
+             * Lift Id
+             * Format: uuid
+             */
+            lift_id: string;
+            /** Lift Name */
+            lift_name: string;
+            /** Reps */
+            reps: number;
+            /** Weight Num */
+            weight_num: string | null;
+        };
+        /** SetSummary */
+        SetSummary: {
+            /** Reps */
+            reps: number;
+            /** Weight Num */
+            weight_num: string | null;
         };
         /** ShoppingTypeIn */
         ShoppingTypeIn: {
@@ -2627,6 +2851,96 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /**
+         * WorkoutIn
+         * @description A workout, sent in full. Fields a type doesn't use must be left out: lifts have no
+         *     miles, elevation or heart rate; only lifts have sets.
+         */
+        WorkoutIn: {
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "run" | "walk" | "bike" | "lift";
+            /**
+             * Date
+             * @description The day it counts toward (default today); not in the future.
+             */
+            date?: string | null;
+            /**
+             * Location
+             * @description Free text, e.g. "Hoboken", "Treadmill", "Home gym".
+             */
+            location?: string | null;
+            /**
+             * Miles
+             * @description Required for runs and walks.
+             */
+            miles?: number | string | null;
+            /** Time In Sec */
+            time_in_sec?: number | null;
+            /** Elevation Gain Ft */
+            elevation_gain_ft?: number | null;
+            /** Avg Heart Rate */
+            avg_heart_rate?: number | null;
+            /**
+             * Description
+             * @description General; for a lift, the body parts ("back/chest").
+             */
+            description?: string | null;
+            /** Reflection */
+            reflection?: string | null;
+            /**
+             * Sets
+             * @description Lifts only, in the order done.
+             * @default []
+             */
+            sets: components["schemas"]["SetIn"][];
+        };
+        /** WorkoutOut */
+        WorkoutOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "run" | "walk" | "bike" | "lift";
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Location */
+            location: string | null;
+            /** Miles */
+            miles: string | null;
+            /** Time In Sec */
+            time_in_sec: number | null;
+            /** Elevation Gain Ft */
+            elevation_gain_ft: number | null;
+            /** Avg Heart Rate */
+            avg_heart_rate: number | null;
+            /** Description */
+            description: string | null;
+            /** Reflection */
+            reflection: string | null;
+            /**
+             * Pace Sec Per Mile
+             * @description time_in_sec / miles, rounded; null without both.
+             */
+            pace_sec_per_mile: number | null;
+            /** Sets */
+            sets: components["schemas"]["SetOut"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
     };
     responses: never;
@@ -5026,6 +5340,350 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ItemOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_workouts_training_workouts_get: {
+        parameters: {
+            query?: {
+                /** @description On or after this day. */
+                start?: string | null;
+                /** @description On or before this day. */
+                end?: string | null;
+                type?: ("run" | "walk" | "bike" | "lift") | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkoutOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_workout_training_workouts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkoutIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkoutOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_workout_training_workouts__workout_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workout_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkoutOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_workout_training_workouts__workout_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workout_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkoutIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkoutOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_workout_training_workouts__workout_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workout_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_locations_training_locations_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_lifts_training_lifts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiftOut"][];
+                };
+            };
+        };
+    };
+    create_lift_training_lifts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LiftIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiftOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_lift_training_lifts__lift_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                lift_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiftDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_lift_training_lifts__lift_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                lift_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LiftIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiftOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_lift_training_lifts__lift_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                lift_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

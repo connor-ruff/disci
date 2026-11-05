@@ -1,6 +1,6 @@
 # Web App Overview
 
-*Status: **shell implemented and deployed** to S3 + CloudFront (https://d2j30iivfr2al9.cloudfront.net) with Cognito sign-in. The shell pages (Home, Manage modules, Settings) work; the finance module has budgets, categories, the monthly checklist, recurring transactions and the inbox (see [finance-ui.md](finance-ui.md)), the nutrition module has the daily food sheet, history, the food repo and macro goals (see [nutrition-ui.md](nutrition-ui.md)), the tasks module has Today, All tasks and the Kinds guide (see [tasks-ui.md](tasks-ui.md)), and the shopping list module has the list and common items (see [shopping-ui.md](shopping-ui.md)). Deploying: [deployment.md](../ops/deployment.md).*
+*Status: **shell implemented and deployed** to S3 + CloudFront (https://d2j30iivfr2al9.cloudfront.net) with Cognito sign-in. The shell pages (Home, Manage modules, Settings) work; the finance module has budgets, categories, the monthly checklist, recurring transactions and the inbox (see [finance-ui.md](finance-ui.md)), the nutrition module has the daily food sheet, history, the food repo and macro goals (see [nutrition-ui.md](nutrition-ui.md)), the tasks module has Today, All tasks and the Kinds guide (see [tasks-ui.md](tasks-ui.md)), the shopping list module has the list and common items (see [shopping-ui.md](shopping-ui.md)), and the training module has the workout calendar, history and the log workout sheet (see [training-ui.md](training-ui.md)). Deploying: [deployment.md](../ops/deployment.md).*
 
 The engineering entry point for the web app (`web/`): stack, layout, conventions and local workflow. What the shell looks like and how modules plug into it is in [app-shell.md](app-shell.md); the brand palette is in [ui-overview.md](ui-overview.md).
 
@@ -89,14 +89,22 @@ web/
         │   ├── format.ts          # TYPE_LABELS, TYPE_ORDER, UNITS, describeCadence, describeDue
         │   ├── pages/             # TodayPage, AllTasksPage, TypesPage
         │   └── components/        # TaskRow (+ check control), Section, TaskSheet, NewTaskButton, TasksHomeCard
-        └── shopping/
-            ├── index.ts           # ModuleManifest (sub-nav: Shopping list, Common items)
-            ├── routes.tsx         # route tree under /shopping
-            ├── api.ts             # TanStack Query hooks + shoppingKeys
-            ├── groups.ts          # groupByType: rows by type, Uncategorized last
-            ├── pages/             # ListPage, CommonPage
-            └── components/        # QuickAdd, ItemSheet, CommonRow, AddFromCommonSheet, TypesSheet,
-                                   # EditTypesButton, ShoppingHomeCard
+        ├── shopping/
+        │   ├── index.ts           # ModuleManifest (sub-nav: Shopping list, Common items)
+        │   ├── routes.tsx         # route tree under /shopping
+        │   ├── api.ts             # TanStack Query hooks + shoppingKeys
+        │   ├── groups.ts          # groupByType: rows by type, Uncategorized last
+        │   ├── pages/             # ListPage, CommonPage
+        │   └── components/        # QuickAdd, ItemSheet, CommonRow, AddFromCommonSheet, TypesSheet,
+        │                          # EditTypesButton, ShoppingHomeCard
+        └── training/
+            ├── index.ts           # ModuleManifest (sub-nav: Calendar, History)
+            ├── routes.tsx         # route tree under /training
+            ├── api.ts             # TanStack Query hooks + trainingKeys
+            ├── format.ts          # TYPE_LABELS, TYPE_ORDER, TYPE_BADGE, clock/miles/weight formats, workout lines, weekStart
+            ├── pages/             # CalendarPage, HistoryPage
+            └── components/        # WorkoutSheet (+ lifts and sets editor), WorkoutRow, LogWorkoutButton,
+                                   # TrainingHomeCard
 ```
 
 **Rule of thumb:** `app/` is the shell, `shared/` is anything two or more places use, and `modules/<key>/` holds everything specific to one module. A module may import from `shared/` and `app/` (its manifest type, the root route); `shared/` never imports from a module.
@@ -134,7 +142,7 @@ web/
 | `useSetModuleEnabled()` | `PUT` / `DELETE /me/modules/{key}` | invalidates `['me', 'modules']` |
 
 - **Query keys** are defined once, in the `queryKeys` object, never as inline arrays. Keys are hierarchical (`['me', 'modules']` sits under `['me']`) so a whole branch can be invalidated at once.
-- A module's hooks live in that module's folder (e.g. `modules/finance/api.ts`, keys in `financeKeys`; `modules/nutrition/api.ts`, keys in `nutritionKeys`; `modules/tasks/api.ts`, keys in `tasksKeys`; `modules/shopping/api.ts`, keys in `shoppingKeys`), with keys starting with the module key (e.g. `['finance', ...]`).
+- A module's hooks live in that module's folder (e.g. `modules/finance/api.ts`, keys in `financeKeys`; `modules/nutrition/api.ts`, keys in `nutritionKeys`; `modules/tasks/api.ts`, keys in `tasksKeys`; `modules/shopping/api.ts`, keys in `shoppingKeys`; `modules/training/api.ts`, keys in `trainingKeys`), with keys starting with the module key (e.g. `['finance', ...]`).
 - Pages handle `isPending` / `isError` with the shared `LoadingState` / `ErrorState` from `shared/ui/page.tsx`.
 
 ---
